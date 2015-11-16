@@ -1,4 +1,4 @@
-typedef struct _udpc_connection udpc_connection;
+typedef struct _udpc_connection * udpc_connection;
 
 // Client API
 // Creates a user on the host, returns an invalid connection if the user already exists.

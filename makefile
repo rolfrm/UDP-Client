@@ -1,5 +1,5 @@
 OPT = -g3 -O0
-SOURCES = udpc.c main.c
+SOURCES = udpc.c main.c ../iron/mem.c ../iron/array.c ../iron/log.c ../iron/math.c
 CC = gcc
 TARGET = run.exe
 OBJECTS =$(SOURCES:.c=.o)
