@@ -1,5 +1,12 @@
-#include <uv.h>
 
+#include <uv.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include "udpc.h"
+
+struct _udpc_connection{
+
+};
 udpc_connection udpc_login(const char * service){
 
 }
