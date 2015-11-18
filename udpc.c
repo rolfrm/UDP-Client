@@ -24,9 +24,10 @@ typedef enum {
 static const int udpc_send_clone = 1;
 static const int udpc_send_no_clone = 2;
 
+
 static const int response_ok_ip4 = 1;
 static const int response_no_service = 2;
-
+static const int response_ok_pubkey = 3;
 typedef struct{
   rsa_pubkey local_pubkey;
   rsa_pubkey remote_pubkey;
@@ -77,8 +78,16 @@ void udpc_con_rcv_slow(udpc_rcv_buf * buf, udpc_con * con){
   uv_udp_recv_stop(con->conn);
 }
 
-void get_server_pubkey(udpc_con * con, void * buffer){
+udpc_rsa_pubkey get_server_pubkey(udpc_con * con, void * buffer){
   udpc_con_send_slow(con, &udpc_get_pubkey, sizeof(udpc_get_pubkey));
+  udpc_rcv_buf buf;
+  udpc_con_rcv_slow(&buf, con);
+  void * buffer = buf.buffer;
+  int status = unpack_int(buffer, 4);
+  ASSERT(status == response_ok_pubkey);
+  udpc_rsa_pubkey key = udpc_read_pubkey(buffer);
+  udpc_rdc_buf_free(buf);
+  return key;
 }
 
 udpc_connection udpc_connect_encrypted(const char * host, int port, rsa_pubkey local_pubkey, rsa_pubkey remote_pubkey){
@@ -168,6 +177,7 @@ udpc_connection udpc_connect(udpc_connection client, const char * service){
     udpc_internal_send(con, buffer, buffer_size, UDPC_SEND_CLONE);
   }
   void * rsp = udpc_internal_rcv(con);
+  void * resp2 = rsp;
   // response should be [ip port remote_pubkey].
   int response_status = unpack_int(&rsa, sizeof(int));
   if(response_status == response_ok_ip4){
@@ -192,8 +202,6 @@ udpc_connection udpc_connect(udpc_connection client, const char * service){
 void udpc_send(udpc_connection client, void * buffer, size_t length){
   udpc_internal_send(client.con, buffer, length, UDPC_SEND_CLONE);
 }
-
-
 
 size_t udpc_receive(udpc_connection client, void * buffer, size_t max_size){
   
