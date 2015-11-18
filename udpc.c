@@ -16,6 +16,14 @@ static const int udpc_mode_login = 1;
 static const int udpc_mode_connect = 2;
 static const int udpc_mode_verify = 3;
 static const int udpc_get_pubkey = 4;
+static const int udpc_keep_alive = 5;
+typedef enum {
+  UDPC_SEND_NO_FLAGS = 0,
+  UDPC_SEND_CLONE = 1
+}udpc_send_flag;
+static const int udpc_send_clone = 1;
+static const int udpc_send_no_clone = 2;
+
 static const int response_ok_ip4 = 1;
 static const int response_no_service = 2;
 
@@ -51,20 +59,22 @@ static uv_buf_t alloc_cb(uv_handle_t* handle, size_t suggested_size) {
 typedef struct{
   void * buffer;
   size_t size;
+  struct sockaddr_in raddr;
 }udpc_rcv_buf;
 
-void udpc_con_rcv(udpc_rcv_buf * buf, udpc_con * con){
+void udpc_con_rcv_slow(udpc_rcv_buf * buf, udpc_con * con){
   
+  bool something_received = false;
+
   void rcv_cb(uv_udp_t * conn, ssize_t nread, uv_buf_t buf, struct sockaddr *addr, unsigned flags){
     if(nread == 0 && addr == NULL) return;
     buf->buffer = clone(buf.base, nread);
     buf->size = nread;  
+    something_received = true;
   }
   uv_udp_recv_start(con->conn, alloc_cb,  rcv_cb);
-}
-
-void udpc_con_end_rcv(udpc_con * con){
-  uv_udpc_recv_stop(con->conn);
+  while(!something_received){}
+  uv_udp_recv_stop(con->conn);
 }
 
 void get_server_pubkey(udpc_con * con, void * buffer){
@@ -85,16 +95,22 @@ udpc_connection udpc_connect_encrypted(const char * host, int port, rsa_pubkey l
   return clone(&con, sizeof(con));;
 }
 
-void udpc_internal_send(udpc_internal_con con, void * data, size_t len){
-
+void udpc_internal_send(udpc_internal_con con, void * data, size_t len, udpc_send_flag flag){
+  if(flag == UDPC_SEND_CLONE)
+    data = clone(data, len);
+  void internal_senb_cb(uv_udp_sent_t * req, int status){
+    free(data);
+    data = NULL;
+  }
+  udpc_unsafe_rsa_encrypt(con.remote_pubkey, &data, &len);
+  uv_udp_send(&con.conn, data, len, con.remote_addr, internal_send_cb);
+  while(data != NULL){}
 }
 
 typedef struct{
   bool ok;
   i64 challenge;
 }udpc_login_response;
-
-
 
 udpc_connection udpc_login(const char * service){
   // Format of service must be name@host:service
@@ -111,7 +127,7 @@ udpc_connection udpc_login(const char * service){
 
   udpc_internal_con con = udpc_connect_encrypted(sitem.host, port, my_pubkey, serv_pubkey);
 
-  {
+  { // send login request
     size_t s = strlen(service);
     char * buffer = NULL;
     size_t buffer_size;
@@ -119,15 +135,16 @@ udpc_connection udpc_login(const char * service){
     pack(&s, sizeof(s), &buffer, &buffer_size);
     pack(service, s, &buffer, &buffer_size);
     pack(my_pubkey.buffer, my_pubkey.size, &buffer, &buffer_size);
-    udpc_internal_send(con, buffer, buffer_size);  
-    free(buffer);
+    udpc_internal_send(con, buffer, buffer_size, UDPC_SEND_NO_FLAGS);  
   }
   
   char * response = udpc_internal_rcv(con);
   udpc_login_response login_response = udpc_parse_login_response(response);
   free(response);
   ASSERT(login_response.ok);
-  udpc_internal_send(con, &login_response.challenge, sizeof(login_response.challenge));
+  // Challenge to verify that the user has the private key.
+  udpc_internal_send(con, &login_response.challenge, sizeof(login_response.challenge), UDPC_SEND_CLONE);
+  
   char * challenge_response = udpc_internal_rcv(con);
   ASSERT(challenge_response[0] == 'O');
   free(challenge_response);
@@ -148,21 +165,14 @@ udpc_connection udpc_connect(udpc_connection client, const char * service){
     pack(&udpc_mode_connect, sizeof(udpc_mode_connect), &buffer, &buffer_size);
     pack(service, strlen(service), &buffer, &buffer_size);
     pack(my_pubkey.buffer, my_pubkey.size, &buffer, &buffer_size);
-    udpc_internal_send(con, buffer, buffer_size);
-    free(buffer);
+    udpc_internal_send(con, buffer, buffer_size, UDPC_SEND_CLONE);
   }
   void * rsp = udpc_internal_rcv(con);
-  int response_status = 0;
-  memcpy(&response_status, rsp, sizeof(response_status));
+  // response should be [ip port remote_pubkey].
+  int response_status = unpack_int(&rsa, sizeof(int));
   if(response_status == response_ok_ip4){
-    void * rsp2 = rsp + sizeof(response_status);
-    int ip;
-    int port;
-    memcpy(&ip, rsp2, sizeof(int));
-    rsp2 += sizeof(int);
-    memcpy(&ip, rsp2, sizeof(int));
-    rsp2 += sizeof(int);
-    memcpy(&port, rsp2, sizeof(int));
+    int ip = unpack_int(&resp2, sizeof(int));
+    int port = unpack_int(&resp2, sizeof(int));
     rsa_pubkey other_pubkey;    
     rsp2 = udpc_read_pubkey(&other_pubkey, rsp2);
     
@@ -170,22 +180,21 @@ udpc_connection udpc_connect(udpc_connection client, const char * service){
     sprintf(buffer, "%i.%i.%i.%i",ip & 255, (ip << 8) & 255,
 	    (ip << 16) & 255, (ip << 24) & 255);
     udpc_internal_con con = udpc_connect_encrypted(addr_buf, my_pubkey, other_pubkey, port);
+    udpc_con * connection = alloc0(sizeof(udpc_con));
+    connection.con = con;
+    return connection;
   }else{
     ASSERT(false);
+    return NULL;
   }
-
-    
-   
 }
 
 void udpc_send(udpc_connection client, void * buffer, size_t length){
-
+  udpc_internal_send(client.con, buffer, length, UDPC_SEND_CLONE);
 }
+
+
 
 size_t udpc_receive(udpc_connection client, void * buffer, size_t max_size){
-
-}
-
-udpc_connection udpc_accept(udpc_connection client){
-
+  
 }
