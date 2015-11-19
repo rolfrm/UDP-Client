@@ -166,6 +166,110 @@ static void sv_recv_cb(uv_udp_t* handle,
   sv_recv_cb_called++;
 }
 
+void server_main(int client_port, int server_port){
+  OpenSSL_add_ssl_algorithms();
+  SSL_load_error_strings();
+  SSL_CTX * server_ctx = SSL_CTX_new(DTLSv1_server_method());
+  { // setup server SSL CTX
+    SSL_CTX_set_cipher_list(ctx, "ALL:NULL:eNULL:aNULL");
+    SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_OFF);
+    
+    if (!SSL_CTX_use_certificate_file(ctx, "certs/server-cert.pem", SSL_FILETYPE_PEM))
+      printf("\nERROR: no certificate found!");
+    
+    if (!SSL_CTX_use_PrivateKey_file(ctx, "certs/server-key.pem", SSL_FILETYPE_PEM))
+      printf("\nERROR: no private key found!");
+    
+    if (!SSL_CTX_check_private_key (ctx))
+      printf("\nERROR: invalid private key!");
+    
+    /* Client has to authenticate */
+    SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_CLIENT_ONCE, dtls_verify_callback);
+    
+    SSL_CTX_set_read_ahead(ctx, 1);
+    SSL_CTX_set_cookie_generate_cb(ctx, generate_cookie);
+    SSL_CTX_set_cookie_verify_cb(ctx, verify_cookie);
+  }
+  
+  struct sockaddr_in addr = uv_ip4_addr("127.0.0.1", server_port);
+  uv_udp_t server;
+  r = uv_udp_init(uv_default_loop(), &server);
+  ASSERT(r == 0);
+
+  r = uv_udp_bind(&server, addr, 0);
+  ASSERT(r == 0);
+  {
+    struct timeval timeout;
+    BIO *   bio = BIO_new_dgram(fd, BIO_NOCLOSE);
+    timeout.tv_sec = 5;
+    timeout.tv_usec = 0;
+    BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_RECV_TIMEOUT, 0, &timeout);
+    SSL * ssl = SSL_new(ctx);
+    
+    SSL_set_bio(ssl, bio, bio);
+    SSL_set_options(ssl, SSL_OP_COOKIE_EXCHANGE);
+    struct sockaddr_in client_addr;
+    while (DTLSv1_listen(ssl, &client_addr) <= 0);
+    char buf[100];
+    size_t len = SSL_read(ssl, buf, sizeof(buf));
+    logd("Server: Read data length: %i\n", len);
+    char * buf2 = "PONG";
+    SSL_write(ssl, buf2, strlen(buf2));
+  }
+}
+
+void client_main(int client_port, int server_port){
+  OpenSSL_add_ssl_algorithms();
+  SSL_load_error_strings();
+
+
+  // todo: Figure out if it has to be client/server or if client/client is ok.
+  SSL_CTX * client_ctx =  SSL_CTX_new(DTLSv1_client_method());
+  { // setup client SSL CTX
+    SSL_CTX_set_cipher_list(client_ctx, "eNULL:!MD5");
+    if (!SSL_CTX_use_certificate_file(client_ctx, "certs/client-cert.pem", SSL_FILETYPE_PEM))
+      printf("\nERROR: no certificate found!");
+    
+    if (!SSL_CTX_use_PrivateKey_file(client_ctx, "certs/client-key.pem", SSL_FILETYPE_PEM))
+      printf("\nERROR: no private key found!");
+    
+    if (!SSL_CTX_check_private_key (client_ctx))
+      printf("\nERROR: invalid private key!");
+    SSL_CTX_set_verify_depth (client_ctx, 2);
+    SSL_CTX_set_read_ahead(client_ctx, 1);
+  }
+
+  uv_udp_t client;
+  struct sockaddr_in addr;
+  int r = 0;
+
+  ASSERT(r == 0);
+
+  addr = uv_ip4_addr("127.0.0.1", server_port);
+
+  r = uv_udp_init(uv_default_loop(), &client);
+  ASSERT(r == 0);
+
+  ///* client sends "PING", expects "PONG" */
+  SSL *ssl = SSL_new(ctx);
+  BIO * bio = BIO_new_dgram(fd, BIO_CLOSE);
+  BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_CONNECTED, 0, &addr.ss);
+  SSL_set_bio(ssl, bio, bio);
+  ASSERT(!(SSL_connect(ssl) < 0));
+  timeout.tv_sec = 3;
+  timeout.tv_usec = 0;
+  BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_RECV_TIMEOUT, 0, &timeout);
+  
+  { // coms
+    char * buf = "PING";
+    size_t len = SSL_write(ssl, buf, strlen(buf));
+    SSL_heartbeat(ssl);
+    char readbuf[100];
+    len = SSL_read(ssl, readbuf, sizeof(readbuf));
+    logd("Read %i bytes\n",len);
+  }
+}
+
 
 void main() {
 
@@ -235,11 +339,31 @@ void main() {
   r = uv_udp_init(uv_default_loop(), &client);
   ASSERT(r == 0);
 
-  /* client sends "PING", expects "PONG" */
-  buf = uv_buf_init("PING", 4);
-
-  //r = uv_udp_send(&req, &client, &buf, 1, addr, cl_send_cb);
-  ASSERT(r == 0);
+  
+  ///* client sends "PING", expects "PONG" */
+  //buf = uv_buf_init("PING", 4);
+  {
+    SSL *ssl = SSL_new(ctx);
+    BIO *bio = BIO_new_dgram(fd, BIO_CLOSE);
+    BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_CONNECTED, 0, &caddr.ss);
+    SSL_set_bio(ssl, bio, bio);
+    ASSERT(!(SSL_connect(ssl) < 0));
+    timeout.tv_sec = 3;
+    timeout.tv_usec = 0;
+    BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_RECV_TIMEOUT, 0, &timeout);
+  }
+  
+  { // coms
+    char * buf = "PING";
+    size_t len = SSL_write(ssl, buf, strlen(buf));
+    SSL_heartbeat(ssl);
+    char readbuf[100];
+    len = SSL_read(ssl, readbuf, sizeof(readbuf));
+    logd("Read %i bytes\n",len);
+      
+  }
+    //r = uv_udp_send(&req, &client, &buf, 1, addr, cl_send_cb);
+    ASSERT(r == 0);
 
   ASSERT(close_cb_called == 0);
   ASSERT(cl_send_cb_called == 0);

@@ -860,7 +860,7 @@ void start_client(char *remote_address, char *local_address, int port, int lengt
 
 			/* Shut down if all messages sent */
 			if (messagenumber == 0)
-				SSL_shutdown(ssl);
+			  SSL_shutdown(ssl);
 		}
 
 		reading = 1;
