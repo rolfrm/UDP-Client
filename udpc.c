@@ -99,12 +99,11 @@ void udpc_internal_send(udpc_internal_con con, void * data, size_t len, udpc_sen
   if(flag == UDPC_SEND_CLONE)
     data = clone(data, len);
   void internal_senb_cb(uv_udp_sent_t * req, int status){
-    free(data);
-    data = NULL;
+    ASSERT(status == 0);
   }
   udpc_unsafe_rsa_encrypt(con.remote_pubkey, &data, &len);
   uv_udp_send(&con.conn, data, len, con.remote_addr, internal_send_cb);
-  while(data != NULL){}
+  free(data);
 }
 
 typedef struct{
