@@ -166,6 +166,15 @@ static void sv_recv_cb(uv_udp_t* handle,
   sv_recv_cb_called++;
 }
 
+int dtls_verify_callback (int ok, X509_STORE_CTX *ctx) {
+	/* This function should ask the user
+	 * if he trusts the received certificate.
+	 * Here we always trust.
+	 */
+	return 1;
+}
+
+
 void server_main(int client_port, int server_port){
   OpenSSL_add_ssl_algorithms();
   SSL_load_error_strings();
@@ -242,20 +251,18 @@ void client_main(int client_port, int server_port){
   uv_udp_t client;
   struct sockaddr_in addr;
   int r = 0;
-
-  ASSERT(r == 0);
-
   addr = uv_ip4_addr("127.0.0.1", server_port);
 
   r = uv_udp_init(uv_default_loop(), &client);
   ASSERT(r == 0);
 
   ///* client sends "PING", expects "PONG" */
-  SSL *ssl = SSL_new(ctx);
-  BIO * bio = BIO_new_dgram(fd, BIO_CLOSE);
+  SSL *ssl = SSL_new(client_ctx);
+  BIO * bio = BIO_new_dgram(client.fd, BIO_CLOSE);
   BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_CONNECTED, 0, &addr.ss);
   SSL_set_bio(ssl, bio, bio);
-  ASSERT(!(SSL_connect(ssl) < 0));
+  ASSERT(!(   SSL_connect(ssl)   < 0));
+  struct timeval timeout;
   timeout.tv_sec = 3;
   timeout.tv_usec = 0;
   BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_RECV_TIMEOUT, 0, &timeout);
