@@ -19,9 +19,14 @@ int main(int argc, char ** argv){
   service_descriptor it = udpc_get_service_descriptor("rollo@127.0.0.1:chat");
   udpc_print_service_descriptor(it);logd("\n");
 
-  if(argc > 1){
+  if(argc == 2){
     udpc_connection * con = udpc_login(argv[1]);
-    logd("Logged in!\n");
+    logd("Logged in..\n");
+    udpc_connection * c2 = udpc_listen(con);
+    logd("Got connection\n");
+  }else if(argc > 2){
+    udpc_connection * con = udpc_connect(argv[1]);
+    logd("Connected to peer..\n");
   }else{
     udpc_start_server("127.0.0.1");
   }

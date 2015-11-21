@@ -273,7 +273,7 @@ size_t ssl_server_read(ssl_server_con * con, void * buffer, size_t buffer_size){
   return SSL_read(con->ssl, buffer, buffer_size);
 }
 
-void ssl_server_write(ssl_server_con * con, void * buffer, size_t buffer_size){
+void ssl_server_write(ssl_server_con * con, const void * buffer, size_t buffer_size){
   SSL_write(con->ssl, buffer, buffer_size);
 }
 
@@ -348,7 +348,7 @@ ssl_client * ssl_start_client(int fd, struct sockaddr * remote_addr){
   return cli;
 }
 
-void ssl_client_write(ssl_client * cli, void * buffer, size_t length){
+void ssl_client_write(ssl_client * cli, const void * buffer, size_t length){
   socklen_t len = SSL_write(cli->ssl, buffer, length);
   ASSERT(SSL_get_error(cli->ssl, len) == SSL_ERROR_NONE);
 }

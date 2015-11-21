@@ -20,7 +20,7 @@ void udpc_logout(udpc_connection * con);
 udpc_connection * udpc_connect(const char * service);
 
 // Accepts a udpc connection.
-udpc_connection * udpc_accept(udpc_connection client);
+udpc_connection * udpc_listen(udpc_connection * con);
 
 // Sends data across the connection.
 void udpc_send(udpc_connection * client, void * buffer, size_t length);
