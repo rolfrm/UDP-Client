@@ -12,7 +12,7 @@ struct sockaddr_storage ssl_server_client_addr(ssl_server_client * cli);
 void ssl_server_heartbeat(ssl_server_client * cli);
 void ssl_server_close(ssl_server_client * cli);
 ssl_server_client * ssl_server_listen(ssl_server * serv);
-ssl_client * ssl_start_client(int fd, struct sockaddr_in remote_addr);
+ssl_client * ssl_start_client(int fd, struct sockaddr * remote_addr);
 void ssl_client_write(ssl_client * cli, void * buffer, size_t length);
 size_t ssl_client_read(ssl_client * cli, void * buffer, size_t length);
 void ssl_client_heartbeat(ssl_client * cli);

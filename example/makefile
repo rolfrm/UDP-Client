@@ -15,4 +15,4 @@ dtls:
 	# cat certs/server-key.pem>>certs/server-cert.pem
 
 ssl:
-	gcc ssl.c dtls_udp_echo_mod.c ../../iron/mem.c ../../iron/log.c ../../iron/array.c ../../iron/math.c -lssl -lcrypto -lpthread -I../../ -Wextra -o test1.exe -O0 -g3
+	gcc ssl.c dtls_udp_echo_mod.c udp.c ../../iron/mem.c ../../iron/log.c ../../iron/array.c ../../iron/math.c -lssl -lcrypto -lpthread -I../../ -Wextra -o test1.exe -O0 -g3

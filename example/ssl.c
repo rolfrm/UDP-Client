@@ -233,6 +233,21 @@ ssl_server * ssl_setup_server(int fd){
   return srv;
 }
 
+void handle_ssl_error(SSL * ssl, int ret){
+  int err = SSL_get_error(ssl, ret);
+#define doerr(kind)case kind: ERROR(#kind);
+  switch(err){
+    doerr(SSL_ERROR_SSL);
+    doerr(SSL_ERROR_SYSCALL);
+    //doerr(SSL_ERROR_WANT_ASYNC);
+    doerr(SSL_ERROR_WANT_CONNECT);
+    doerr(SSL_ERROR_WANT_ACCEPT);
+    doerr(SSL_ERROR_WANT_READ);
+    doerr(SSL_ERROR_WANT_WRITE);
+    doerr(SSL_ERROR_ZERO_RETURN);
+    doerr(SSL_ERROR_NONE);
+  }
+}
 
 ssl_server_con * ssl_server_accept(ssl_server_client * scli, int fd){
   BIO_set_fd(SSL_get_rbio(scli->ssl), fd, BIO_NOCLOSE);
@@ -240,6 +255,10 @@ ssl_server_con * ssl_server_accept(ssl_server_client * scli, int fd){
   int ret = 0;
   do{ret = SSL_accept(scli->ssl);}
   while(ret == 0);
+  if(ret < 0){
+    handle_ssl_error(scli->ssl, ret);
+    return NULL;
+  }
   ASSERT(ret > 0);
   struct timeval timeout;
   timeout.tv_sec = 5;
@@ -291,7 +310,7 @@ ssl_server_client * ssl_server_listen(ssl_server * serv){
   
 }
 
-ssl_client * ssl_start_client(int fd, struct sockaddr_in remote_addr){
+ssl_client * ssl_start_client(int fd, struct sockaddr * remote_addr){
   ssl_ensure_initialized();
   SSL_CTX * ctx = SSL_CTX_new(DTLSv1_client_method());
   SSL_CTX_set_cipher_list(ctx, "eNULL:!MD5");
@@ -313,7 +332,7 @@ ssl_client * ssl_start_client(int fd, struct sockaddr_in remote_addr){
   // Create BIO, connect and set to already connected.
   BIO * bio = BIO_new_dgram(fd, BIO_CLOSE);
   
-  BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_CONNECTED, 0, &remote_addr);
+  BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_CONNECTED, 0, remote_addr);
   SSL_set_bio(ssl, bio, bio);
   ASSERT(SSL_connect(ssl) >= 0);
   
