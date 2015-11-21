@@ -13,3 +13,6 @@ dtls:
 	# openssl rsa -in privkey.pem -out certs/server-key.pem
 	# openssl x509 -in certs/server-cert.csr -out certs/server-cert.pem -req -signkey certs/server-key.pem -days 1001
 	# cat certs/server-key.pem>>certs/server-cert.pem
+
+ssl:
+	gcc ssl.c -c -I../../ -Wextra
