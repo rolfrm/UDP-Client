@@ -1,207 +1,197 @@
-
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
 
-#include <uv.h>
-
 #include <iron/mem.h>
 #include <iron/log.h>
 #include "udpc.h"
 #include "service_descriptor.h"
+#include "udp.h"
+#include "ssl.h"
+#include <pthread.h>
+const int udpc_login_msg = 1;
+const int udpc_response_ok_ip4 = 2;
+const int udpc_mode_connect = 3;
+const int udpc_response_ok = 4;
+const int udpc_server_port = 11511;
+struct _udpc_connection {
+  ssl_client * cli;
+  int fd;
+};
 
-static const int udpc_mode_login = 1;
-static const int udpc_mode_connect = 2;
-static const int udpc_mode_verify = 3;
-static const int udpc_get_pubkey = 4;
-static const int udpc_keep_alive = 5;
-typedef enum {
-  UDPC_SEND_NO_FLAGS = 0,
-  UDPC_SEND_CLONE = 1
-}udpc_send_flag;
-static const int udpc_send_clone = 1;
-static const int udpc_send_no_clone = 2;
-
-
-static const int response_ok_ip4 = 1;
-static const int response_no_service = 2;
-static const int response_ok_pubkey = 3;
-typedef struct{
-  rsa_pubkey local_pubkey;
-  rsa_pubkey remote_pubkey;
-  uv_udp_t conn;
-  struct sockaddr_in remote_addr;
-}udpc_internal_con;
-
-typedef struct _udpc_connection{
-  udpc_internal_con con;
-}udpc_con;
-
-void udpc_con_send_slow(udpc_con * con, void * data, size_t len){
-  uv_udp_send_t req;
-  uv_buf_t buf = uv_buf_init(data, len);
-  bool did_send = false;
-  void send_cb(uv_udp_send_t * req, int status){
-    did_send = true;
-  }
-  
-  uv_udp_send(&req, con->conn, &buf, 1, con.host_addr, send_cb);
-  while(false == did_send){}
-  
+void pack(const void * data, size_t data_len, void ** buffer, size_t * buffer_size){
+  *buffer = ralloc(*buffer, *buffer_size + data_len);
+  memcpy(*buffer + *buffer_size, data, data_len);
+  *buffer_size += data_len;
 }
 
-static uv_buf_t alloc_cb(uv_handle_t* handle, size_t suggested_size) {
-  static char slab[65536];
-  return uv_buf_init(slab, sizeof(slab));
+void pack_int(int value, void ** buffer, size_t * buffer_size){
+  pack(&value, sizeof(int), buffer, buffer_size);
 }
 
-typedef struct{
-  void * buffer;
-  size_t size;
-  struct sockaddr_in raddr;
-}udpc_rcv_buf;
-
-void udpc_con_rcv_slow(udpc_rcv_buf * buf, udpc_con * con){
-  
-  bool something_received = false;
-
-  void rcv_cb(uv_udp_t * conn, ssize_t nread, uv_buf_t buf, struct sockaddr *addr, unsigned flags){
-    if(nread == 0 && addr == NULL) return;
-    buf->buffer = clone(buf.base, nread);
-    buf->size = nread;  
-    something_received = true;
-  }
-  uv_udp_recv_start(con->conn, alloc_cb,  rcv_cb);
-  while(!something_received){}
-  uv_udp_recv_stop(con->conn);
+int unpack_int(void ** buffer){
+  int value = 0;
+  memcpy(&value, *buffer, sizeof(int));
+  *buffer = *buffer + sizeof(int);
+  return value;
 }
 
-udpc_rsa_pubkey get_server_pubkey(udpc_con * con, void * buffer){
-  udpc_con_send_slow(con, &udpc_get_pubkey, sizeof(udpc_get_pubkey));
-  udpc_rcv_buf buf;
-  udpc_con_rcv_slow(&buf, con);
-  void * buffer = buf.buffer;
-  int status = unpack_int(buffer, 4);
-  ASSERT(status == response_ok_pubkey);
-  udpc_rsa_pubkey key = udpc_read_pubkey(buffer);
-  udpc_rdc_buf_free(buf);
-  return key;
-}
-
-udpc_connection udpc_connect_encrypted(const char * host, int port, rsa_pubkey local_pubkey, rsa_pubkey remote_pubkey){
-  struct sockaddr_in raddr = uv_ip4_addr(host, port);
-  struct sockaddr_in laddr = uv_ip4_addr("127.0.0.1", 0);
-  uv_udp_t conn;
-  uv_udp_init(uv_default_loop(), &conn);
-  uv_udp_bind(&conn, laddr, 0);
-  udpc_con con;
-  con.con.local_pubkey = local_pubkey;
-  con.con.remote_pubkey = remote_pubkey;
-  con.con.conn = conn;
-  con.con.remote_addr = raddr;
-  return clone(&con, sizeof(con));;
-}
-
-void udpc_internal_send(udpc_internal_con con, void * data, size_t len, udpc_send_flag flag){
-  if(flag == UDPC_SEND_CLONE)
-    data = clone(data, len);
-  void internal_senb_cb(uv_udp_sent_t * req, int status){
-    ASSERT(status == 0);
-  }
-  udpc_unsafe_rsa_encrypt(con.remote_pubkey, &data, &len);
-  uv_udp_send(&con.conn, data, len, con.remote_addr, internal_send_cb);
-  free(data);
-}
-
-typedef struct{
-  bool ok;
-  i64 challenge;
-}udpc_login_response;
-
-udpc_connection udpc_login(const char * service){
+// connect to a server.
+udpc_connection * udpc_login(const char * service){
   // Format of service must be name@host:service
   // 1. get server public key
   // 2. send service and public key encrypted
   // 3. do quick pubkey verification
-  // 4. return connection struct. 
-  service_descriptor sitem = get_service_descriptor(service);
+  // 4. return connection struct.
+
+  service_descriptor sitem = udpc_get_service_descriptor(service);
   ASSERT(sitem.host != NULL);
-  rsa_pubkey my_pubkey;
-  udpc_get_local_pubkey(&my_pubkey);
-  rsa_pubkey serv_pubkey;
-  udpc_get_server_pubkey(sitem.host, &serv_pubkey);
-
-  udpc_internal_con con = udpc_connect_encrypted(sitem.host, port, my_pubkey, serv_pubkey);
-
+  struct sockaddr_storage server_addr = udp_get_addr(sitem.host, udpc_server_port);
+  struct sockaddr_storage local_addr = udp_get_addr("127.0.0.1", 0);
+  int fd = udp_connect(&local_addr, &server_addr, false);
+  ssl_client * cli = ssl_start_client(fd, (struct sockaddr *) &server_addr);
+  
   { // send login request
     size_t s = strlen(service);
-    char * buffer = NULL;
-    size_t buffer_size;
-    pack(&udpc_mode_login, sizeof(udpc_mode_login), &buffer, &buffer_size);
-    pack(&s, sizeof(s), &buffer, &buffer_size);
+    void * buffer = NULL;
+    size_t buffer_size = 0;
+    pack_int(udpc_login_msg, &buffer, &buffer_size);
     pack(service, s, &buffer, &buffer_size);
-    pack(my_pubkey.buffer, my_pubkey.size, &buffer, &buffer_size);
-    udpc_internal_send(con, buffer, buffer_size, UDPC_SEND_NO_FLAGS);  
+    ssl_client_write(cli, buffer, buffer_size);
+    free(buffer);
   }
   
-  char * response = udpc_internal_rcv(con);
-  udpc_login_response login_response = udpc_parse_login_response(response);
-  free(response);
-  ASSERT(login_response.ok);
-  // Challenge to verify that the user has the private key.
-  udpc_internal_send(con, &login_response.challenge, sizeof(login_response.challenge), UDPC_SEND_CLONE);
-  
-  char * challenge_response = udpc_internal_rcv(con);
-  ASSERT(challenge_response[0] == 'O');
-  free(challenge_response);
-  return con;
+  int response;
+  size_t read_len = ssl_client_read(cli, &response, sizeof(response));
+  ASSERT(read_len == sizeof(int));
+  ASSERT(response == udpc_response_ok);
+  udpc_connection * r = alloc0(sizeof(udpc_connection));
+  r->cli = cli;
+  r->fd = fd;
+  return r;
 }
 
-udpc_connection udpc_connect(udpc_connection client, const char * service){
-  service_descriptor sitem = get_service_descriptor(service);
+udpc_connection * udpc_connect(const char * service){
+  service_descriptor sitem = udpc_get_service_descriptor(service);
   ASSERT(sitem.host != NULL);
-  rsa_pubkey my_pubkey;
-  udpc_get_local_pubkey(&my_pubkey);
-  rsa_pubkey serv_pubkey;
-  udpc_get_server_pubkey(sitem.host, &serv_pubkey);
-  udpc_internal_con con = udpc_connect_encrypted(sitem.host, my_pubkey, serv_pubkey);
+  struct sockaddr_storage server_addr = udp_get_addr(sitem.host, udpc_server_port);
+  struct sockaddr_storage local_addr = udp_get_addr("127.0.0.1", 0);
+  int fd = udp_connect(&local_addr, &server_addr, false);
+  ssl_client * cli = ssl_start_client(fd, (struct sockaddr *) &server_addr);
   {
-    char * buffer = NULL;
+    void * buffer = NULL;
     size_t buffer_size = 0;
     pack(&udpc_mode_connect, sizeof(udpc_mode_connect), &buffer, &buffer_size);
     pack(service, strlen(service), &buffer, &buffer_size);
-    pack(my_pubkey.buffer, my_pubkey.size, &buffer, &buffer_size);
-    udpc_internal_send(con, buffer, buffer_size, UDPC_SEND_CLONE);
+    int zero = 0;
+    pack(&zero, sizeof(zero), &buffer, &buffer_size);
+    ssl_client_write(cli, buffer, buffer_size);
+    free(buffer);
   }
-  void * rsp = udpc_internal_rcv(con);
-  void * resp2 = rsp;
-  // response should be [ip port remote_pubkey].
-  int response_status = unpack_int(&rsa, sizeof(int));
-  if(response_status == response_ok_ip4){
-    int ip = unpack_int(&resp2, sizeof(int));
-    int port = unpack_int(&resp2, sizeof(int));
-    rsa_pubkey other_pubkey;    
-    rsp2 = udpc_read_pubkey(&other_pubkey, rsp2);
-    
-    char addr_buf[30];
-    sprintf(buffer, "%i.%i.%i.%i",ip & 255, (ip << 8) & 255,
-	    (ip << 16) & 255, (ip << 24) & 255);
-    udpc_internal_con con = udpc_connect_encrypted(addr_buf, my_pubkey, other_pubkey, port);
-    udpc_con * connection = alloc0(sizeof(udpc_con));
-    connection.con = con;
-    return connection;
-  }else{
-    ASSERT(false);
-    return NULL;
+  {
+    char buffer[100];
+    size_t read_size = ssl_client_read(cli, buffer, sizeof(buffer));
+    ASSERT(read_size > 0);
+    void * resp2 = buffer;
+    // response should be [ip port remote_pubkey].
+    int response_status = unpack_int(&resp2);
+    ssl_client_close(cli);
+    udp_close(fd);
+    if(response_status == udpc_response_ok_ip4){
+      int ip = unpack_int(&resp2);
+      int port = unpack_int(&resp2);
+      char addr[100];
+      sprintf(addr, "%i.%i.%i.%i",ip & 0xFF, (ip << 8) & 0xFF, (ip << 16) & 0xFF, (ip << 24) & 0xFF);
+      struct sockaddr_storage peer_addr = udp_get_addr(addr, port);;
+      
+      int _fd = udp_connect(&local_addr, &peer_addr, true);
+      ssl_client * cli = ssl_start_client(_fd, (struct sockaddr *) &peer_addr);
+      udpc_connection * connection = alloc0(sizeof(udpc_connection));
+      connection->cli = cli;
+      connection->fd = _fd;
+      return connection;
+    } 
   }
-}
-
-void udpc_send(udpc_connection client, void * buffer, size_t length){
-  udpc_internal_send(client.con, buffer, length, UDPC_SEND_CLONE);
-}
-
-size_t udpc_receive(udpc_connection client, void * buffer, size_t max_size){
   
+  return NULL;
+}
+
+void udpc_send(udpc_connection * client, void * buffer, size_t length){
+  ssl_client_write(client->cli, buffer, length);
+}
+
+size_t udpc_receive(udpc_connection * client, void * buffer, size_t max_size){
+  return ssl_client_read(client->cli, buffer, max_size);
+}
+
+typedef struct{
+  struct sockaddr_storage client_addr;
+  service_descriptor desc;
+}service;
+
+typedef struct{
+  ssl_server_client * scli;
+  struct sockaddr_storage local_addr;
+  struct sockaddr_storage remote_addr;
+  size_t service_cnt;
+  service * services;
+}connection_info;
+
+
+static void * connection_handle(void * _info) {
+  connection_info * info = _info;
+  ssl_server_client * pinfo = info->scli;
+  struct sockaddr_storage local_addr = info->local_addr;
+  struct sockaddr_storage remote_addr = info->remote_addr;
+  pthread_detach(pthread_self());
+  int fd = udp_connect(&local_addr, &remote_addr, true);
+  ssl_server_con * con = ssl_server_accept(pinfo, fd);
+  int max_timeouts = 5;
+  int num_timeouts = 0;
+  while (num_timeouts < max_timeouts) {
+    ssize_t len = 0;
+    char buf[100];
+    len = ssl_server_read(con, buf, sizeof(buf));
+    if(len == 0){
+      num_timeouts++;
+      continue;
+    }
+    void * bufptr = buf;
+    int status = unpack_int(&bufptr);
+    if(status != udpc_login_msg) break;
+    service srv;
+    srv.desc = udpc_get_service_descriptor(bufptr);
+    srv.client_addr = remote_addr;
+    info->services = ralloc(info->services, sizeof(service) * (info->service_cnt + 1) );
+    info->services[info->service_cnt] = srv;
+    info->service_cnt += 1;
+    ssl_server_write(con, &udpc_response_ok, sizeof(udpc_response_ok));
+    break;
+  }
+  return NULL;
+}
+
+void udpc_start_server(char *local_address) {
+  pthread_t tid;
+  struct sockaddr_storage server_addr = udp_get_addr(local_address, udpc_server_port);
+  int fd = udp_open(&server_addr);
+  ssl_server * srv = ssl_setup_server(fd);
+  while (1) {
+    ssl_server_client * scli = ssl_server_listen(srv);
+    if(scli == NULL)
+      continue;
+    connection_info * con_info = alloc0(sizeof(connection_info));
+    con_info->scli = scli;
+    con_info->local_addr = server_addr;
+    con_info->remote_addr = ssl_server_client_addr(scli);
+    if (pthread_create( &tid, NULL, connection_handle, con_info) != 0) {
+      perror("pthread_create");
+      exit(-1);
+    }
+  }
 }

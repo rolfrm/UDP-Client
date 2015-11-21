@@ -87,7 +87,7 @@ void* connection_handle(void *info) {
     int fd = udp_connect(&local, &remote, false);
     ssl_client * cli = ssl_start_client(fd, (struct sockaddr *) &remote);
 
-    while (true) {
+    while (messagenumber < 0) {
       char * buf = "Hello?";      
       if (messagenumber > 0) { 
 	ssl_client_write(cli, buf, strlen(buf) + 1);
@@ -107,6 +107,7 @@ void* connection_handle(void *info) {
 	if(len > 0){
 	  reading = 0;
 	  printf("Read: %s\n", readbuf);
+	  messagenumber--;
 	}
       }
     }

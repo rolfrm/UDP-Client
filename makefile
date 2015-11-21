@@ -1,10 +1,10 @@
 OPT = -g3 -O0
-SOURCES = udpc.c main.c ../iron/mem.c ../iron/array.c ../iron/log.c ../iron/math.c
+SOURCES = udpc.c main.c udp.c ssl.c ../iron/mem.c ../iron/array.c ../iron/log.c ../iron/math.c service_descriptor.c
 CC = gcc
 TARGET = run.exe
 OBJECTS =$(SOURCES:.c=.o)
 LDFLAGS= -L.  $(OPT) -Wextra #-lmcheck #-ftlo  #setrlimit on linux 
-LIBS= -ldl -lm -luv
+LIBS= -ldl -lm -lssl -lcrypto -lpthread
 
 CFLAGS =  -I.. -std=c11 -c $(OPT) -Wall -Wextra -Werror=implicit-function-declaration -Wformat=0  -D_GNU_SOURCE -fdiagnostics-color #-Werror -Wwrite-strings #-DDEBUG
 

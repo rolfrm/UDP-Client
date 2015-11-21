@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include "udpc.h"
+#include "service_descriptor.h"
 #include <iron/log.h>
 
 typedef struct{
@@ -7,8 +8,6 @@ typedef struct{
   char * service;
   char * host;
 } service_item;
-void print_service_item(service_item item);
-service_item get_service_item(const char * service_string);
   
 void _error(const char * file, int line, const char * msg, ...){
   loge("Got error at %s line %i\n", file,line);
@@ -16,8 +15,17 @@ void _error(const char * file, int line, const char * msg, ...){
 }
 
 // UDPC sample program.
-int main(){
-  service_item it = get_service_item("rollo@asd.com:chat");
-  print_service_item(it);logd("\n");
+int main(int argc, char ** argv){
+  service_descriptor it = udpc_get_service_descriptor("rollo@127.0.0.1:chat");
+  udpc_print_service_descriptor(it);logd("\n");
+
+  if(argc > 1){
+    udpc_connection * con = udpc_login(argv[1]);
+    logd("Logged in!\n");
+  }else{
+    udpc_start_server("127.0.0.1");
+  }
+    
+  
   return 0;
 }

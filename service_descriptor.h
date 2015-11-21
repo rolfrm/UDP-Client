@@ -6,5 +6,5 @@ typedef struct{
 
 service_descriptor udpc_get_service_descriptor(const char * service_string);
 void udpc_delete_service_descriptor(service_descriptor desc);
-void print_service_descriptor(service_descriptor item);
+void udpc_print_service_descriptor(service_descriptor item);
 

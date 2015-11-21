@@ -1,11 +1,14 @@
+#include <stdarg.h>
+#include <string.h>
+#include <iron/mem.h>
 #include <iron/log.h>
 #include "service_descriptor.h"
 
-void print_service_descriptor(service_descriptor item){
+void udpc_print_service_descriptor(service_descriptor item){
   logd(" '%s' '%s' '%s' \n", item.username, item.service, item.host);
 }
 
-service_descriptor get_service_descriptor(const char * service_string){
+service_descriptor udpc_get_service_descriptor(const char * service_string){
   char * at_index = strchr(service_string, '@');
   service_descriptor item = {0};
   if(at_index == NULL){
@@ -27,7 +30,7 @@ service_descriptor get_service_descriptor(const char * service_string){
   return item;
 }
 
-void delete_service_descriptor(service_descriptor item){
-  free(item.username);free(item.service);free(item.host);
+void udpc_delete_service_descriptor(service_descriptor item){
+  dealloc(item.username);dealloc(item.service);dealloc(item.host);
 }
 
