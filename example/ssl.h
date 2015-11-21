@@ -6,8 +6,9 @@ typedef struct _ssl_client ssl_client;
 //
 ssl_server * ssl_setup_server(int fd);
 ssl_server_con * ssl_server_accept(ssl_server_client * scli, int fd);
-size_t ssl_server_read(ssl_server_con con, void * buffer, size_t buffer_size);
-void ssl_server_write(ssl_server_con con, void * buffer, size_t buffer_size);
+size_t ssl_server_read(ssl_server_con * con, void * buffer, size_t buffer_size);
+void ssl_server_write(ssl_server_con * con, void * buffer, size_t buffer_size);
+struct sockaddr_storage ssl_server_client_addr(ssl_server_client * cli);
 void ssl_server_heartbeat(ssl_server_client * cli);
 void ssl_server_close(ssl_server_client * cli);
 ssl_server_client * ssl_server_listen(ssl_server * serv);

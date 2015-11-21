@@ -19,7 +19,7 @@ struct _ssl_server{
 
 struct _ssl_server_client{
   SSL * ssl;
-  struct sockaddr_in addr;
+  struct sockaddr_storage addr;
   BIO * bio;
 };
 
@@ -237,8 +237,10 @@ ssl_server * ssl_setup_server(int fd){
 ssl_server_con * ssl_server_accept(ssl_server_client * scli, int fd){
   BIO_set_fd(SSL_get_rbio(scli->ssl), fd, BIO_NOCLOSE);
   BIO_ctrl(SSL_get_rbio(scli->ssl), BIO_CTRL_DGRAM_SET_CONNECTED, 0, &scli->addr);
-  int ret = SSL_accept(scli->ssl);  
-  ASSERT(ret == 0);
+  int ret = 0;
+  do{ret = SSL_accept(scli->ssl);}
+  while(ret == 0);
+  ASSERT(ret > 0);
   struct timeval timeout;
   timeout.tv_sec = 5;
   timeout.tv_usec = 0;
@@ -248,12 +250,12 @@ ssl_server_con * ssl_server_accept(ssl_server_client * scli, int fd){
   return con;
 }
 
-size_t ssl_server_read(ssl_server_con con, void * buffer, size_t buffer_size){
-  return SSL_read(con.ssl, buffer, buffer_size);
+size_t ssl_server_read(ssl_server_con * con, void * buffer, size_t buffer_size){
+  return SSL_read(con->ssl, buffer, buffer_size);
 }
 
-void ssl_server_write(ssl_server_con con, void * buffer, size_t buffer_size){
-  SSL_write(con.ssl, buffer, buffer_size);
+void ssl_server_write(ssl_server_con * con, void * buffer, size_t buffer_size){
+  SSL_write(con->ssl, buffer, buffer_size);
 }
 
 void ssl_server_heartbeat(ssl_server_client * cli){
@@ -278,8 +280,9 @@ ssl_server_client * ssl_server_listen(ssl_server * serv){
   SSL_set_bio(ssl, bio, bio);
   SSL_set_options(ssl, SSL_OP_COOKIE_EXCHANGE);
 
-  struct sockaddr_in client_addr;
+  struct sockaddr_storage client_addr;
   while (DTLSv1_listen(ssl, &client_addr) <= 0);
+  logd("This happens!\n");
   ssl_server_client * con = alloc0(sizeof(ssl_server_client));
   con->ssl = ssl;
   con->addr = client_addr;
@@ -328,12 +331,12 @@ ssl_client * ssl_start_client(int fd, struct sockaddr_in remote_addr){
 }
 
 void ssl_client_write(ssl_client * cli, void * buffer, size_t length){
-  int len = SSL_write(cli->ssl, buffer, length);
+  socklen_t len = SSL_write(cli->ssl, buffer, length);
   ASSERT(SSL_get_error(cli->ssl, len) == SSL_ERROR_NONE);
 }
 
 size_t ssl_client_read(ssl_client * cli, void * buffer, size_t length){
-  int len = SSL_read(cli->ssl, buffer, length);
+  socklen_t len = SSL_read(cli->ssl, buffer, length);
   ASSERT(SSL_get_error(cli->ssl, len) == SSL_ERROR_NONE);
   return len;
 }
@@ -345,4 +348,8 @@ void ssl_client_heartbeat(ssl_client * cli){
 void ssl_client_close(ssl_client * cli){
   SSL_shutdown(cli->ssl);
   SSL_free(cli->ssl);
+}
+
+struct sockaddr_storage ssl_server_client_addr(ssl_server_client * cli){
+  return cli->addr;
 }
