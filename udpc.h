@@ -28,5 +28,9 @@ void udpc_send(udpc_connection * client, void * buffer, size_t length);
 // Receives data from the connection.
 size_t udpc_receive(udpc_connection * client, void * buffer, size_t max_size);
 
+int udpc_get_port(udpc_connection * con);
+
+void udpc_close(udpc_connection * con);
+
 // Server API
 void udpc_start_server(char * local_address);

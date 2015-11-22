@@ -11,6 +11,7 @@ void ssl_server_write(ssl_server_con * con, const void * buffer, size_t buffer_s
 struct sockaddr_storage ssl_server_client_addr(ssl_server_client * cli);
 void ssl_server_heartbeat(ssl_server_client * cli);
 void ssl_server_close(ssl_server_client * cli);
+void ssl_server_cleanup(ssl_server * server);
 ssl_server_client * ssl_server_listen(ssl_server * serv);
 ssl_client * ssl_start_client(int fd, struct sockaddr * remote_addr);
 void ssl_client_write(ssl_client * cli, const void * buffer, size_t length);

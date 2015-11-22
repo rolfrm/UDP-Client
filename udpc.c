@@ -32,12 +32,17 @@ struct _udpc_connection {
   ssl_server_con * con;
   struct sockaddr_storage local_addr;
   struct sockaddr_storage remote_addr;
+  service_descriptor service;
 };
 
 void pack(const void * data, size_t data_len, void ** buffer, size_t * buffer_size){
   *buffer = ralloc(*buffer, *buffer_size + data_len);
   memcpy(*buffer + *buffer_size, data, data_len);
   *buffer_size += data_len;
+}
+
+void pack_string(const void * str, void ** buffer, size_t * buffer_size){
+  pack(str, strlen(str) + 1, buffer, buffer_size);
 }
 
 void pack_int(int value, void ** buffer, size_t * buffer_size){
@@ -54,6 +59,8 @@ int unpack_int(void ** buffer){
   unpack(&value, sizeof(value), buffer);
   return value;
 }
+
+
 
 // connect to a server.
 udpc_connection * udpc_login(const char * service){
@@ -98,6 +105,7 @@ udpc_connection * udpc_login(const char * service){
   r->fd = fd2;
   r->srv = srv;
   r->local_addr = local_addr;
+  r->service = sitem;
   return r;
 }
 
@@ -182,6 +190,39 @@ size_t udpc_receive(udpc_connection * client, void * buffer, size_t max_size){
   return 0;
 }
 
+void udpc_close(udpc_connection * con){
+  if(con->cli != NULL)
+    ssl_client_close(con->cli);
+  if(con->scli != NULL)
+    ssl_server_close(con->scli);
+  if(con->srv != NULL){
+    struct sockaddr_storage udpc_server_addr = udp_get_addr(con->service.host, udpc_server_port);
+    struct sockaddr_storage local_addr = udp_get_addr("127.0.0.1", 0);
+    int fd = udp_connect(&local_addr, &udpc_server_addr, false);
+    ssl_client * cli = ssl_start_client(fd, (struct sockaddr *) &udpc_server_addr);
+    { // send logout request.
+      void * buffer = NULL;
+      size_t buffer_size = 0;
+      pack_int(udpc_mode_disconnect, &buffer, &buffer_size);
+      pack_string(con->service.username, &buffer, &buffer_size);
+      pack_string(con->service.service, &buffer, &buffer_size);
+      ssl_client_write(cli, buffer, buffer_size);
+      size_t read = 0;
+      while(read == 0)
+	read = ssl_client_read(cli, buffer, buffer_size);
+      logd("Size of buffer: %i\n");
+      void * bufptr = buffer;
+      int status = unpack_int(&bufptr);
+      ASSERT(status == udpc_response_ok);
+      free(buffer);
+    }
+    ssl_client_close(cli);
+    udp_close(fd);
+    ssl_server_cleanup(con->srv);
+  }
+  udp_close(con->fd);
+}
+
 typedef struct{
   struct sockaddr_storage client_addr;
   service_descriptor desc;
@@ -221,7 +262,6 @@ static void * connection_handle(void * _info) {
     }
     void * bufptr = buf;
     int status = unpack_int(&bufptr);
-    logd("STATUS: %i %i %i\n", status, udpc_login_msg, udpc_mode_connect);
     if(status == udpc_login_msg){
       int port = unpack_int(&bufptr);
       service srv;
@@ -234,16 +274,14 @@ static void * connection_handle(void * _info) {
       ssl_server_write(con, &udpc_response_ok, sizeof(udpc_response_ok));
       break;
     }else if( status == udpc_mode_connect){
-      logd("???\n");
       service_descriptor d = udpc_get_service_descriptor(bufptr);
       
       int cnt = info->server->service_cnt;
       for(int i = 0; i < cnt; i++){
 	service s1 = info->server->services[i];
-	logd("cmp: %s %s\n",s1.desc.service, d.service);
 	if(strcmp(s1.desc.username, d.username) == 0 &&
 	   strcmp(s1.desc.service, d.service) == 0){\
-	  logd("Found service..\n");
+	  logd("Found service.\n");
 	  void * buffer = NULL;
 	  size_t buf_size = 0;
 	  pack_int(udpc_response_ok_ip4, &buffer, &buf_size);
@@ -254,7 +292,26 @@ static void * connection_handle(void * _info) {
 	}
       }
       break;
+    }else if(status == udpc_mode_disconnect){
+      char * username = bufptr;
+      bufptr += strlen(bufptr) + 1;
+      char * servicename = bufptr;
+      logd("Disconnect %s\\%s\n", username, servicename);
+      int cnt = info->server->service_cnt;
+      for(int i = 0; i < cnt; i++){
+	service s1 = info->server->services[i];
+	if(strcmp(s1.desc.username, username) == 0 &&
+	   strcmp(s1.desc.service, servicename) == 0){
+	  for(int j = i + 1; j < cnt; j++){
+	    info->server->services[j - 1] = info->server->services[j];
+	  }
+	  info->server->service_cnt -=1;
+	  break;
+	}
+      }
+      ssl_server_write(con, &udpc_response_ok, sizeof(udpc_response_ok));
     }else{
+      ASSERT(false);
       break;
     }
   }

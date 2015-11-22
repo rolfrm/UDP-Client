@@ -233,6 +233,11 @@ ssl_server * ssl_setup_server(int fd){
   return srv;
 }
 
+void ssl_server_cleanup(ssl_server * server){
+  SSL_CTX_free(server->ctx);
+  free(server);
+}
+
 static void handle_ssl_error(SSL * ssl, int ret){
   int err = SSL_get_error(ssl, ret);
 #define doerr(kind)case kind: ERROR(#kind);
