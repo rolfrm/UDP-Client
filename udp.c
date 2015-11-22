@@ -42,14 +42,13 @@ int udp_connect(struct sockaddr_storage * local, struct sockaddr_storage * remot
     struct sockaddr_in s4;
     struct sockaddr_in6 s6;
   } remote_addr, local_addr;
-  char * buf = "Hello?";
-  char addrbuf[INET6_ADDRSTRLEN];
   socklen_t len;
   int reading = 0;
   struct timeval timeout;
 
   //remote_addr.ss = udp_get_addr(remote_address, port);
   fd = socket(local->ss_family, SOCK_DGRAM, 0);
+
   if (fd < 0) return fd;
   int on = 1, off = 0;
   if(reuse){
@@ -75,7 +74,19 @@ int udp_connect(struct sockaddr_storage * local, struct sockaddr_storage * remot
   } else {
     connect(fd, (struct sockaddr *) remote, sizeof(struct sockaddr_in6));
   }
+  
   return fd;
+}
+
+int udp_get_port(int fd){
+  union {
+    struct sockaddr_storage ss;
+    struct sockaddr_in s4;
+    struct sockaddr_in6 s6;
+  } local_addr;
+  socklen_t len2 = sizeof(local_addr);
+  int ret = getsockname(fd, (struct sockaddr *) &local_addr, &len2);
+  return local_addr.s4.sin_port;
 }
 
 int udp_open(struct sockaddr_storage * local){

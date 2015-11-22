@@ -233,12 +233,14 @@ ssl_server * ssl_setup_server(int fd){
   return srv;
 }
 
-void handle_ssl_error(SSL * ssl, int ret){
+static void handle_ssl_error(SSL * ssl, int ret){
   int err = SSL_get_error(ssl, ret);
 #define doerr(kind)case kind: ERROR(#kind);
   switch(err){
     doerr(SSL_ERROR_SSL);
-    doerr(SSL_ERROR_SYSCALL);
+  case(SSL_ERROR_SYSCALL):
+    ERROR("SSL_ERROR_SYSCALL error id: %i %i", ERR_get_error(), ret); 
+    
     //doerr(SSL_ERROR_WANT_ASYNC);
     doerr(SSL_ERROR_WANT_CONNECT);
     doerr(SSL_ERROR_WANT_ACCEPT);
@@ -333,7 +335,10 @@ ssl_client * ssl_start_client(int fd, struct sockaddr * remote_addr){
   
   BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_CONNECTED, 0, remote_addr);
   SSL_set_bio(ssl, bio, bio);
-  ASSERT(SSL_connect(ssl) >= 0);
+  int ret = SSL_connect(ssl);
+  if(ret < 0){
+    handle_ssl_error(ssl, ret);
+  }
   
   {
     struct timeval timeout;

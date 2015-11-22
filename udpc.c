@@ -20,14 +20,18 @@ const int udpc_login_msg = 1;
 const int udpc_response_ok_ip4 = 2;
 const int udpc_mode_connect = 3;
 const int udpc_response_ok = 4;
+const int udpc_mode_disconnect = 5;
+
 const int udpc_server_port = 11511;
+
 struct _udpc_connection {
   ssl_client * cli;
   int fd;
   ssl_server * srv;
   ssl_server_client * scli;
   ssl_server_con * con;
-  struct sockaddr_storage ss;
+  struct sockaddr_storage local_addr;
+  struct sockaddr_storage remote_addr;
 };
 
 void pack(const void * data, size_t data_len, void ** buffer, size_t * buffer_size){
@@ -65,15 +69,19 @@ udpc_connection * udpc_login(const char * service){
   struct sockaddr_storage local_addr = udp_get_addr("127.0.0.1", 0);
   
   int fd2 = udp_connect(&local_addr, &server_addr, false);
+  int fd = udp_open(&local_addr);
+  int port = udp_get_port(fd);
   //int fd = udp_connect(&local_addr, &server_addr, false);
   ssl_client * cli = ssl_start_client(fd2, (struct sockaddr *) &server_addr);
-  
+
   { // send login request
     size_t s = strlen(service);
     void * buffer = NULL;
     size_t buffer_size = 0;
     pack_int(udpc_login_msg, &buffer, &buffer_size);
+    pack_int(port, &buffer, &buffer_size);
     pack(service, s, &buffer, &buffer_size);
+
     ssl_client_write(cli, buffer, buffer_size);
     free(buffer);
   }
@@ -83,12 +91,13 @@ udpc_connection * udpc_login(const char * service){
   ASSERT(read_len == sizeof(int));
   ASSERT(response == udpc_response_ok);
   ssl_client_close(cli);
-  
-  ssl_server * srv = ssl_setup_server(fd2);
+  ssl_server * srv = ssl_setup_server(fd);
   udpc_connection * r = alloc0(sizeof(udpc_connection));
-  r->cli = cli;
+  ((struct sockaddr_in *) &local_addr)->sin_port = port;
+  //r->cli = cli;
   r->fd = fd2;
-  r->srv = srv; 
+  r->srv = srv;
+  r->local_addr = local_addr;
   return r;
 }
 
@@ -96,8 +105,8 @@ udpc_connection * udpc_listen(udpc_connection * con){
   ssl_server_client * scli = ssl_server_listen(con->srv);
   if(scli == NULL) return NULL;
   struct sockaddr_storage cli_ss = ssl_server_client_addr(scli);
-  int fd = udp_connect(&cli_ss, &con->ss, false);
-  
+  int fd = udp_connect(&con->local_addr, &cli_ss, true);
+  ASSERT(fd > 0);
   ssl_server_con * _con = ssl_server_accept(scli, fd);
   udpc_connection * c = alloc0(sizeof(udpc_connection));
   c->con = _con;
@@ -112,7 +121,8 @@ udpc_connection * udpc_connect(const char * service){
   struct sockaddr_storage local_addr = udp_get_addr("127.0.0.1", 0);
   int fd = udp_connect(&local_addr, &server_addr, false);
   ssl_client * cli = ssl_start_client(fd, (struct sockaddr *) &server_addr);
-
+  logd("local port: %i\n", udp_get_port(fd));
+  //local_addr = udp_get_addr("127.0.0.1", udp_get_port(fd));
   {
     void * buffer = NULL;
     size_t buffer_size = 0;
@@ -131,19 +141,23 @@ udpc_connection * udpc_connect(const char * service){
     // response should be [ip port remote_pubkey].
     int response_status = unpack_int(&resp2);
     ssl_client_close(cli);
-    //udp_close(fd);
+    udp_close(fd);
     if(response_status == udpc_response_ok_ip4){
       logd("Got here!\n");
       struct sockaddr_storage peer_addr;
+      int port = unpack_int(&resp2);
       unpack(&peer_addr, sizeof(peer_addr), &resp2);
-      logd("Port: %i\n",((struct sockaddr_in *) &peer_addr)->sin_port);
-      int _fd = udp_connect(&local_addr, &peer_addr, true);
-      ssl_client * cli = ssl_start_client(_fd, (struct sockaddr *) &peer_addr);
+      logd("Port: %i == %i ?\n",((struct sockaddr_in *) &peer_addr)->sin_port, port);
+      //fd =
+      ((struct sockaddr_in *)&peer_addr)->sin_port = port;
+      int _fd = udp_connect(&local_addr, &peer_addr, false);
+      ssl_client * cli = ssl_start_client(_fd, (struct sockaddr *)&peer_addr);
       logd("FD: %i\n");
       udpc_connection * connection = alloc0(sizeof(udpc_connection));
       connection->cli = cli;
       connection->fd = _fd;
-      connection->ss = local_addr;
+      connection->local_addr = local_addr;
+      connection->remote_addr = peer_addr;
       return connection;
     } 
   }
@@ -171,6 +185,7 @@ size_t udpc_receive(udpc_connection * client, void * buffer, size_t max_size){
 typedef struct{
   struct sockaddr_storage client_addr;
   service_descriptor desc;
+  int port;
 }service;
 
 typedef struct{
@@ -208,9 +223,11 @@ static void * connection_handle(void * _info) {
     int status = unpack_int(&bufptr);
     logd("STATUS: %i %i %i\n", status, udpc_login_msg, udpc_mode_connect);
     if(status == udpc_login_msg){
+      int port = unpack_int(&bufptr);
       service srv;
       srv.desc = udpc_get_service_descriptor(bufptr);
       srv.client_addr = remote_addr;
+      srv.port = port;
       info->server->services = ralloc(info->server->services, sizeof(service) * (info->server->service_cnt + 1) );
       info->server->services[info->server->service_cnt] = srv;
       info->server->service_cnt += 1;
@@ -230,6 +247,7 @@ static void * connection_handle(void * _info) {
 	  void * buffer = NULL;
 	  size_t buf_size = 0;
 	  pack_int(udpc_response_ok_ip4, &buffer, &buf_size);
+	  pack_int(s1.port, &buffer, &buf_size);
 	  pack(&s1.client_addr, sizeof(s1.client_addr), &buffer, &buf_size);
 	  ssl_server_write(con, buffer, buf_size);
 	  return NULL;

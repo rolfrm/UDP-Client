@@ -8,10 +8,21 @@ typedef struct{
   char * service;
   char * host;
 } service_item;
-  
+
+#include <stdarg.h>
+#include <stdio.h>
+#include <signal.h>
 void _error(const char * file, int line, const char * msg, ...){
+  char buffer[1000];  
+  va_list arglist;
+  va_start (arglist, msg);
+  vsprintf(buffer,msg,arglist);
+  va_end(arglist);
+  loge("%s\n", buffer);
   loge("Got error at %s line %i\n", file,line);
-  exit(255);
+  raise(SIGINT);
+  //exit(255);
+  
 }
 
 // UDPC sample program.
