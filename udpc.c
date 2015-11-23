@@ -213,11 +213,13 @@ size_t udpc_read(udpc_connection * client, void * buffer, size_t max_size){
 }
 
 void udpc_close(udpc_connection * con){
-  if(con->cli != NULL)
+  if(con->cli != NULL){
     ssl_client_close(con->cli);
+    udp_close(con->fd);
+  }
   if(con->scli != NULL)
     ssl_server_close(con->scli);
-  udp_close(con->fd);
+  free(con);
 }
 
 typedef struct{

@@ -31,15 +31,18 @@ int main(int argc, char ** argv){
   if(argc == 2){
     udpc_service * con = udpc_login(argv[1]);
     logd("Logged in..\n");
-    udpc_connection * c2 = udpc_listen(con);
-    logd("Got connection\n");
-    char buffer[10];
-    size_t r = 0;
-    while(r == 0)
-      r = udpc_read(c2,buffer, sizeof(buffer));
-    logd("Received: '%s'\n", buffer);
-    udpc_write(c2, "World", sizeof("World"));
-    udpc_close(c2);
+    for(int i = 0; i < 5; i++){
+      udpc_connection * c2 = udpc_listen(con);
+      if(c2 == NULL) continue;
+      logd("Got connection\n");
+      char buffer[10];
+      size_t r = 0;
+      while(r == 0)
+	r = udpc_read(c2,buffer, sizeof(buffer));
+      logd("Received: '%s'\n", buffer);
+      udpc_write(c2, "World", sizeof("World"));
+      udpc_close(c2);
+    }
     udpc_logout(con);
     
     
