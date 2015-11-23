@@ -54,7 +54,7 @@ int main(int argc, char ** argv){
     logd("Received: '%s'\n", buffer);
     udpc_close(con);
   }else{
-    udpc_start_server("127.0.0.1");
+    udpc_start_server("0.0.0.0");
   }
     
   

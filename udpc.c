@@ -74,7 +74,7 @@ udpc_service * udpc_login(const char * service){
   if(sitem.host == NULL)
      return NULL;
   struct sockaddr_storage server_addr = udp_get_addr(sitem.host, udpc_server_port);
-  struct sockaddr_storage local_addr = udp_get_addr("127.0.0.1", 0);
+  struct sockaddr_storage local_addr = udp_get_addr("0.0.0.0", 0);
   
   int fd2 = udp_connect(&local_addr, &server_addr, false);
   int fd = udp_open(&local_addr);
@@ -111,7 +111,7 @@ udpc_service * udpc_login(const char * service){
 void udpc_logout(udpc_service * con){
   if(con->srv != NULL){
     struct sockaddr_storage udpc_server_addr = udp_get_addr(con->service.host, udpc_server_port);
-    struct sockaddr_storage local_addr = udp_get_addr("127.0.0.1", 0);
+    struct sockaddr_storage local_addr = udp_get_addr("0.0.0.0", 0);
     int fd = udp_connect(&local_addr, &udpc_server_addr, false);
     ssl_client * cli = ssl_start_client(fd, (struct sockaddr *) &udpc_server_addr);
     { // send logout request.
@@ -155,7 +155,7 @@ udpc_connection * udpc_connect(const char * service){
     return NULL;
   
   struct sockaddr_storage server_addr = udp_get_addr(sitem.host, udpc_server_port);
-  struct sockaddr_storage local_addr = udp_get_addr("127.0.0.1", 0);
+  struct sockaddr_storage local_addr = udp_get_addr("0.0.0.0", 0);
   int fd = udp_connect(&local_addr, &server_addr, false);
   ssl_client * cli = ssl_start_client(fd, (struct sockaddr *) &server_addr);
   { // send [CONNECT *service* 0]
