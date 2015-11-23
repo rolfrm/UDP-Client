@@ -29,28 +29,28 @@ void _error(const char * file, int line, const char * msg, ...){
 int main(int argc, char ** argv){
 
   if(argc == 2){
-    udpc_connection * con = udpc_login(argv[1]);
+    udpc_service * con = udpc_login(argv[1]);
     logd("Logged in..\n");
     udpc_connection * c2 = udpc_listen(con);
     logd("Got connection\n");
     char buffer[10];
     size_t r = 0;
     while(r == 0)
-      r = udpc_receive(c2,buffer, sizeof(buffer));
+      r = udpc_read(c2,buffer, sizeof(buffer));
     logd("Received: '%s'\n", buffer);
-    udpc_send(c2, "World", sizeof("World"));
+    udpc_write(c2, "World", sizeof("World"));
     udpc_close(c2);
-    udpc_close(con);
+    udpc_logout(con);
     
     
   }else if(argc > 2){
     udpc_connection * con = udpc_connect(argv[1]);
     logd("Connected to peer..\n");
-    udpc_send(con, "Hello", sizeof("Hello"));
+    udpc_write(con, "Hello", sizeof("Hello"));
     size_t r = 0;
     char buffer[10];
     while(r == 0)
-      r = udpc_receive(con, buffer, sizeof(buffer));
+      r = udpc_read(con, buffer, sizeof(buffer));
     logd("Received: '%s'\n", buffer);
     udpc_close(con);
   }else{

@@ -1,36 +1,32 @@
 typedef struct _udpc_connection udpc_connection;
-
+typedef struct _udpc_server udpc_server;
+typedef struct _udpc_service udpc_service;
 // Client API
-// Creates a user on the host, returns an invalid connection if the user already exists.
-udpc_connection udpc_create_user(const char * service);
+// Creates and logs into the service described by , storing the IP/port on the server.
+// From now on the port should be kept open by sending empty
+// UDP packets to the server.
+udpc_service * udpc_login(const char * service_url);
 
-// Adds a public key to the user, making it possible to access the same user using different keys.
-void udpc_add_pubkey(udpc_connection client, const char * pubkey);
+// Logs out of the service.
+void udpc_logout(udpc_service * con);
 
-// Remvoes a public key. How?
-void udpc_remove_pubkey(udpc_connection client);
-
-// Logs into the service, storing the IP/port on the server.
-udpc_connection * udpc_login(const char * service);
-
-// Logs out of the service
-void udpc_logout(udpc_connection * con);
+// Sends hardbeat message to server.
+void udpc_heartbeat(udpc_service * con);
 
 // Connects a client to a service.
-udpc_connection * udpc_connect(const char * service);
+udpc_connection * udpc_connect(const char * service_url);
 
 // Accepts a udpc connection.
-udpc_connection * udpc_listen(udpc_connection * con);
+udpc_connection * udpc_listen(udpc_service * con);
 
 // Sends data across the connection.
-void udpc_send(udpc_connection * client, void * buffer, size_t length);
+void udpc_write(udpc_connection * client, void * buffer, size_t length);
 
 // Receives data from the connection.
-size_t udpc_receive(udpc_connection * client, void * buffer, size_t max_size);
+size_t udpc_read(udpc_connection * client, void * buffer, size_t max_size);
 
-int udpc_get_port(udpc_connection * con);
-
+// Closes the connection.
 void udpc_close(udpc_connection * con);
 
-// Server API
+// Server APx
 void udpc_start_server(char * local_address);
