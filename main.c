@@ -3,12 +3,6 @@
 #include "service_descriptor.h"
 #include <iron/log.h>
 
-typedef struct{
-  char * username;
-  char * service;
-  char * host;
-} service_item;
-
 #include <stdarg.h>
 #include <stdio.h>
 #include <signal.h>

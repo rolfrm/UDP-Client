@@ -36,9 +36,7 @@ struct sockaddr_storage udp_get_addr(char * remote_address, int port){
 }
 
 int udp_connect(struct sockaddr_storage * local, struct sockaddr_storage * remote, bool reuse){
-  int fd;
-  fd = socket(local->ss_family, SOCK_DGRAM, 0);
-
+  int fd = socket(local->ss_family, SOCK_DGRAM, 0);
   if (fd < 0) return fd;
   int on = 1;
   if(reuse){
@@ -48,8 +46,6 @@ int udp_connect(struct sockaddr_storage * local, struct sockaddr_storage * remot
 #endif
   }
   
-  //local_addr.ss = udp_get_addr(local_address, port);
-
   ASSERT(remote->ss_family == local->ss_family);
 
   if (local->ss_family == AF_INET) {
@@ -58,7 +54,6 @@ int udp_connect(struct sockaddr_storage * local, struct sockaddr_storage * remot
     bind(fd, (const struct sockaddr *) local, sizeof(struct sockaddr_in6));
   }
   
-
   if (remote->ss_family == AF_INET) {
     connect(fd, (struct sockaddr *) remote, sizeof(struct sockaddr_in));
   } else {

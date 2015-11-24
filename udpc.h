@@ -1,6 +1,7 @@
 typedef struct _udpc_connection udpc_connection;
 typedef struct _udpc_server udpc_server;
 typedef struct _udpc_service udpc_service;
+
 // Client API
 // Creates and logs into the service described by , storing the IP/port on the server.
 // From now on the port should be kept open by sending empty
@@ -28,8 +29,10 @@ size_t udpc_read(udpc_connection * client, void * buffer, size_t max_size);
 // Closes the connection.
 void udpc_close(udpc_connection * con);
 
+// Pushes an error on top of the udpc error stack.
 void udpc_push_error(char * error);
 
+// Pops an error from the error stack. It has to be freed by the caller.
 char * udpc_pop_error();
 
 // Server APx

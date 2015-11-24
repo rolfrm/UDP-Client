@@ -12,7 +12,6 @@
 #include <iron/utils.h>
 #include "ssl.h"
 
-
 struct _ssl_server{
   SSL_CTX * ctx;
   int fd;
