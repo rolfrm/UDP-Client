@@ -9,6 +9,7 @@
 #include <stdbool.h>
 #include <iron/mem.h>
 #include <iron/log.h>
+#include <iron/utils.h>
 #include "ssl.h"
 
 
@@ -197,6 +198,8 @@ static int verify_cookie(SSL *ssl, unsigned char *cookie, unsigned int cookie_le
 }
 
 static int dtls_verify_callback (int ok, X509_STORE_CTX *ctx) {
+  UNUSED(ok);
+  UNUSED(ctx);
   /* This function should ask the user
    * if he trusts the received certificate.
    * Here we always trust.

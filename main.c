@@ -39,8 +39,11 @@ int main(int argc, char ** argv){
       size_t r = 0;
       while(r == 0)
 	r = udpc_read(c2,buffer, sizeof(buffer));
+
       logd("Received: '%s'\n", buffer);
+
       udpc_write(c2, "World", sizeof("World"));
+
       udpc_close(c2);
     }
     udpc_logout(con);
@@ -48,6 +51,12 @@ int main(int argc, char ** argv){
     
   }else if(argc > 2){
     udpc_connection * con = udpc_connect(argv[1]);
+    if(con == NULL){
+      loge("Unable to connect to peer\n");
+      logd("Shutting down\n");
+      return -1;
+    }
+      
     logd("Connected to peer..\n");
     udpc_write(con, "Hello", sizeof("Hello"));
     size_t r = 0;

@@ -42,6 +42,23 @@ struct _udpc_service{
   struct sockaddr_storage local_addr;
 };
 
+char ** udpc_errors = NULL;
+size_t udpc_error_cnt = 0;
+
+void udpc_push_error(char * error_message){
+  udpc_errors = realloc(udpc_errors, sizeof(udpc_errors[0]) * (udpc_error_cnt + 1));
+  udpc_errors[udpc_error_cnt] = iron_clone(error_message, strlen(error_message) + 1);
+  udpc_error_cnt += 1;
+}
+
+char * udpc_pop_error(){
+  if(udpc_error_cnt == 0)
+    return NULL;
+  char * err = udpc_errors[0];
+  memmove(udpc_errors, udpc_errors + 1, (udpc_error_cnt - 1) * sizeof(udpc_errors[0]));
+  return err;
+}
+
 void pack(const void * data, size_t data_len, void ** buffer, size_t * buffer_size){
   *buffer = ralloc(*buffer, *buffer_size + data_len);
   memcpy(*buffer + *buffer_size, data, data_len);
@@ -292,6 +309,8 @@ static void * connection_handle(void * _info) {
 	  return NULL;
 	}
       }
+      ssl_server_write(con, &udpc_response_error, sizeof(udpc_response_error));
+      return NULL;
       break;
     }else if(status == udpc_mode_disconnect){
       logd("UDPC DISCONNECT\n");

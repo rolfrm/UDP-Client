@@ -37,20 +37,10 @@ struct sockaddr_storage udp_get_addr(char * remote_address, int port){
 
 int udp_connect(struct sockaddr_storage * local, struct sockaddr_storage * remote, bool reuse){
   int fd;
-  union {
-    struct sockaddr_storage ss;
-    struct sockaddr_in s4;
-    struct sockaddr_in6 s6;
-  } remote_addr, local_addr;
-  socklen_t len;
-  int reading = 0;
-  struct timeval timeout;
-
-  //remote_addr.ss = udp_get_addr(remote_address, port);
   fd = socket(local->ss_family, SOCK_DGRAM, 0);
 
   if (fd < 0) return fd;
-  int on = 1, off = 0;
+  int on = 1;
   if(reuse){
     setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const void*) &on, (socklen_t) sizeof(on));
 #ifdef SO_REUSEPORT
@@ -86,6 +76,7 @@ int udp_get_port(int fd){
   } local_addr;
   socklen_t len2 = sizeof(local_addr);
   int ret = getsockname(fd, (struct sockaddr *) &local_addr, &len2);
+  ASSERT(ret >= 0);
   return local_addr.s4.sin_port;
 }
 

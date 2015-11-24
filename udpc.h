@@ -28,5 +28,9 @@ size_t udpc_read(udpc_connection * client, void * buffer, size_t max_size);
 // Closes the connection.
 void udpc_close(udpc_connection * con);
 
+void udpc_push_error(char * error);
+
+char * udpc_pop_error();
+
 // Server APx
 void udpc_start_server(char * local_address);
