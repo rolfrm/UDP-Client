@@ -1,5 +1,9 @@
 // simple program to user UDPC to transfer a file between two peers
+#include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
+#include <string.h>
+#include <unistd.h>
 #include "udpc.h"
 #include "service_descriptor.h"
 #include <iron/log.h>
@@ -16,8 +20,7 @@ void _error(const char * file, int line, const char * msg, ...){
   loge("%s\n", buffer);
   loge("Got error at %s line %i\n", file,line);
   raise(SIGINT);
-  //exit(255);
-  
+  exit(255);
 }
 
 // UDPC sample program.
@@ -25,48 +28,57 @@ void _error(const char * file, int line, const char * msg, ...){
 // SERVER: udpc_get name@server:service
 // CLIENT: udpc_get name@server:service [command]
 int main(int argc, char ** argv){
-
   if(argc == 2){
     udpc_service * con = udpc_login(argv[1]);
     logd("Logged in..\n");
-    for(int i = 0; i < 5; i++){
+    while(true){
       udpc_connection * c2 = udpc_listen(con);
-      if(c2 == NULL) continue;
-      logd("Got connection\n");
-      char buffer[10];
+      if(c2 == NULL)
+	continue;
+      char buffer[1500]; //or max MTU size
       size_t r = 0;
       while(r == 0)
 	r = udpc_read(c2,buffer, sizeof(buffer));
-
-      logd("Received: '%s'\n", buffer);
-
-      udpc_write(c2, "World", sizeof("World"));
-
+      FILE * fp = popen(buffer, "r");
+      size_t read = 0;
+      while(0 != (read = fread(buffer, 1, sizeof(buffer), fp))){
+	udpc_write(c2, buffer, read);
+	usleep(10);
+      }
+      udpc_write(c2, "ENDENDEND", 10);
       udpc_close(c2);
     }
-    udpc_logout(con);
-    
-    
   }else if(argc > 2){
     udpc_connection * con = udpc_connect(argv[1]);
-    if(con == NULL){
-      loge("Unable to connect to peer\n");
-      logd("Shutting down\n");
-      return -1;
+    size_t totalsize = 0;
+    for(int i = 2; i < argc; i++){
+      totalsize = strlen(argv[i]) + 1;
     }
-      
-    logd("Connected to peer..\n");
-    udpc_write(con, "Hello", sizeof("Hello"));
-    size_t r = 0;
-    char buffer[10];
-    while(r == 0)
-      r = udpc_read(con, buffer, sizeof(buffer));
-    logd("Received: '%s'\n", buffer);
-    udpc_close(con);
+    char outbuffer[1500];
+    {
+      char * ptr = outbuffer;
+      for(int i = 2; i < argc; i++){
+	strcpy(ptr, argv[i]);
+	ptr += strlen(ptr);
+	strcpy(ptr, " ");
+	ptr += 1;
+      }
+      ASSERT(totalsize == strlen(outbuffer));
+      udpc_write(con, outbuffer, totalsize + 1);
+      while(true){
+	size_t r = 0;
+	while(r == 0)
+	  r = udpc_read(con, outbuffer, sizeof(outbuffer));
+	
+	if(strcmp("ENDENDEND", outbuffer) == 0)
+	  break;
+	fwrite(outbuffer, 1, r, stdout);
+      }
+      udpc_close(con);
+    }
   }else{
-    udpc_start_server("0.0.0.0");
+    loge("Missing arguments\n");
   }
-    
   
   return 0;
 }

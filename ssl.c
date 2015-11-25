@@ -210,7 +210,7 @@ ssl_server * ssl_setup_server(int fd){
   ssl_ensure_initialized();
   SSL_CTX * ctx = SSL_CTX_new(DTLSv1_server_method());
   { // setup server SSL CTX
-    SSL_CTX_set_cipher_list(ctx, "ALL:NULL:eNULL:aNULL");
+    SSL_CTX_set_cipher_list(ctx, "HIGH:!aNULL:!MD5:!RC4");
     SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_OFF);
     
     if (!SSL_CTX_use_certificate_file(ctx, "certs/server-cert.pem", SSL_FILETYPE_PEM))
@@ -321,7 +321,7 @@ ssl_server_client * ssl_server_listen(ssl_server * serv){
 ssl_client * ssl_start_client(int fd, struct sockaddr * remote_addr){
   ssl_ensure_initialized();
   SSL_CTX * ctx = SSL_CTX_new(DTLSv1_client_method());
-  SSL_CTX_set_cipher_list(ctx, "eNULL:!MD5");
+  SSL_CTX_set_cipher_list(ctx, "HIGH:!aNULL:!MD5:!RC4");
   
   if (!SSL_CTX_use_certificate_file(ctx, "certs/client-cert.pem", SSL_FILETYPE_PEM))
     printf("\nERROR: no certificate found!");
