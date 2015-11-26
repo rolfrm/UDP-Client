@@ -2,6 +2,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <netdb.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -18,20 +19,27 @@ struct sockaddr_storage udp_get_addr(char * remote_address, int port){
     struct sockaddr_in6 s6;
   } remote_addr;
   ASSERT(strlen(remote_address) > 0);
+  struct hostent * he = gethostbyname(remote_address);
+  ASSERT(he != NULL);
   memset((void *) &remote_addr, 0, sizeof(struct sockaddr_storage));
-  if (inet_pton(AF_INET, remote_address, &remote_addr.s4.sin_addr) == 1) {
+  
+  if(he->h_addrtype == AF_INET){
+    memcpy(&remote_addr.s4.sin_addr, he->h_addr_list[0], he->h_length);
     remote_addr.s4.sin_family = AF_INET;
 #ifdef HAVE_SIN_LEN
     remote_addr.s4.sin_len = sizeof(struct sockaddr_in);
 #endif
-    remote_addr.s4.sin_port = htons(port);
-  } else if (inet_pton(AF_INET6, remote_address, &remote_addr.s6.sin6_addr) == 1) {
+  }else if(he->h_addrtype == AF_INET6){
+    memcpy(&remote_addr.s6.sin6_addr, he->h_addr_list[0], he->h_length);
     remote_addr.s6.sin6_family = AF_INET6;
 #ifdef HAVE_SIN6_LEN
     remote_addr.s6.sin6_len = sizeof(struct sockaddr_in6);
 #endif
-    remote_addr.s6.sin6_port = htons(port);
-  }else ASSERT(false);
+  }else{
+    ASSERT(false);
+  }
+
+  remote_addr.s4.sin_port = htons(port);
   return remote_addr.ss;
 }
 
