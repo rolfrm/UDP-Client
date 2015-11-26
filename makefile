@@ -21,7 +21,7 @@ clean:
 
 test: $(TARGET)
 	$(CC) $(CFLAGS) main.c ../iron/log.c
-	$(CC) $(LDFLAGS) $(LIBS) main.o log.o -ludpc -o test.exe
+	$(CC) $(LDFLAGS) $(LIBS) main.o log.o -ludpc -Wl,-rpath,. -o server.exe
 rpc: $(TARGET)
 	$(CC) $(CFLAGS) udpc_get.c ../iron/log.c
-	$(CC) $(LDFLAGS) $(LIBS) udpc_get.o log.o -ludpc -o rpc.exe
+	$(CC) $(LDFLAGS) $(LIBS) udpc_get.o log.o  -ludpc -Wl,-rpath,. -o rpc.exe

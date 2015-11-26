@@ -42,7 +42,6 @@ int main(int argc, char ** argv){
     }
     udpc_logout(con);
     
-    
   }else if(argc > 2){
     udpc_connection * con = udpc_connect(argv[1]);
     if(con == NULL){
