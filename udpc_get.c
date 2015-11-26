@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <unistd.h>
+#include <signal.h>
 #include "udpc.h"
 #include "service_descriptor.h"
 #include <iron/log.h>
@@ -19,8 +20,15 @@ void _error(const char * file, int line, const char * msg, ...){
   va_end(arglist);
   loge("%s\n", buffer);
   loge("Got error at %s line %i\n", file,line);
-  raise(SIGINT);
+  raise(SIGSTOP);
   exit(255);
+}
+
+bool should_close = false;
+void handle_sigint(int signum){
+  logd("Caught sigint %i\n", signum);
+  should_close = true;
+  signal(SIGINT, NULL); // next time just quit.
 }
 
 // UDPC sample program.
@@ -28,11 +36,12 @@ void _error(const char * file, int line, const char * msg, ...){
 // SERVER: udpc_get name@server:service
 // CLIENT: udpc_get name@server:service [command]
 int main(int argc, char ** argv){
+  signal(SIGINT, handle_sigint);
   if(argc == 2){
     udpc_service * con = udpc_login(argv[1]);
     logd("Logged in..\n");
-    while(true){
-      udpc_connection * c2 = udpc_listen(con);
+    while(!should_close){
+      udpc_connection * c2 = udpc_listen(con);      
       if(c2 == NULL)
 	continue;
       char buffer[1500]; //or max MTU size
@@ -48,6 +57,7 @@ int main(int argc, char ** argv){
       udpc_write(c2, "ENDENDEND", 10);
       udpc_close(c2);
     }
+    udpc_logout(con);
   }else if(argc > 2){
     udpc_connection * con = udpc_connect(argv[1]);
     size_t totalsize = 0;

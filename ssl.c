@@ -300,7 +300,7 @@ ssl_server_client * ssl_server_listen(ssl_server * serv){
   BIO * bio = BIO_new_dgram(serv->fd, BIO_NOCLOSE);
   {
     struct timeval timeout;
-    timeout.tv_sec = 5;
+    timeout.tv_sec = 10;
     timeout.tv_usec = 0;
     BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_RECV_TIMEOUT, 0, &timeout);
   }
@@ -309,7 +309,10 @@ ssl_server_client * ssl_server_listen(ssl_server * serv){
   SSL_set_options(ssl, SSL_OP_COOKIE_EXCHANGE);
 
   struct sockaddr_storage client_addr;
-  while (DTLSv1_listen(ssl, &client_addr) <= 0);
+  while (DTLSv1_listen(ssl, &client_addr) <= 0){
+    SSL_free(ssl);
+    return NULL;
+  }
   ssl_server_client * con = alloc0(sizeof(ssl_server_client));
   con->ssl = ssl;
   con->addr = client_addr;
