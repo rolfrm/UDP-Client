@@ -24,18 +24,6 @@ struct sockaddr_storage udp_get_addr(char * remote_address, int port){
   memset((void *) &remote_addr, 0, sizeof(struct sockaddr_storage));
   
   if(he->h_addrtype == AF_INET){
-    int * iaddr = (int *) he->h_addr_list[0];
-    unsigned char * addr = (unsigned char *) he->h_addr_list[0];
-    //if(*iaddr == 0){
-    //  addr[0] = 127; addr[1] = 0; addr[2] = 1; addr[3] = 1;
-    //}else
-    //    if(addr[0] == 127 && addr[1] == 0 && addr[2] == 0 && addr[3] == 1){
-    //  *iaddr = 0;
-    //}else
-      if(addr[0] == 127 && addr[1] == 0 && addr[2] == 1 && addr[3] == 1){
-      *iaddr = 0;
-    }
-    logd("addr: %i.%i.%i.%i:%i\n", addr[0], addr[1], addr[2], addr[3], port);
     memcpy(&remote_addr.s4.sin_addr, he->h_addr_list[0], he->h_length);
     remote_addr.s4.sin_family = AF_INET;
 #ifdef HAVE_SIN_LEN
