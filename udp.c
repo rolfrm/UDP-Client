@@ -22,7 +22,9 @@ struct sockaddr_storage udp_get_addr(char * remote_address, int port){
   struct hostent * he = gethostbyname(remote_address);
   ASSERT(he != NULL);
   memset((void *) &remote_addr, 0, sizeof(struct sockaddr_storage));
+  unsigned char * addr = (unsigned char *) he->h_addr_list[0];
   
+  logd("addr: %i.%i.%i.%i:%i\n", addr[0], addr[1], addr[2], addr[3], port);
   if(he->h_addrtype == AF_INET){
     memcpy(&remote_addr.s4.sin_addr, he->h_addr_list[0], he->h_length);
     remote_addr.s4.sin_family = AF_INET;
