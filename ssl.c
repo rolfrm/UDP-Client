@@ -240,9 +240,15 @@ void ssl_server_cleanup(ssl_server * server){
   free(server);
 }
 
-static void handle_ssl_error(SSL * ssl, int ret){
+static bool handle_ssl_error2(SSL * ssl, int ret, int * accepted_errors, int accepted_error_cnt){
+  bool check_err(int error_kind){
+    for(int i = 0; i < accepted_error_cnt; i++)
+      if(accepted_errors[i] == error_kind)
+	return true;
+    return false;
+  }
   int err = SSL_get_error(ssl, ret);
-#define doerr(kind)case kind: ERROR(#kind);
+#define doerr(kind)case kind: if(false == check_err(kind)) {ERROR(#kind);} else return false;
   switch(err){
     doerr(SSL_ERROR_SSL);
   case(SSL_ERROR_SYSCALL):
@@ -257,6 +263,11 @@ static void handle_ssl_error(SSL * ssl, int ret){
   case SSL_ERROR_NONE:
     break;
   }
+  return true;
+}
+
+static void handle_ssl_error(SSL * ssl, int ret){
+  handle_ssl_error2(ssl, ret, NULL, 0);
 }
 
 ssl_server_con * ssl_server_accept(ssl_server_client * scli, int fd){
@@ -371,7 +382,9 @@ void ssl_client_write(ssl_client * cli, const void * buffer, size_t length){
 
 size_t ssl_client_read(ssl_client * cli, void * buffer, size_t length){
   socklen_t len = SSL_read(cli->ssl, buffer, length);
-  handle_ssl_error(cli->ssl, len);
+  int accepted[] = {SSL_ERROR_WANT_READ};
+  if(!handle_ssl_error2(cli->ssl, len, accepted, array_count(accepted)))
+    return 0;
   return len;
 }
 
