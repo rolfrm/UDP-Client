@@ -8,7 +8,7 @@ LIBS= -ldl -lm -lssl -lcrypto -lpthread
 
 CFLAGS =  -I.. -std=c11 -c $(OPT) -Wall -Wextra -Werror=implicit-function-declaration -Wformat=0  -D_GNU_SOURCE -fdiagnostics-color #-Werror -Wwrite-strings #-DDEBUG
 
-all: $(TARGET) test rpc speed file
+all: $(TARGET) test rpc speed file share
 $(TARGET): $(LIB_OBJECTS)
 	$(CC) $(LDFLAGS) $(LIB_OBJECTS) $(LIBS) --shared -o $@
 
@@ -21,16 +21,20 @@ clean:
 
 test: $(TARGET)
 	$(CC) $(CFLAGS) main.c ../iron/log.c
-	$(CC) $(LDFLAGS) $(LIBS) main.o log.o -ludpc -Wl,-rpath,. -o server.exe
+	$(CC) $(LDFLAGS) $(LIBS) main.o log.o -ludpc -Wl,-rpath,. -o server
 
 rpc: $(TARGET)
 	$(CC) $(CFLAGS) udpc_get.c ../iron/log.c
-	$(CC) $(LDFLAGS) $(LIBS) udpc_get.o log.o  -ludpc -Wl,-rpath,. -o rpc.exe
+	$(CC) $(LDFLAGS) $(LIBS) udpc_get.o log.o  -ludpc -Wl,-rpath,. -o rpc
 
 speed: $(TARGET) ../iron/log.c udpc_speed_test.c
 	$(CC) $(CFLAGS)  udpc_speed_test.c ../iron/log.c
-	$(CC) $(LDFLAGS) $(LIBS) udpc_speed_test.o log.o  -ludpc -Wl,-rpath,. -o speed.exe
+	$(CC) $(LDFLAGS) $(LIBS) udpc_speed_test.o log.o  -ludpc -Wl,-rpath,. -o speed
 
 file:  $(TARGET) ../iron/log.c udpc_file.c
 	$(CC) $(CFLAGS)  udpc_file.c ../iron/log.c
-	$(CC) $(LDFLAGS) $(LIBS) udpc_file.o log.o  -ludpc -Wl,-rpath,. -o file.exe
+	$(CC) $(LDFLAGS) $(LIBS) udpc_file.o log.o  -ludpc -Wl,-rpath,. -o file
+
+share: $(TARGET) ../iron/log.c udpc_share.c
+	$(CC) $(CFLAGS)  udpc_share.c ../iron/log.c
+	$(CC) $(LDFLAGS)  udpc_share.o log.o $(LIBS) -ludpc -Wl,-rpath,. -o share
