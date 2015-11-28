@@ -27,6 +27,6 @@ rpc: $(TARGET)
 	$(CC) $(CFLAGS) udpc_get.c ../iron/log.c
 	$(CC) $(LDFLAGS) $(LIBS) udpc_get.o log.o  -ludpc -Wl,-rpath,. -o rpc.exe
 
-speed: $(TARGET) udpc_stream_check.c ../iron/log.c
-	$(CC) $(CFLAGS) udpc_stream_check.c ../iron/log.c
-	$(CC) $(LDFLAGS) $(LIBS) udpc_stream_check.o log.o  -ludpc -Wl,-rpath,. -o speed.exe
+speed: $(TARGET) udpc_stream_check.c ../iron/log.c udpc_speed_test.c
+	$(CC) $(CFLAGS) udpc_stream_check.c udpc_speed_test.c ../iron/log.c
+	$(CC) $(LDFLAGS) $(LIBS) udpc_stream_check.o udpc_speed_test.o log.o  -ludpc -Wl,-rpath,. -o speed.exe
