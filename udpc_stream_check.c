@@ -111,6 +111,7 @@ int main(int argc, char ** argv){
       free(outbuffer);
       char buffer[bufsize];
       int missed = 0;
+      int missed_seqs = 0;
       int current = -1;
       while(true){
 	size_t r = 0;
@@ -123,13 +124,14 @@ int main(int argc, char ** argv){
 	int seq = unpack_int(&ptr);
 	if(current + 1 != seq){
 	  missed += seq - current - 1;
+	  missed_seqs += 1;
 	  logd("This happens\n");
 	}
 	current = seq;
 	//fwrite(outbuffer, 1, r, stdout);
       }
       logd("Missed: %i\n", missed);
-      logd("Sent: %llu MB  %i %i\n",((i64)bufsize * (i64)current) / 1000000, bufsize, current);
+      logd("Sent: %llu MB  %i %i %i\n",((i64)bufsize * (i64)current) / 1000000, bufsize, current, missed_seqs);
       u64 ts2 = timestamp();
       double dt = 1e-6 * (double)(ts2 - ts1);
       logd("in %f s\n", dt);
