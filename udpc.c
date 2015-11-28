@@ -12,6 +12,7 @@
 #include <iron/mem.h>
 #include <iron/log.h>
 #include "udpc.h"
+#include "udpc_utils.h"
 #include "service_descriptor.h"
 #include "udp.h"
 #include "ssl.h"
@@ -59,31 +60,6 @@ char * udpc_pop_error(){
   return err;
 }
 
-void pack(const void * data, size_t data_len, void ** buffer, size_t * buffer_size){
-  *buffer = ralloc(*buffer, *buffer_size + data_len);
-  memcpy(*buffer + *buffer_size, data, data_len);
-  *buffer_size += data_len;
-}
-
-void pack_string(const void * str, void ** buffer, size_t * buffer_size){
-  pack(str, strlen(str) + 1, buffer, buffer_size);
-}
-
-void pack_int(int value, void ** buffer, size_t * buffer_size){
-  pack(&value, sizeof(int), buffer, buffer_size);
-}
-
-void unpack(void * dst, size_t size, void ** buffer){
-  memcpy(dst, *buffer, size);
-  *buffer = *buffer + size;
-}
-
-int unpack_int(void ** buffer){
-  int value = 0;
-  unpack(&value, sizeof(value), buffer);
-  return value;
-}
-
 // connect to a server. Format of service must be name@host:service
 udpc_service * udpc_login(const char * service){
 
@@ -102,9 +78,9 @@ udpc_service * udpc_login(const char * service){
     size_t s = strlen(service);
     void * buffer = NULL;
     size_t buffer_size = 0;
-    pack_int(udpc_login_msg, &buffer, &buffer_size);
-    pack_int(port, &buffer, &buffer_size);
-    pack(service, s, &buffer, &buffer_size);
+    udpc_pack_int(udpc_login_msg, &buffer, &buffer_size);
+    udpc_pack_int(port, &buffer, &buffer_size);
+    udpc_pack(service, s, &buffer, &buffer_size);
 
     ssl_client_write(cli, buffer, buffer_size);
     free(buffer);
@@ -134,15 +110,15 @@ void udpc_logout(udpc_service * con){
     { // send logout request.
       void * buffer = NULL;
       size_t buffer_size = 0;
-      pack_int(udpc_mode_disconnect, &buffer, &buffer_size);
-      pack_string(con->service.username, &buffer, &buffer_size);
-      pack_string(con->service.service, &buffer, &buffer_size);
+      udpc_pack_int(udpc_mode_disconnect, &buffer, &buffer_size);
+      udpc_pack_string(con->service.username, &buffer, &buffer_size);
+      udpc_pack_string(con->service.service, &buffer, &buffer_size);
       ssl_client_write(cli, buffer, buffer_size);
       size_t read = 0;
       while(read == 0)
 	read = ssl_client_read(cli, buffer, buffer_size);
       void * bufptr = buffer;
-      int status = unpack_int(&bufptr);
+      int status = udpc_unpack_int(&bufptr);
       ASSERT(status == udpc_response_ok);
       free(buffer);
     }
@@ -178,8 +154,8 @@ udpc_connection * udpc_connect(const char * service){
   { // send [CONNECT *service* 0]
     void * buffer = NULL;
     size_t buffer_size = 0;
-    pack_int(udpc_mode_connect, &buffer, &buffer_size);
-    pack_string(service, &buffer, &buffer_size);
+    udpc_pack_int(udpc_mode_connect, &buffer, &buffer_size);
+    udpc_pack_string(service, &buffer, &buffer_size);
     ssl_client_write(cli, buffer, buffer_size);
     free(buffer);
   }
@@ -190,13 +166,13 @@ udpc_connection * udpc_connect(const char * service){
     ASSERT(read_size > 0);
     void * resp2 = buffer;
 
-    int response_status = unpack_int(&resp2);
+    int response_status = udpc_unpack_int(&resp2);
     ssl_client_close(cli);
     udp_close(fd);
     if(response_status == udpc_response_ok_ip4){
       struct sockaddr_storage peer_addr;
-      int port = unpack_int(&resp2);
-      unpack(&peer_addr, sizeof(peer_addr), &resp2);
+      int port = udpc_unpack_int(&resp2);
+      udpc_unpack(&peer_addr, sizeof(peer_addr), &resp2);
       ((struct sockaddr_in *)&peer_addr)->sin_port = port;
       int _fd = udp_connect(&local_addr, &peer_addr, false);
       ssl_client * cli = ssl_start_client(_fd, (struct sockaddr *)&peer_addr);
@@ -277,10 +253,10 @@ static void * connection_handle(void * _info) {
       continue;
     }
     void * bufptr = buf;
-    int status = unpack_int(&bufptr);
+    int status = udpc_unpack_int(&bufptr);
     if(status == udpc_login_msg){
       logd("UDPC LOGIN\n");
-      int port = unpack_int(&bufptr);
+      int port = udpc_unpack_int(&bufptr);
       service srv;
       srv.desc = udpc_get_service_descriptor(bufptr);
       srv.client_addr = remote_addr;
@@ -302,9 +278,9 @@ static void * connection_handle(void * _info) {
 
 	  void * buffer = NULL;
 	  size_t buf_size = 0;
-	  pack_int(udpc_response_ok_ip4, &buffer, &buf_size);
-	  pack_int(s1.port, &buffer, &buf_size);
-	  pack(&s1.client_addr, sizeof(s1.client_addr), &buffer, &buf_size);
+	  udpc_pack_int(udpc_response_ok_ip4, &buffer, &buf_size);
+	  udpc_pack_int(s1.port, &buffer, &buf_size);
+	  udpc_pack(&s1.client_addr, sizeof(s1.client_addr), &buffer, &buf_size);
 	  ssl_server_write(con, buffer, buf_size);
 	  return NULL;
 	}

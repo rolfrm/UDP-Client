@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include "udpc.h"
+#include "udpc_utils.h"
 #include "service_descriptor.h"
 #include <iron/log.h>
 

@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include "udpc.h"
+#include "udpc_utils.h"
 #include "service_descriptor.h"
 #include <stdint.h>
 #include <iron/types.h>
@@ -34,38 +35,6 @@ void handle_sigint(int signum){
   signal(SIGINT, NULL); // next time just quit.
 }
 
-static void pack(const void * data, size_t data_len, void ** buffer, size_t * buffer_size){
-  *buffer = ralloc(*buffer, *buffer_size + data_len);
-  memcpy(*buffer + *buffer_size, data, data_len);
-  *buffer_size += data_len;
-}
-
-static void pack_int(int value, void ** buffer, size_t * buffer_size){
-  pack(&value, sizeof(int), buffer, buffer_size);
-}
-
-static void unpack(void * dst, size_t size, void ** buffer){
-  memcpy(dst, *buffer, size);
-  *buffer = *buffer + size;
-}
-
-static int unpack_int(void ** buffer){
-  int value = 0;
-  unpack(&value, sizeof(value), buffer);
-  return value;
-}
-
-static void pack_string(const void * str, void ** buffer, size_t * buffer_size){
-  pack(str, strlen(str) + 1, buffer, buffer_size);
-}
-
-static char * unpack_string(void ** buffer){
-  int len = strlen((char *) *buffer);
-  char * dataptr = *buffer;
-  *buffer += len + 1;
-  return dataptr;
-}
-
 const char * service_name = "UDPC_SPEED_TEST";
 
 void udpc_speed_serve(udpc_connection * c2){
@@ -74,15 +43,15 @@ void udpc_speed_serve(udpc_connection * c2){
   while(r == 0)
     r = udpc_read(c2,buf2, sizeof(buf2));
   void * ptr = buf2;
-  char * code = unpack_string(&ptr);
+  char * code = udpc_unpack_string(&ptr);
   if(strcmp(code, service_name) != 0){
     udpc_close(c2);
     return;
   }
 
-  int delay = unpack_int(&ptr);
-  int buffer_size = unpack_int(&ptr);
-  int count = unpack_int(&ptr);
+  int delay = udpc_unpack_int(&ptr);
+  int buffer_size = udpc_unpack_int(&ptr);
+  int count = udpc_unpack_int(&ptr);
   char buffer[buffer_size];
   for(int i = 0; i < count; i++){
     memcpy(buffer, &i, sizeof(i));
@@ -98,10 +67,10 @@ void udpc_speed_serve(udpc_connection * c2){
 void udpc_speed_client(udpc_connection * con, int delay, int bufsize, int count, int * out_missed, int * out_missed_seqs){
   void * outbuffer = NULL;
   size_t buffer_size = 0;
-  pack_string(service_name, &outbuffer, &buffer_size);
-  pack_int(delay, &outbuffer, &buffer_size);
-  pack_int(bufsize, &outbuffer, &buffer_size);
-  pack_int(count, &outbuffer, &buffer_size);
+  udpc_pack_string(service_name, &outbuffer, &buffer_size);
+  udpc_pack_int(delay, &outbuffer, &buffer_size);
+  udpc_pack_int(bufsize, &outbuffer, &buffer_size);
+  udpc_pack_int(count, &outbuffer, &buffer_size);
   udpc_write(con, outbuffer, buffer_size);
   free(outbuffer);
   char buffer[bufsize];
@@ -114,7 +83,7 @@ void udpc_speed_client(udpc_connection * con, int delay, int bufsize, int count,
     if(strcmp("ENDENDEND", buffer) == 0)
       break;
     void * ptr = buffer;
-    int seq = unpack_int(&ptr);
+    int seq = udpc_unpack_int(&ptr);
     if(current + 1 != seq){
       *out_missed += seq - current - 1;
       *out_missed_seqs += 1;
