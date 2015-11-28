@@ -84,6 +84,7 @@ int main(int argc, char ** argv){
 	if(delay > 0)
 	  usleep(delay);
       }
+      iron_usleep(10000);
       udpc_write(c2, "ENDENDEND", 10);
       udpc_close(c2);
     }
