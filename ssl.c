@@ -254,7 +254,8 @@ static void handle_ssl_error(SSL * ssl, int ret){
     doerr(SSL_ERROR_WANT_READ);
     doerr(SSL_ERROR_WANT_WRITE);
     doerr(SSL_ERROR_ZERO_RETURN);
-    doerr(SSL_ERROR_NONE);
+  case SSL_ERROR_NONE:
+    break;
   }
 }
 
@@ -370,7 +371,7 @@ void ssl_client_write(ssl_client * cli, const void * buffer, size_t length){
 
 size_t ssl_client_read(ssl_client * cli, void * buffer, size_t length){
   socklen_t len = SSL_read(cli->ssl, buffer, length);
-  ASSERT(SSL_get_error(cli->ssl, len) == SSL_ERROR_NONE);
+  handle_ssl_error(cli->ssl, len);
   return len;
 }
 
