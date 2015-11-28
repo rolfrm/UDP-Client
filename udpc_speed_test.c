@@ -51,6 +51,7 @@ int main(int argc, char ** argv){
       if(c2 == NULL)
 	continue;
       udpc_speed_serve(c2, NULL);
+      udpc_close(c2);
     }
     udpc_logout(con);
   }else if(argc > 2){
@@ -76,6 +77,7 @@ int main(int argc, char ** argv){
       double dt = 1e-6 * (double)(ts2 - ts1);
       logd("in %f s\n", dt);
       logd("Speed: %i MB/s\n", (int)(((i64)bufsize * successfull) / dt/ 1e6) );
+      udpc_close(con);
     }
   }else{
     loge("Missing arguments\n");

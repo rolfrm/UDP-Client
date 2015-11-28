@@ -59,6 +59,7 @@ int main(int argc, char ** argv){
     udpc_connection * con = udpc_connect(argv[1]);
     if(con != NULL){
       udpc_file_client(con, delay, bufsize, in_file, out_file);
+      udpc_close(con);
     }
   }else{
     loge("Missing arguments\n");

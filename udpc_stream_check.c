@@ -45,7 +45,6 @@ void udpc_speed_serve(udpc_connection * c2, void * ptr){
   }
   iron_usleep(10000);
   udpc_write(c2, "ENDENDEND", 10);
-  udpc_close(c2);
 }
 
 void udpc_speed_client(udpc_connection * con, int delay, int bufsize, int count, int * out_missed, int * out_missed_seqs){
@@ -74,6 +73,4 @@ void udpc_speed_client(udpc_connection * con, int delay, int bufsize, int count,
     }
     current = seq;
   }
-  
-  udpc_close(con);
 }

@@ -57,7 +57,6 @@ void udpc_file_serve(udpc_connection * c2, void * ptr){
   }
   iron_usleep(10000);
   udpc_write(c2, "ENDENDEND", 10);
-  udpc_close(c2);
 }
 
 void udpc_file_client(udpc_connection * con, int delay, int bufsize, char * in_file_path, char * out_file_path){
@@ -89,6 +88,4 @@ void udpc_file_client(udpc_connection * con, int delay, int bufsize, char * in_f
     }
     current = seq;
   }
-  
-  udpc_close(con);
 }
