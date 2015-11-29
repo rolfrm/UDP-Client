@@ -5,7 +5,7 @@
 #include <iron/log.h>
 #include "udp.h"
 
-struct sockaddr_storage udp_get_addr(char * remote_address, int port){
+struct sockaddr_storage udp_get_addr(const char * remote_address, int port){
   union {
     struct sockaddr_storage ss;
     struct sockaddr_in s4;

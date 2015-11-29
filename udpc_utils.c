@@ -1,19 +1,6 @@
 #include <stdio.h>
-#include <stdlib.h>
-#include <stdbool.h>
 #include <string.h>
-#include <unistd.h>
-#include <signal.h>
-#include "udpc.h"
-#include "service_descriptor.h"
-#include <stdint.h>
-#include <iron/types.h>
-#include <iron/log.h>
 #include <iron/mem.h>
-#include <iron/time.h>
-#include <stdarg.h>
-#include <stdio.h>
-#include <signal.h>
 
 void udpc_pack(const void * data, size_t data_len, void ** buffer, size_t * buffer_size){
   *buffer = ralloc(*buffer, *buffer_size + data_len);

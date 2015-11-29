@@ -41,7 +41,7 @@ struct _udpc_service{
 char ** udpc_errors = NULL;
 size_t udpc_error_cnt = 0;
 
-void udpc_push_error(char * error_message){
+void udpc_push_error(const char * error_message){
   udpc_errors = realloc(udpc_errors, sizeof(udpc_errors[0]) * (udpc_error_cnt + 1));
   udpc_errors[udpc_error_cnt] = iron_clone(error_message, strlen(error_message) + 1);
   udpc_error_cnt += 1;
@@ -183,7 +183,7 @@ udpc_connection * udpc_connect(const char * service){
   return NULL;
 }
 
-void udpc_write(udpc_connection * client, void * buffer, size_t length){
+void udpc_write(udpc_connection * client, const void * buffer, size_t length){
   if(client->cli != NULL)
     ssl_client_write(client->cli, buffer, length);
   else if(client->con != NULL)

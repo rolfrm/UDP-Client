@@ -21,7 +21,7 @@ udpc_connection * udpc_connect(const char * service_url);
 udpc_connection * udpc_listen(udpc_service * con);
 
 // Sends data across the connection.
-void udpc_write(udpc_connection * client, void * buffer, size_t length);
+void udpc_write(udpc_connection * client, const void * buffer, size_t length);
 
 // Receives data from the connection.
 size_t udpc_read(udpc_connection * client, void * buffer, size_t max_size);
@@ -30,7 +30,7 @@ size_t udpc_read(udpc_connection * client, void * buffer, size_t max_size);
 void udpc_close(udpc_connection * con);
 
 // Pushes an error on top of the udpc error stack.
-void udpc_push_error(char * error);
+void udpc_push_error(const char * error);
 
 // Pops an error from the error stack. It has to be freed by the caller.
 char * udpc_pop_error();

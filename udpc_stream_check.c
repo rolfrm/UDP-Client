@@ -7,7 +7,6 @@
 
 #include <iron/types.h>
 #include <iron/log.h>
-#include <iron/mem.h>
 #include <iron/time.h>
 
 #include "udpc.h"

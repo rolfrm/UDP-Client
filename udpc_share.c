@@ -8,9 +8,11 @@
 
 #include "udpc.h"
 #include "udpc_utils.h"
-
+#include <stdint.h>
+#include <iron/types.h>
 #include <iron/log.h>
-
+#include <iron/utils.h>
+#include <iron/time.h>
 #include "udpc_send_file.h"
 #include "udpc_stream_check.h"
 #include "udpc_dir_scan.h"
@@ -68,41 +70,58 @@ int main(int argc, char ** argv){
       udpc_connection * c2 = udpc_listen(con);      
       if(c2 == NULL)
 	continue;
-      size_t r = 0;
-      char buf[1024];
-      while(r == 0)
-	r = udpc_read(c2, buf, sizeof(buf));
-      void * rcv_str = buf;
-      char * st = udpc_unpack_string(&rcv_str);
-      if(strcmp(st, udpc_file_serve_service_name) == 0){
-	udpc_file_serve(c2, buf);
-      }else if(strcmp(st, udpc_speed_test_service_name) == 0){
-	udpc_speed_serve(c2, buf);
-      }else if(strcmp(st, udpc_dirscan_service_name) == 0){
-	udpc_dirscan_serve(c2, scan_result, 1000, 1400, buf);
-      }else{
-	loge("Unknown service '%s'\n", st);
+      while(true){
+	size_t r = 0;
+	char buf[1024];
+	while(r == 0)
+	  r = udpc_read(c2, buf, sizeof(buf));
+	void * rcv_str = buf;
+	char * st = udpc_unpack_string(&rcv_str);
+	if(strcmp(st, udpc_file_serve_service_name) == 0){
+	  udpc_file_serve(c2, buf);
+	}else if(strcmp(st, udpc_speed_test_service_name) == 0){
+	  udpc_speed_serve(c2, buf);
+	}else if(strcmp(st, udpc_dirscan_service_name) == 0){
+	  udpc_dirscan_serve(c2, scan_result, 1000, 1400, buf);
+	}else{
+	  loge("Unknown service '%s'\n", st);
+	  break;
+	}
       }
-      
+	
       udpc_close(c2);
     }
     udpc_logout(con);
-  }else if(argc > 3){
-
+  }else if(argc == 4){
+    char * servicename = argv[1];
+    char * dir = argv[2];
+    UNUSED(dir);UNUSED(servicename);
+    char * other_service = argv[3];
     int delay = 40;
     int bufsize = 1500;
-    char * in_file = argv[2];
-    char * out_file = argv[3];
-    if(argc > 4)
-      sscanf(argv[4],"%i", &delay);
-    if(argc > 5)
-      sscanf(argv[5],"%i", &bufsize);
-    logd("Delay: %i, buffer size: %i file: '%s' '%s'\n", delay, bufsize, in_file, out_file);
-    udpc_connection * con = udpc_connect(argv[1]);
-    if(con != NULL){
-      udpc_file_client(con, delay, bufsize, in_file, out_file);
-      udpc_close(con);
+    udpc_connection * con = udpc_connect(other_service);
+    // find speed/packagesize
+    int test_delay = delay;
+    for(int i = 0; i < 10; i++){
+      logd("Testing connection.. %i\n", i);
+      int missed = 0, missed_seqs = 0;
+      udpc_speed_client(con, test_delay, bufsize, 1000, &missed, &missed_seqs);
+      if(missed == 0){
+	delay = test_delay;
+	test_delay = test_delay / 2;
+      }else if(missed < 5){
+	delay = test_delay;
+	break;
+      }
+      else{
+	test_delay = 2 * test_delay;
+      }
+      logd("Missed: %i\n", missed);
     }
+    udpc_write(con, "asd", sizeof("asd"));
+    logd("Delay: %i\n", delay);
+    udpc_close(con);
+    
   }else{
     loge("Missing arguments\n");
   }

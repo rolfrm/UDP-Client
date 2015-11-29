@@ -1,18 +1,16 @@
 // simple library to userspace UDPC lib to test connection speed.
 #include <stdio.h>
-#include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
 #include <stdint.h>
 
 #include <iron/types.h>
 #include <iron/log.h>
-#include <iron/mem.h>
 #include <iron/time.h>
+#include <iron/mem.h>
 
 #include "udpc.h"
 #include "udpc_utils.h"
-#include "udpc_stream_check.h"
 
 #include "udpc_send_file.h"
 
@@ -68,7 +66,7 @@ void udpc_file_client(udpc_connection * con, int delay, int bufsize, char * in_f
   udpc_pack_int(bufsize, &outbuffer, &buffer_size);
   udpc_pack_string(in_file_path, &outbuffer, &buffer_size);
   udpc_write(con, outbuffer, buffer_size);
-  free(outbuffer);
+  dealloc(outbuffer);
 
   char buffer[bufsize];
   int current = -1;

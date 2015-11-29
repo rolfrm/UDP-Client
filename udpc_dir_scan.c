@@ -1,5 +1,4 @@
 #include <stdio.h>
-#include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
 #include <stdint.h>
@@ -15,7 +14,6 @@
 
 #include "udpc.h"
 #include "udpc_utils.h"
-#include "service_descriptor.h"
 #include "udpc_dir_scan.h"
 
 const char * udpc_dirscan_service_name = "UDPC_DIRSCAN";
