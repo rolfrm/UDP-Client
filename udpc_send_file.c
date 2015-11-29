@@ -27,7 +27,6 @@ void udpc_file_serve(udpc_connection * c2, void * ptr){
     ptr = buf2;
     char * code = udpc_unpack_string(&ptr);
     if(strcmp(code, udpc_file_serve_service_name) != 0){
-      udpc_close(c2);
       return;
     }
   }else{

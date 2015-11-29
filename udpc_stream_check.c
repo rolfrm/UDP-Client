@@ -14,7 +14,7 @@
 #include "udpc_utils.h"
 #include "udpc_stream_check.h"
 
-static const char * service_name = "UDPC_SPEED_TEST";
+const char * udpc_speed_test_service_name = "UDPC_SPEED_TEST";
 
 void udpc_speed_serve(udpc_connection * c2, void * ptr){
   if(ptr == NULL){
@@ -24,13 +24,13 @@ void udpc_speed_serve(udpc_connection * c2, void * ptr){
       r = udpc_read(c2,buf2, sizeof(buf2));
     ptr = buf2;
     char * code = udpc_unpack_string(&ptr);
-    if(strcmp(code, service_name) != 0){
+    if(strcmp(code, udpc_speed_test_service_name) != 0){
       udpc_close(c2);
       return;
     }
   }else{
     char * code = udpc_unpack_string(&ptr);
-    ASSERT(strcmp(code, service_name) == 0);
+    ASSERT(strcmp(code, udpc_speed_test_service_name) == 0);
   }
 
   int delay = udpc_unpack_int(&ptr);
@@ -50,7 +50,7 @@ void udpc_speed_serve(udpc_connection * c2, void * ptr){
 void udpc_speed_client(udpc_connection * con, int delay, int bufsize, int count, int * out_missed, int * out_missed_seqs){
   void * outbuffer = NULL;
   size_t buffer_size = 0;
-  udpc_pack_string(service_name, &outbuffer, &buffer_size);
+  udpc_pack_string(udpc_speed_test_service_name, &outbuffer, &buffer_size);
   udpc_pack_int(delay, &outbuffer, &buffer_size);
   udpc_pack_int(bufsize, &outbuffer, &buffer_size);
   udpc_pack_int(count, &outbuffer, &buffer_size);

@@ -1,30 +1,20 @@
-//
-// UDPC File Share
-// 
-// This program implements file sharing/backup across UDPC.
-// The idea is that a number of peers agrees to share a folder.
-// The peers will try to guarantee that the most recent version
-// of a file is in all the share folders.
-//
-// The folders will be synced through the help of a few sharing protocols.
-// 1. There needs to be some kind of conflict handling implemented
-// 2. The sync mechanism should work like rsync, where hashing can be used to figure out which chunks of the file are the same. Initially it will just calculate a md5 hash of the files.
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
-#include <unistd.h>
 #include <signal.h>
+#include <sys/stat.h>
+#include <stdarg.h>
+
 #include "udpc.h"
 #include "udpc_utils.h"
 #include "service_descriptor.h"
+
 #include <iron/log.h>
 
-#include <stdarg.h>
-#include <stdio.h>
-#include <signal.h>
 #include "udpc_send_file.h"
+#include "udpc_stream_check.h"
+#include "udpc_dir_scan.h"
 
 void _error(const char * file, int line, const char * msg, ...){
   char buffer[1000];  
@@ -39,6 +29,7 @@ void _error(const char * file, int line, const char * msg, ...){
 }
 
 bool should_close = false;
+
 void handle_sigint(int signum){
   logd("Caught sigint %i\n", signum);
   should_close = true;
@@ -46,40 +37,54 @@ void handle_sigint(int signum){
 }
 
 
-#include <openssl/md5.h>
-
-void file_md5(const char * path){
-  FILE * f = fopen(path, "r");
-  ASSERT(f != NULL);
-  unsigned long r = 0;
-  char buffer[1024];
-  MD5_CTX md5;
-  MD5_Init(&md5);
-  while(0 != (r = fread(buffer, 1, sizeof(buffer), f)))
-    MD5_Update(&md5, buffer, r);
-  unsigned char md5_digest[MD5_DIGEST_LENGTH];
-  MD5_Final(md5_digest, &md5);
-  logd("MD5 of '%s':", path);
-  for(int i = 0; i < MD5_DIGEST_LENGTH; i++){
-    logd("%X ",  md5_digest[i]);
-  }
-  logd("\n");
+void test_stuff(char ** argv){
+  struct stat st;
+  stat(argv[1], &st);
   
+  if( S_ISREG(st.st_mode) ) {
+    // file exists
+    udpc_md5 md5 = udpc_file_md5(argv[1]);
+    logd("MD5: ");
+    udpc_print_md5(md5);
+    logd("\n");
+  } else if( S_ISDIR(st.st_mode)){
+    // file doesn't exist
+    dirscan dsc = scan_directories(argv[1]);
+    logd("Found: %i files\n",dsc.cnt);
+    dirscan_clean(&dsc);
+  }
 }
 
 int main(int argc, char ** argv){
-  file_md5(argv[1]);
-  return 0;
-
   signal(SIGINT, handle_sigint);
   
-  if(argc == 2){
+  if(argc == 3){
+    char * servicename = argv[1];
+    char * dir = argv[2];
+    struct stat dirst;
+    stat(dir, &dirst);
+    ASSERT(S_ISDIR(dirst.st_mode));
+    dirscan scan_result = scan_directories(dir);
     udpc_service * con = udpc_login(argv[1]);
     while(!should_close){
       udpc_connection * c2 = udpc_listen(con);      
       if(c2 == NULL)
 	continue;
-      udpc_file_serve(c2, NULL);
+      size_t r = 0;
+      char buf[1024];
+      while(r == 0)
+	r = udpc_read(c2, buf, sizeof(buf));
+      void * rcv_str = buf;
+      char * st = udpc_unpack_string(&rcv_str);
+      if(strcmp(st, udpc_file_serve_service_name) == 0){
+	udpc_file_serve(c2, buf);
+      }else if(strcmp(st, udpc_speed_test_service_name) == 0){
+	udpc_speed_serve(c2, buf);
+      }else{
+	loge("Unknown service '%s'\n", st);
+      }
+      
+      udpc_close(c2);
     }
     udpc_logout(con);
   }else if(argc > 3){

@@ -1,5 +1,5 @@
 OPT = -g3 -O0
-LIB_SOURCES = udpc.c udp.c ssl.c ../iron/mem.c ../iron/array.c  ../iron/math.c service_descriptor.c ../iron/time.c udpc_utils.c udpc_stream_check.c udpc_send_file.c
+LIB_SOURCES = udpc.c udp.c ssl.c ../iron/mem.c ../iron/array.c  ../iron/math.c service_descriptor.c ../iron/time.c udpc_utils.c udpc_stream_check.c udpc_send_file.c udpc_dir_scan.c
 CC = gcc
 TARGET = libudpc.so
 LIB_OBJECTS =$(LIB_SOURCES:.c=.o)
