@@ -69,8 +69,8 @@ void dirscan_clean(dirscan * _dirscan){
 static void * dirscan_to_buffer(dirscan _dirscan, size_t * size){
   void * buffer = NULL;
   void * ptr = buffer;
-  udpc_pack_size_t(size, &ptr, size);
-  for(int i = 0; i < _dirscan.cnt; i++)
+  udpc_pack_size_t(_dirscan.cnt, &ptr, size);
+  for(size_t i = 0; i < _dirscan.cnt; i++)
     udpc_pack_string(_dirscan.files[i], &ptr, size);
   udpc_pack(_dirscan.md5s, _dirscan.cnt * sizeof(_dirscan.md5s[0]), &ptr, size);
   udpc_pack(_dirscan.last_change, _dirscan.cnt * sizeof(_dirscan.last_change[0]), &ptr, size);
@@ -96,7 +96,7 @@ void udpc_dirscan_serve(udpc_connection * con, dirscan last_dirscan,size_t buffe
   }
   
   size_t send_buf_size = 0;
-  void * send_buf = dirscan_to_buffer(last_dirscan, send_buf_size);
+  void * send_buf = dirscan_to_buffer(last_dirscan, &send_buf_size);
   void * bufptr = send_buf;
   while(send_buf_size > 0){
     size_t tosend = MAX(send_buf_size, buffer_size);

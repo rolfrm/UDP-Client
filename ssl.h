@@ -3,7 +3,7 @@ typedef struct _ssl_server_client ssl_server_client;
 typedef struct _ssl_server_con ssl_server_con;
 typedef struct _ssl_client ssl_client;
 
-//
+
 ssl_server * ssl_setup_server(int fd);
 ssl_server_con * ssl_server_accept(ssl_server_client * scli, int fd);
 size_t ssl_server_read(ssl_server_con * con, void * buffer, size_t buffer_size);

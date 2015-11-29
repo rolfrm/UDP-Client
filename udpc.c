@@ -1,11 +1,6 @@
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
 #include <arpa/inet.h>
 #include <stdbool.h>
 #include <stdlib.h>
-#include <stdint.h>
-#include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
 
@@ -334,7 +329,7 @@ void udpc_start_server(char *local_address) {
     con_info->remote_addr = ssl_server_client_addr(scli);
     con_info->server = &server;
     if (pthread_create( &tid, NULL, connection_handle, con_info) != 0) {
-      perror("pthread_create");
+      loge("pthread_create");
       exit(-1);
     }
   }

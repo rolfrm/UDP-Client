@@ -1,17 +1,10 @@
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
 #include <netdb.h>
-#include <stdio.h>
 #include <unistd.h>
-#include <stdlib.h>
 #include <string.h>
-#include <pthread.h>
 #include <stdbool.h>
 #include <iron/log.h>
-#include <iron/mem.h>
 #include "udp.h"
+
 struct sockaddr_storage udp_get_addr(char * remote_address, int port){
   union {
     struct sockaddr_storage ss;

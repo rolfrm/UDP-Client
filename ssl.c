@@ -1,9 +1,5 @@
-#include <sys/types.h>
-#include <sys/socket.h>
 #include <netinet/in.h>
-#include <arpa/inet.h>
 #include <openssl/ssl.h>
-#include <openssl/bio.h>
 #include <openssl/err.h>
 #include <openssl/rand.h>
 #include <stdbool.h>

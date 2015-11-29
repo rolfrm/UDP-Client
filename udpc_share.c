@@ -8,7 +8,6 @@
 
 #include "udpc.h"
 #include "udpc_utils.h"
-#include "service_descriptor.h"
 
 #include <iron/log.h>
 
@@ -35,7 +34,6 @@ void handle_sigint(int signum){
   should_close = true;
   signal(SIGINT, NULL); // next time just quit.
 }
-
 
 void test_stuff(char ** argv){
   struct stat st;
@@ -65,7 +63,7 @@ int main(int argc, char ** argv){
     stat(dir, &dirst);
     ASSERT(S_ISDIR(dirst.st_mode));
     dirscan scan_result = scan_directories(dir);
-    udpc_service * con = udpc_login(argv[1]);
+    udpc_service * con = udpc_login(servicename);
     while(!should_close){
       udpc_connection * c2 = udpc_listen(con);      
       if(c2 == NULL)
@@ -80,6 +78,8 @@ int main(int argc, char ** argv){
 	udpc_file_serve(c2, buf);
       }else if(strcmp(st, udpc_speed_test_service_name) == 0){
 	udpc_speed_serve(c2, buf);
+      }else if(strcmp(st, udpc_dirscan_service_name) == 0){
+	udpc_dirscan_serve(c2, scan_result, 1000, 1400, buf);
       }else{
 	loge("Unknown service '%s'\n", st);
       }
