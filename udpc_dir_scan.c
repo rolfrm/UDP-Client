@@ -2,6 +2,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdint.h>
+#include <unistd.h> // chdir
 
 #include <iron/types.h>
 #include <iron/log.h>
@@ -15,6 +16,8 @@
 #include "udpc.h"
 #include "udpc_utils.h"
 #include "udpc_dir_scan.h"
+
+
 
 const char * udpc_dirscan_service_name = "UDPC_DIRSCAN";
 
@@ -39,7 +42,11 @@ dirscan scan_directories(const char * basedir){
     }
     return 0;
   }
-  ftw(basedir, ftwf, 100);
+  char * cdir = get_current_dir_name();
+  logd("Currentdir: '%s'\n", cdir);
+  chdir(basedir);
+  ftw(".", ftwf, 100);
+  chdir(cdir);
   return ds;
 }
 

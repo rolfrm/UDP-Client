@@ -5,6 +5,7 @@
 #include <signal.h>
 #include <sys/stat.h>
 #include <stdarg.h>
+#include <unistd.h> //chdir
 
 #include "udpc.h"
 #include "udpc_utils.h"
@@ -55,15 +56,32 @@ void test_stuff(char ** argv){
   }
 }
 
+void ensure_directory(char * filepath){
+  char * file1 = strstr(filepath, "/");
+  if(file1 != NULL){
+    size_t cnt = file1 - filepath;
+    char buffer[cnt + 1];
+    memset(buffer, 0, cnt +1);
+    memcpy(buffer,filepath, cnt);
+    mkdir(buffer, 0777);
+    char *cdir = get_current_dir_name();
+    chdir(buffer);
+    ensure_directory(file1 + 1);
+    chdir(cdir);
+  }
+}
+
 int main(int argc, char ** argv){
   signal(SIGINT, handle_sigint);
-  
+
+  char * dir = argv[2];
+  ensure_directory(dir);
+  struct stat dirst;
+  stat(dir, &dirst);
+  ASSERT(S_ISDIR(dirst.st_mode));
+
   if(argc == 3){
     char * servicename = argv[1];
-    char * dir = argv[2];
-    struct stat dirst;
-    stat(dir, &dirst);
-    ASSERT(S_ISDIR(dirst.st_mode));
     dirscan scan_result = scan_directories(dir);
     udpc_service * con = udpc_login(servicename);
     while(!should_close){
@@ -78,7 +96,10 @@ int main(int argc, char ** argv){
 	void * rcv_str = buf;
 	char * st = udpc_unpack_string(&rcv_str);
 	if(strcmp(st, udpc_file_serve_service_name) == 0){
+	  char * cdir = get_current_dir_name();
+	  chdir(dir);
 	  udpc_file_serve(c2, buf);
+	  chdir(cdir);
 	}else if(strcmp(st, udpc_speed_test_service_name) == 0){
 	  udpc_speed_serve(c2, buf);
 	}else if(strcmp(st, udpc_dirscan_service_name) == 0){
@@ -95,8 +116,8 @@ int main(int argc, char ** argv){
     udpc_logout(con);
   }else if(argc == 4){
     char * servicename = argv[1];
-    char * dir = argv[2];
-    UNUSED(dir);UNUSED(servicename);
+
+    UNUSED(servicename);
     char * other_service = argv[3];
     int delay = 40;
     int bufsize = 1000;
@@ -117,17 +138,43 @@ int main(int argc, char ** argv){
       }
       
     }
-    dirscan _dir;
-    int ok = udpc_dirscan_client(con, &_dir);
-    if(ok == -1){
-      loge("Error..\n");
+
+    dirscan local_dir = scan_directories(dir);
+    bool local_found[local_dir.cnt];
+    dirscan ext_dir;
+    int ok = udpc_dirscan_client(con, &ext_dir);
+    int match[ext_dir.cnt];
+    if(ok != -1){
+      for(size_t i = 0; i < ext_dir.cnt; i++){
+	match[i] = -1;
+	char * ext_file = ext_dir.files[i];
+	logd("ext file: %s\n", ext_file);
+	for(size_t j = 0; j < local_dir.cnt; j++){
+	  char * loc_file = local_dir.files[j];
+	  if(strcmp(ext_file, loc_file) == 0){
+	    local_found[j] = true;
+	    match[i] = j;
+	    break;
+	  }
+	}
+      }
+      char * cdir = get_current_dir_name();
+      chdir(dir);
+      for(size_t i = 0; i < ext_dir.cnt; i++){
+	logd("match: %i\n", match[i]);
+	if(match[i] == -1){
+	  logd("Transferring: '%s'\n", ext_dir.files[i]);
+	  ensure_directory(ext_dir.files[i]);
+	  udpc_file_client(con, 1000, 1400, ext_dir.files[i], ext_dir.files[i]);
+	}
+      }
+      for(size_t i = 0; i < local_dir.cnt; i++){
+	logd("Found? %i '%s'\n", local_found[i], local_dir.files[i]);
+      }
+      chdir(cdir);
     }
     udpc_write(con, "asd", sizeof("asd"));
-    for(size_t i = 0; i < _dir.cnt; i++){
-      logd("File: '%20s' ", _dir.files[i]);
-      udpc_print_md5(_dir.md5s[i]);
-      logd("\n");
-    }
+
     udpc_close(con);
     
   }else{
