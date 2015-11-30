@@ -48,6 +48,23 @@ dirscan scan_directories(const char * basedir){
   return ds;
 }
 
+
+void ensure_directory(char * filepath){
+  char * file1 = strstr(filepath, "/");
+  if(file1 != NULL){
+    size_t cnt = file1 - filepath;
+    char buffer[cnt + 1];
+    memset(buffer, 0, cnt +1);
+    memcpy(buffer,filepath, cnt);
+    mkdir(buffer, 0777);
+    char *cdir = get_current_dir_name();
+    chdir(buffer);
+    ensure_directory(file1 + 1);
+    chdir(cdir);
+  }
+}
+
+
 udpc_md5 udpc_file_md5(const char * path){
   FILE * f = fopen(path, "r");
   ASSERT(f != NULL);

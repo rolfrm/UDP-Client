@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 #include <stdarg.h>
 #include <unistd.h> //chdir
+#include <time.h> //difftime
 
 #include "udpc.h"
 #include "udpc_utils.h"
@@ -56,20 +57,7 @@ void test_stuff(char ** argv){
   }
 }
 
-void ensure_directory(char * filepath){
-  char * file1 = strstr(filepath, "/");
-  if(file1 != NULL){
-    size_t cnt = file1 - filepath;
-    char buffer[cnt + 1];
-    memset(buffer, 0, cnt +1);
-    memcpy(buffer,filepath, cnt);
-    mkdir(buffer, 0777);
-    char *cdir = get_current_dir_name();
-    chdir(buffer);
-    ensure_directory(file1 + 1);
-    chdir(cdir);
-  }
-}
+void ensure_directory(char * path);
 
 int main(int argc, char ** argv){
   signal(SIGINT, handle_sigint);
@@ -82,7 +70,6 @@ int main(int argc, char ** argv){
 
   if(argc == 3){
     char * servicename = argv[1];
-    dirscan scan_result = scan_directories(dir);
     udpc_service * con = udpc_login(servicename);
     while(!should_close){
       udpc_connection * c2 = udpc_listen(con);      
@@ -104,7 +91,9 @@ int main(int argc, char ** argv){
 	  udpc_speed_serve(c2, buf);
 	}else if(strcmp(st, udpc_dirscan_service_name) == 0){
 	  logd("Dirscan!\n");
+	  dirscan scan_result  = scan_directories(dir);
 	  udpc_dirscan_serve(c2, scan_result, 1000, 1400, buf);
+	  dirscan_clean(&scan_result);
 	}else{
 	  loge("Unknown service '%s'\n", st);
 	  break;
@@ -163,16 +152,28 @@ int main(int argc, char ** argv){
       for(size_t i = 0; i < ext_dir.cnt; i++){
 	logd("match: %i\n", match[i]);
 	if(match[i] == -1 || false == udpc_md5_compare(ext_dir.md5s[i], local_dir.md5s[match[i]])){
+	  double difft = difftime(ext_dir.last_change[i], local_dir.last_change[match[i]]);
 	  logd("Transferring: '%s'\n", ext_dir.files[i]);
 	  ensure_directory(ext_dir.files[i]);
-	  udpc_file_client(con, 1000, 1400, ext_dir.files[i], ext_dir.files[i]);
+	  if( difft > 0){
+	    logd("Send to local\n");
+	    udpc_file_client(con, 1000, 1400, ext_dir.files[i], ext_dir.files[i]);
+	  }else if (difft < 0){
+	    logd("Send to remote\n");
+	    udpc_file_client2(con, 1000, 1400, ext_dir.files[i], ext_dir.files[i]);
+	  }
 	}
       }
       for(size_t i = 0; i < local_dir.cnt; i++){
+	if(local_found[i] == false){
+	  logd("Sending file back: '%s'\n", local_dir.files[i]);
+	  udpc_file_client2(con, 1000, 1400, local_dir.files[i], local_dir.files[i]);
+	}
 	logd("Found? %i '%s'\n", local_found[i], local_dir.files[i]);
       }
       chdir(cdir);
     }
+    
     udpc_write(con, "asd", sizeof("asd"));
 
     udpc_close(con);
