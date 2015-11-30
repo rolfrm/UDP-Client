@@ -371,6 +371,30 @@ ssl_client * ssl_start_client(int fd, struct sockaddr * remote_addr){
   return cli;
 }
 
+void ssl_set_timeout(ssl_client * cli, int timeout_us){
+  struct timeval timeout;
+  {
+    timeout.tv_sec = timeout_us / 1e6;
+    timeout.tv_usec = timeout_us % 1000000;
+  }
+  BIO_ctrl(SSL_get_rbio(cli->ssl), BIO_CTRL_DGRAM_SET_RECV_TIMEOUT, 0, &timeout);
+}
+
+void ssl_server_set_timeout(ssl_server_con*  con, int timeout_us){
+   struct timeval timeout;
+  {
+    timeout.tv_sec = timeout_us / 1e6;
+    timeout.tv_usec = timeout_us % 1000000;
+  }
+  BIO_ctrl(SSL_get_rbio(con->ssl), BIO_CTRL_DGRAM_SET_RECV_TIMEOUT, 0, &timeout);
+}
+
+int ssl_get_timeout(ssl_client * cli){
+  struct timeval timeout;
+  BIO_ctrl(SSL_get_rbio(cli->ssl), BIO_CTRL_DGRAM_SET_RECV_TIMEOUT, 0, &timeout);
+  return timeout.tv_usec + timeout.tv_sec * 1000000;
+}
+
 void ssl_client_write(ssl_client * cli, const void * buffer, size_t length){
   socklen_t len = SSL_write(cli->ssl, buffer, length);
   ASSERT(SSL_get_error(cli->ssl, len) == SSL_ERROR_NONE);

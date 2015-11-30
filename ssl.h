@@ -18,3 +18,6 @@ void ssl_client_write(ssl_client * cli, const void * buffer, size_t length);
 size_t ssl_client_read(ssl_client * cli, void * buffer, size_t length);
 void ssl_client_heartbeat(ssl_client * cli);
 void ssl_client_close(ssl_client * cli);
+int ssl_get_timeout(ssl_client * cli);
+void ssl_set_timeout(ssl_client * cli, int timeout_us);
+void ssl_server_set_timeout(ssl_server_con * con, int timeout_us);

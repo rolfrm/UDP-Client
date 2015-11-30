@@ -183,6 +183,14 @@ udpc_connection * udpc_connect(const char * service){
   return NULL;
 }
 
+void udpc_set_timeout(udpc_connection * client, int us){
+  if(client->cli != NULL){
+    ssl_set_timeout(client->cli, us);
+  }else if(client->con != NULL){
+    ssl_server_set_timeout(client->con, us);
+  }
+}
+
 void udpc_write(udpc_connection * client, const void * buffer, size_t length){
   if(client->cli != NULL)
     ssl_client_write(client->cli, buffer, length);

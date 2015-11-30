@@ -98,25 +98,26 @@ int main(int argc, char ** argv){
     UNUSED(dir);UNUSED(servicename);
     char * other_service = argv[3];
     int delay = 40;
-    int bufsize = 1500;
+    int bufsize = 1000;
     udpc_connection * con = udpc_connect(other_service);
     // find speed/packagesize
     int test_delay = delay;
-    for(int i = 0; i < 10; i++){
-      logd("Testing connection.. %i\n", i);
+    for(int i = 0; i < 50; i++){
+      logd("%i Testing connection: %i\n", i, test_delay);
       int missed = 0, missed_seqs = 0;
-      udpc_speed_client(con, test_delay, bufsize, 1000, &missed, &missed_seqs);
+      udpc_speed_client(con, test_delay, bufsize, 10000, &missed, &missed_seqs);
+      logd("Missed: %i\n", missed);
       if(missed == 0){
 	delay = test_delay;
 	test_delay = test_delay / 2;
-      }else if(missed < 5){
-	delay = test_delay;
-	break;
+	//}else if(missed < 5){
+	//delay = test_delay;
+	//break;
       }
       else{
 	test_delay = 2 * test_delay;
       }
-      logd("Missed: %i\n", missed);
+      
     }
     udpc_write(con, "asd", sizeof("asd"));
     logd("Delay: %i\n", delay);
