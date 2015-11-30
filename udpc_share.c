@@ -130,6 +130,7 @@ int main(int argc, char ** argv){
 
     dirscan local_dir = scan_directories(dir);
     bool local_found[local_dir.cnt];
+    memset(local_found,0, sizeof(local_found));
     dirscan ext_dir;
     int ok = udpc_dirscan_client(con, &ext_dir);
     int match[ext_dir.cnt];
