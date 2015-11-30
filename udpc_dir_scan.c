@@ -58,6 +58,8 @@ udpc_md5 udpc_file_md5(const char * path){
 }
 
 void dirscan_clean(dirscan * _dirscan){
+  for(size_t i = 0; i < _dirscan->cnt; i++)
+    dealloc(_dirscan->files[i]);
   dealloc(_dirscan->files);
   dealloc(_dirscan->md5s);
   dealloc(_dirscan->last_change);
@@ -74,6 +76,23 @@ static void * dirscan_to_buffer(dirscan _dirscan, size_t * size){
   udpc_pack(_dirscan.last_change, _dirscan.cnt * sizeof(_dirscan.last_change[0]), &ptr, size);
 
   return buffer;
+}
+
+static dirscan dirscan_from_buffer(void * buffer){
+  void * ptr = buffer;
+  size_t cnt = udpc_unpack_size_t(&ptr);
+  char * strs[cnt];
+  for(size_t i = 0; i < cnt;i++){
+    char * str = udpc_unpack_string(&ptr);
+    strs[i] = iron_clone(str, strlen(str) + 1);;
+  }
+  dirscan out;
+  out.cnt = cnt;
+  out.files = iron_clone(strs, sizeof(strs));
+  out.md5s = alloc0(sizeof(out.md5s[0]) * cnt);
+  udpc_unpack(out.md5s, sizeof(out.md5s[0]) * cnt, &ptr);
+  udpc_unpack(out.last_change, sizeof(out.last_change[0]) * cnt, &ptr);
+  return out;
 }
 
 void udpc_dirscan_serve(udpc_connection * con, dirscan last_dirscan,size_t buffer_size, int delay_us, void * read){
@@ -107,6 +126,23 @@ void udpc_dirscan_serve(udpc_connection * con, dirscan last_dirscan,size_t buffe
   udpc_write(con, "ENDENDEND", 10);
 }
 
-void udpc_dirscan_client(udpc_connection * con){
-  UNUSED(con);
+int udpc_dirscan_client(udpc_connection * con, dirscan * dscan){
+  void * buffer = NULL;
+  size_t size = 0;
+  udpc_set_timeout(con, 1000000);
+  while(true){
+    char readbuffer[2000];
+    size_t r = 0;
+    r = udpc_read(con, &readbuffer, sizeof(readbuffer));
+    if(r == 0){
+      loge("Unable to read from stream\n");
+      return -1;
+    }
+    if(strcmp("ENDENDEND", buffer) == 0)
+      break;
+    udpc_pack(readbuffer, r, &buffer, &size);
+  }
+  *dscan = dirscan_from_buffer(buffer);
+  dealloc(buffer);
+  return 0;
 }

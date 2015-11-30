@@ -19,4 +19,5 @@ void udpc_print_md5(udpc_md5 md5);
 void dirscan_clean(dirscan * _dirscan);
 
 void udpc_dirscan_serve(udpc_connection * con, dirscan last_dirscan, size_t buffer_size, int delay_us, void * read);
-void udpc_dirscan_client(udpc_connection * con);
+// returns -1 on error.
+int udpc_dirscan_client(udpc_connection * con, dirscan * dscan);

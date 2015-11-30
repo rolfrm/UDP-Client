@@ -110,14 +110,16 @@ int main(int argc, char ** argv){
       if(missed == 0){
 	delay = test_delay;
 	test_delay = test_delay / 2;
-	//}else if(missed < 5){
-	//delay = test_delay;
-	//break;
       }
       else{
 	test_delay = 2 * test_delay;
       }
       
+    }
+    dirscan _dir;
+    int ok = udpc_dirscan_client(con, &_dir);
+    if(ok == -1){
+      loge("Error..\n");
     }
     udpc_write(con, "asd", sizeof("asd"));
     logd("Delay: %i\n", delay);
