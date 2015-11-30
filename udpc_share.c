@@ -162,7 +162,7 @@ int main(int argc, char ** argv){
       chdir(dir);
       for(size_t i = 0; i < ext_dir.cnt; i++){
 	logd("match: %i\n", match[i]);
-	if(match[i] == -1){
+	if(match[i] == -1 || false == udpc_md5_compare(ext_dir.md5s[i], local_dir.md5s[match[i]])){
 	  logd("Transferring: '%s'\n", ext_dir.files[i]);
 	  ensure_directory(ext_dir.files[i]);
 	  udpc_file_client(con, 1000, 1400, ext_dir.files[i], ext_dir.files[i]);

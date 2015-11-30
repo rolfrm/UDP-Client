@@ -17,8 +17,6 @@
 #include "udpc_utils.h"
 #include "udpc_dir_scan.h"
 
-
-
 const char * udpc_dirscan_service_name = "UDPC_DIRSCAN";
 
 void udpc_print_md5(udpc_md5 md5){
@@ -62,6 +60,13 @@ udpc_md5 udpc_file_md5(const char * path){
   udpc_md5 digest;
   MD5_Final(digest.md5, &md5);
   return digest;
+}
+
+bool udpc_md5_compare(udpc_md5 a, udpc_md5 b){
+  for(size_t i = 0; i < array_count(a.md5); i++)
+    if(a.md5[i] != b.md5[i])
+      return false;
+  return true;
 }
 
 void dirscan_clean(dirscan * _dirscan){
