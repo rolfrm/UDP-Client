@@ -115,6 +115,7 @@ void _receive_file(udpc_connection * c2, char * filepath, int buffer_size){
     }
     current = seq;
   }
+  logd("Current vs num chunks: %i %i\n", current, num_chunks);
   
   while(missing_cnt != 0){
     missing_cnt /= sizeof(missing_seq);
