@@ -67,7 +67,7 @@ static void _send_file(udpc_connection * c2, char * filepath, int delay, int buf
     size_t cnt = mis.cnt;
     fseeko(file, offset, SEEK_SET);
     for(size_t _i = 0; _i < cnt; _i++){
-      int i = mis.start + i;
+      int i = mis.start + _i;
       memcpy(buffer, &i, sizeof(i));
       size_t read = fread(buffer + sizeof(i), 1, buffer_size - sizeof(i), file);
       //logd("sending chunk: %i %i\n", read, i);
@@ -146,9 +146,10 @@ void _receive_file(udpc_connection * c2, char * filepath, int buffer_size){
 	fwrite(buffer, 1, r, file);
 	if(seq != current + 1){
 	  logd("This happens.. %i %i\n", seq, current);
-	  //missing_seq seq2 = {current + 1, seq - current - 1};
-	  //udpc_pack(&seq2, sizeof(seq2), (void **) &missing, &missing_cnt);
+	  missing_seq seq2 = {current + 1, seq - current - 1};
+	  udpc_pack(&seq2, sizeof(seq2), (void **) &missing, &missing_cnt);
 	}
+	current = seq;
       }
     }
     if(missing2 != NULL)
