@@ -158,17 +158,17 @@ int main(int argc, char ** argv){
 	  ensure_directory(ext_dir.files[i]);
 	  if( difft > 0){
 	    logd("Send to local\n");
-	    udpc_file_client(con, 1000, 1400, ext_dir.files[i], ext_dir.files[i]);
+	    udpc_file_client(con, delay, 1400, ext_dir.files[i], ext_dir.files[i]);
 	  }else if (difft < 0){
 	    logd("Send to remote\n");
-	    udpc_file_client2(con, 1000, 1400, ext_dir.files[i], ext_dir.files[i]);
+	    udpc_file_client2(con, delay, 1400, ext_dir.files[i], ext_dir.files[i]);
 	  }
 	}
       }
       for(size_t i = 0; i < local_dir.cnt; i++){
 	if(local_found[i] == false){
 	  logd("Sending file back: '%s'\n", local_dir.files[i]);
-	  udpc_file_client2(con, 1000, 1400, local_dir.files[i], local_dir.files[i]);
+	  udpc_file_client2(con, delay, 1400, local_dir.files[i], local_dir.files[i]);
 	}
 	logd("Found? %i '%s'\n", local_found[i], local_dir.files[i]);
       }
