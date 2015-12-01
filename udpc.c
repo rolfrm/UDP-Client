@@ -319,7 +319,7 @@ static void * connection_handle(void * _info) {
   return NULL;
 }
 
-void udpc_start_server(char *local_address) {
+void udpc_start_server(const char *local_address) {
   pthread_t tid;
   service_server server;
   server.service_cnt = 0;

@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdint.h>
-
+#include <time.h>
 #include <iron/types.h>
 #include <iron/log.h>
 #include <iron/time.h>
@@ -11,11 +11,12 @@
 
 #include "udpc.h"
 #include "udpc_utils.h"
+#include "udpc_dir_scan.h"
 
 #include "udpc_send_file.h"
 
 const char * udpc_file_serve_service_name = "UDPC_FILE_SERVE";
-void ensure_directory(char * fp);
+
 static void _send_file(udpc_connection * c2, char * filepath, int delay, int buffer_size){
   FILE * file = fopen(filepath, "r");
   if(file == NULL){

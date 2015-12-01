@@ -38,4 +38,4 @@ void udpc_push_error(const char * error);
 char * udpc_pop_error();
 
 // Server APx
-void udpc_start_server(char * local_address);
+void udpc_start_server(const char * local_address);

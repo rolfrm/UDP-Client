@@ -26,3 +26,6 @@ void dirscan_clean(dirscan * _dirscan);
 void udpc_dirscan_serve(udpc_connection * con, dirscan last_dirscan, size_t buffer_size, int delay_us, void * read);
 // returns -1 on error.
 int udpc_dirscan_client(udpc_connection * con, dirscan * dscan);
+
+void ensure_directory(char * fp);
+

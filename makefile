@@ -5,20 +5,21 @@ TARGET = libudpc.so
 LIB_OBJECTS =$(LIB_SOURCES:.c=.o)
 LDFLAGS= -L. $(OPT) -Wextra #-lmcheck #-ftlo #setrlimit on linux 
 LIBS= -ldl -lm -lssl -lcrypto -lpthread
-
+ALL= $(TARGET) server rpc speed file share
 CFLAGS = -I.. -std=c11 -c $(OPT) -Wall -Wextra -Werror=implicit-function-declaration -Wformat=0 -D_GNU_SOURCE -fdiagnostics-color -Wextra -Werror -Wwrite-strings #-DDEBUG
-
 
 $(TARGET): $(LIB_OBJECTS)
 	$(CC) $(LDFLAGS) $(LIB_OBJECTS) $(LIBS) --shared -o $@
 
-all: $(TARGET) server rpc speed file share
+all: $(ALL)
 
 .c.o: $(HEADERS)
 	$(CC) $(CFLAGS) -fPIC $< -o $@ -MMD -MF $@.depends 
 depend: h-depend
 clean:
-	rm $(LIB_OBJECTS) $(TARGET) *.o.depends
+	rm -f $(LIB_OBJECTS) $(ALL) *.o.depends
+	rm -f main.o udpc_get.o udpc_speed_test.o udpc_file.o udpc_share.o
+
 -include $(LIB_OBJECTS:.o=.o.depends)
 
 server: $(TARGET) main.o
