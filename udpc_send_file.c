@@ -54,6 +54,7 @@ static void _send_file(udpc_connection * c2, char * filepath, int delay, int buf
   while(true){
     size_t r = udpc_read(c2, buffer, sizeof(buffer));
     ASSERT(r > 0);
+    logd("Missing: %i\n", r);
     if(r >= 3 && strncmp(buffer, "OK",3) == 0)
       break;
     void * ptr = buffer;
@@ -63,12 +64,14 @@ static void _send_file(udpc_connection * c2, char * filepath, int delay, int buf
     size_t cnt = mis.cnt;
     fseeko(file, offset, SEEK_SET);
     for(size_t i = 0; i < cnt; i++){
+      logd("sending chunk: %i %i\n", r, i);
       memcpy(buffer, &i, sizeof(i));
       size_t read = fread(buffer + sizeof(i), 1, buffer_size - sizeof(i), file);
       if(delay > 0)
 	iron_usleep(delay);
       udpc_write(c2, buffer, read + sizeof(i));
     }
+    udpc_write(c2, "ENDENDEND", 10);
   }
   fclose(file);
 }
@@ -89,8 +92,6 @@ void _receive_file(udpc_connection * c2, char * filepath, int buffer_size){
   }
   logd("File size: %i, Number of chunks: %i\n", file_size, num_chunks);
   int current = -1;
-  
-
   
   missing_seq * missing = NULL;
   size_t missing_cnt = 0;
@@ -120,6 +121,11 @@ void _receive_file(udpc_connection * c2, char * filepath, int buffer_size){
       int current = missing2[i].start - 1;
       while(true){
 	size_t r = udpc_read(c2, buffer, buffer_size);
+	if(strncmp(buffer, "ENDENDEND", sizeof("ENDENDEND"))){
+	  logd("Got end..\n");
+	  break;
+	}
+	logd("received chunk.. %i\n", r);
 	void * ptr = buffer;
 	int seq = udpc_unpack_int(&ptr);
 	off_t offset = seq * (buffer_size - sizeof(int));
