@@ -55,7 +55,7 @@ static void _send_file(udpc_connection * c2, char * filepath, int delay, int buf
   delay = 10000;
   while(true){
     size_t r = udpc_read(c2, buffer, sizeof(buffer));
-    ASSERT(r > 0);
+    ASSERT(r > 0 &&  r != (size_t)-1);
     logd("Missing: %i\n", r);
     if(r >= 3 && strncmp(buffer, "OK",3) == 0)
       break;
@@ -70,7 +70,7 @@ static void _send_file(udpc_connection * c2, char * filepath, int delay, int buf
 
       memcpy(buffer, &i, sizeof(i));
       size_t read = fread(buffer + sizeof(i), 1, buffer_size - sizeof(i), file);
-      logd("sending chunk: %i %i\n", read, i);
+      //logd("sending chunk: %i %i\n", read, i);
       if(delay > 0)
 	iron_usleep(delay);
       udpc_write(c2, buffer, read + sizeof(i));
