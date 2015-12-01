@@ -60,6 +60,7 @@ static void _send_file(udpc_connection * c2, char * filepath, int delay, int buf
     void * ptr = buffer;
     missing_seq mis;
     udpc_unpack(&mis, sizeof(missing_seq), &ptr);
+    logd("Got missing seq %i %i\n", mis.start, mis.cnt);
     off_t offset = mis.start * (buffer_size - sizeof(int));
     size_t cnt = mis.cnt;
     fseeko(file, offset, SEEK_SET);
@@ -117,7 +118,9 @@ void _receive_file(udpc_connection * c2, char * filepath, int buffer_size){
     missing_cnt = 0;
     missing = NULL;
     for(size_t i = 0; i < missing_cnt2; i++){
-      udpc_write(c2, missing2 + i, sizeof(missing_seq));
+      missing_seq m = missing2[i];
+      logd("Sending missing seq %i %i\n", m.start, m.cnt);
+      udpc_write(c2, &m, sizeof(m));
       int current = missing2[i].start - 1;
       while(true){
 	size_t r = udpc_read(c2, buffer, buffer_size);
