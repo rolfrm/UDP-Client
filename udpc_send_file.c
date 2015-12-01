@@ -107,12 +107,13 @@ void _receive_file(udpc_connection * c2, char * filepath, int buffer_size){
       break;
     void * ptr = buffer;
     int seq = udpc_unpack_int(&ptr);
-    fwrite(ptr,1,r - sizeof(seq), file);
     if(current + 1 != seq){
       // handle missed package
       missing_seq seq2 = {current + 1, seq - current - 1};
       udpc_pack(&seq2, sizeof(seq2), (void **) &missing, &missing_cnt);
+      fseeko(file, seq * (buffer_size - sizeof(int)), SEEK_SET);
     }
+    fwrite(ptr,1,r - sizeof(int), file);
     current = seq;
   }
   if(current+1 < num_chunks){
