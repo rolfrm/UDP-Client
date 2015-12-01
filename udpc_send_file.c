@@ -75,7 +75,7 @@ void _receive_file(udpc_connection * c2, char * filepath, int buffer_size){
   }missing_seq;
   
   missing_seq * missing = NULL;
-  size_t missing_cnt;
+  size_t missing_cnt = 0;
   while(true){
     size_t r = udpc_read(c2, buffer, sizeof(buffer));
     if(r == 0) break;
@@ -92,8 +92,29 @@ void _receive_file(udpc_connection * c2, char * filepath, int buffer_size){
     current = seq;
   }
   while(missing_cnt != 0){
-    logd("Missing: %i\n", missing_cnt);
-    dealloc(missing);
+    size_t missing_cnt2 = missing_cnt;
+    logd("Missing: %i\n", missing_cnt2);
+    missing_seq * missing2 = missing;
+    missing_cnt = 0;
+    missing = NULL;
+    for(size_t i = 0; i < missing_cnt2; i++){
+      udpc_write(c2, missing2 + i, sizeof(missing_seq));
+      int current = missing2[i].start - 1;
+      while(true){
+	size_t r = udpc_read(c2, buffer, buffer_size);
+	
+	void * ptr = buffer;
+	int seq = udpc_unpack_int(&ptr);
+	off_t offset = seq * (buffer_size - sizeof(int));
+	fseeko(file, offset, SEEK_SET);
+	fwrite(buffer, 1, r, file);
+	if(seq != current + 1){
+	  missing_seq seq2 = {current + 1, seq - current - 1};
+	  udpc_pack(&seq2, sizeof(seq2), (void **) &missing, &missing_cnt);
+	}
+      }
+    }
+    dealloc(missing2);
   }
   udpc_write(c2, "OK", sizeof("OK"));
 }
