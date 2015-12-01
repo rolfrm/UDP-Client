@@ -75,7 +75,7 @@ void _receive_file(udpc_connection * c2, char * filepath, int buffer_size){
   }missing_seq;
   
   missing_seq * missing = NULL;
-  
+  size_t missing_cnt;
   while(true){
     size_t r = udpc_read(c2, buffer, sizeof(buffer));
     if(r == 0) break;
@@ -86,8 +86,14 @@ void _receive_file(udpc_connection * c2, char * filepath, int buffer_size){
     fwrite(ptr,1,r - sizeof(seq), file);
     if(current + 1 != seq){
       // handle missed package
+      missing_seq seq2 = {current + 1, seq - current - 1};
+      udpc_pack(&seq2, sizeof(seq2), (void **) &missing, &missing_cnt);
     }
     current = seq;
+  }
+  while(missing_cnt != 0){
+    logd("Missing: %i\n", missing_cnt);
+    dealloc(missing);
   }
   udpc_write(c2, "OK", sizeof("OK"));
 }
