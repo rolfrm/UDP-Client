@@ -41,7 +41,6 @@ dirscan scan_directories(const char * basedir){
     return 0;
   }
   char * cdir = get_current_dir_name();
-  logd("Currentdir: '%s'\n", cdir);
   chdir(basedir);
   ftw(".", ftwf, 100);
   chdir(cdir);
@@ -49,7 +48,7 @@ dirscan scan_directories(const char * basedir){
 }
 
 
-void ensure_directory(char * filepath){
+void ensure_directory(const char * filepath){
   char * file1 = strstr(filepath, "/");
   if(file1 != NULL){
     size_t cnt = file1 - filepath;

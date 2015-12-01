@@ -27,5 +27,6 @@ void udpc_dirscan_serve(udpc_connection * con, dirscan last_dirscan, size_t buff
 // returns -1 on error.
 int udpc_dirscan_client(udpc_connection * con, dirscan * dscan);
 
-void ensure_directory(char * fp);
+// Ensures that the directory for the file path fp exists.
+void ensure_directory(const char * fp);
 
