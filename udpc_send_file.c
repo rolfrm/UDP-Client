@@ -66,8 +66,8 @@ static void _send_file(udpc_connection * c2, char * filepath, int delay, int buf
     off_t offset = mis.start * (buffer_size - sizeof(int));
     size_t cnt = mis.cnt;
     fseeko(file, offset, SEEK_SET);
-    for(size_t i = 0; i < cnt; i++){
-
+    for(size_t _i = 0; _i < cnt; _i++){
+      int i = mis.start + i;
       memcpy(buffer, &i, sizeof(i));
       size_t read = fread(buffer + sizeof(i), 1, buffer_size - sizeof(i), file);
       //logd("sending chunk: %i %i\n", read, i);
@@ -115,15 +115,20 @@ void _receive_file(udpc_connection * c2, char * filepath, int buffer_size){
     }
     current = seq;
   }
+  
   while(missing_cnt != 0){
+    missing_cnt /= sizeof(missing_seq);
     size_t missing_cnt2 = missing_cnt;
     logd("Missing: %i\n", missing_cnt2);
+    for(size_t i = 0; i < missing_cnt; i++){
+      logd("%i: %i %i\n", i, missing[i].start, missing[i].cnt);
+    }
     missing_seq * missing2 = missing;
     missing_cnt = 0;
     missing = NULL;
     for(size_t i = 0; i < missing_cnt2; i++){
       missing_seq m = missing2[i];
-      logd("Sending missing seq %i %i\n", m.start, m.cnt);
+      logd("Sending missing seq %i/%i %i %i\n",i,missing_cnt2, m.start, m.cnt);
       udpc_write(c2, &m, sizeof(m));
       iron_usleep(1000);
       int current = missing2[i].start - 1;
@@ -140,12 +145,14 @@ void _receive_file(udpc_connection * c2, char * filepath, int buffer_size){
 	fseeko(file, offset, SEEK_SET);
 	fwrite(buffer, 1, r, file);
 	if(seq != current + 1){
-	  missing_seq seq2 = {current + 1, seq - current - 1};
-	  udpc_pack(&seq2, sizeof(seq2), (void **) &missing, &missing_cnt);
+	  logd("This happens.. %i %i\n", seq, current);
+	  //missing_seq seq2 = {current + 1, seq - current - 1};
+	  //udpc_pack(&seq2, sizeof(seq2), (void **) &missing, &missing_cnt);
 	}
       }
     }
-    dealloc(missing2);
+    if(missing2 != NULL)
+      dealloc(missing2);
   }
   udpc_write(c2, "OK", sizeof("OK"));
   fclose(file);
