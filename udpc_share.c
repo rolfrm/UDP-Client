@@ -57,7 +57,7 @@ void test_stuff(char ** argv){
   }
 }
 
-void ensure_directory(char * path);
+void ensure_directory(const char * path);
 
 int main(int argc, char ** argv){
   signal(SIGINT, handle_sigint);
@@ -153,7 +153,7 @@ int main(int argc, char ** argv){
       for(size_t i = 0; i < ext_dir.cnt; i++){
 	logd("match: %i\n", match[i]);
 	if(match[i] == -1 || false == udpc_md5_compare(ext_dir.md5s[i], local_dir.md5s[match[i]])){
-	  double difft = difftime(ext_dir.last_change[i], local_dir.last_change[match[i]]);
+	  double difft = (match[i] == -1) ? 1 : (difftime(ext_dir.last_change[i], local_dir.last_change[match[i]]));
 	  logd("Transferring: '%s'\n", ext_dir.files[i]);
 	  ensure_directory(ext_dir.files[i]);
 	  if( difft > 0){

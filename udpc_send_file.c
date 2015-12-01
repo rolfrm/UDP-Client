@@ -24,32 +24,61 @@ static void _send_file(udpc_connection * c2, char * filepath, int delay, int buf
     udpc_close(c2);
     return;
   }
+  { // send file and buffer size
+    fseek(file, 0, SEEK_END);
+    size_t file_size = ftello(file);
+    fseek(file, 0, SEEK_SET);
+    void * bufptr = NULL;
+    size_t bufptr_size = 0;
+    udpc_pack_size_t(file_size, &bufptr, &bufptr_size);
+    udpc_pack_size_t(file_size / (buffer_size - sizeof(int)), &bufptr, &bufptr_size);
+    udpc_write(c2, bufptr, bufptr_size);
+  }
+  
   char buffer[buffer_size];
-
   for(int i = 0; true; i++){
     memcpy(buffer, &i, sizeof(i));
     size_t read = fread(buffer + sizeof(i), 1, buffer_size - sizeof(i), file);
+    if(delay > 0)
+      iron_usleep(delay);
     if(read == 0)
       break;
     udpc_write(c2, buffer, read + sizeof(i));
-    if(delay > 0)
-      iron_usleep(delay);
   }
   iron_usleep(10000);
   udpc_write(c2, "ENDENDEND", 10);
+  size_t r = udpc_read(c2, buffer, sizeof(buffer));
+  ASSERT(r > 0);
+  if(strcmp(buffer, "OK") == 0)
+    return;
 }
 
 void _receive_file(udpc_connection * c2, char * filepath, int buffer_size){
   ensure_directory(filepath);
   FILE * file = fopen(filepath, "w");
   ASSERT(file != NULL);
+  udpc_set_timeout(c2, 1000000);
   char buffer[buffer_size];
+  size_t file_size;
+  int num_chunks;
+  { // get file size/number of chunks.
+    void *bufptr = buffer;
+    udpc_read(c2, buffer, sizeof(buffer));
+    file_size = udpc_unpack_size_t(&bufptr);
+    num_chunks = udpc_unpack_int(&bufptr);
+  }
+  logd("File size: %i, Number of chunks: %i\n", file_size, num_chunks);
   int current = -1;
+  typedef struct{
+    int start;
+    int cnt;
+  }missing_seq;
+  
+  missing_seq * missing = NULL;
+  
   while(true){
-    size_t r = 0;
-    while(r == 0)
-      r = udpc_read(c2, buffer, sizeof(buffer));
-
+    size_t r = udpc_read(c2, buffer, sizeof(buffer));
+    if(r == 0) break;
     if(strcmp("ENDENDEND", buffer) == 0)
       break;
     void * ptr = buffer;
@@ -60,6 +89,7 @@ void _receive_file(udpc_connection * c2, char * filepath, int buffer_size){
     }
     current = seq;
   }
+  udpc_write(c2, "OK", sizeof("OK"));
 }
 
 void udpc_file_serve(udpc_connection * c2, void * ptr){
