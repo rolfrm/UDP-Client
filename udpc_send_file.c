@@ -115,7 +115,10 @@ void _receive_file(udpc_connection * c2, char * filepath, int buffer_size){
     }
     current = seq;
   }
-  logd("Current vs num chunks: %i %i\n", current, num_chunks);
+  if(current+1 < num_chunks){
+    missing_seq seq2 = {current + 1, num_chunks - current - 1};
+    udpc_pack(&seq2, sizeof(seq2), (void **) &missing, &missing_cnt);
+  }
   
   while(missing_cnt != 0){
     missing_cnt /= sizeof(missing_seq);
