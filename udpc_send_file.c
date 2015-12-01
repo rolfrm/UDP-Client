@@ -49,7 +49,7 @@ static void _send_file(udpc_connection * c2, char * filepath, int delay, int buf
       break;
     udpc_write(c2, buffer, read + sizeof(i));
   }
-  iron_usleep(10000);
+  iron_usleep(delay * 10);
   udpc_write(c2, "ENDENDEND", 10);
   while(true){
     size_t r = udpc_read(c2, buffer, sizeof(buffer));
@@ -72,6 +72,7 @@ static void _send_file(udpc_connection * c2, char * filepath, int delay, int buf
 	iron_usleep(delay);
       udpc_write(c2, buffer, read + sizeof(i));
     }
+    iron_usleep(delay * 10);
     udpc_write(c2, "ENDENDEND", 10);
   }
   fclose(file);
