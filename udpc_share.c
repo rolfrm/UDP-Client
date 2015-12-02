@@ -84,9 +84,9 @@ int main(int argc, char ** argv){
 	char * st = udpc_unpack_string(&rcv_str);
 	if(strcmp(st, udpc_file_serve_service_name) == 0){
 	  char * cdir = get_current_dir_name();
-	  chdir(dir);
+	  ASSERT(0 == chdir(dir));
 	  udpc_file_serve(c2, buf);
-	  chdir(cdir);
+	  ASSERT(0 == chdir(cdir));
 	}else if(strcmp(st, udpc_speed_test_service_name) == 0){
 	  udpc_speed_serve(c2, buf);
 	}else if(strcmp(st, udpc_dirscan_service_name) == 0){
@@ -109,14 +109,14 @@ int main(int argc, char ** argv){
     UNUSED(servicename);
     char * other_service = argv[3];
     int delay = 40;
-    int bufsize = 1000;
+    int bufsize = 1400;
     udpc_connection * con = udpc_connect(other_service);
     // find speed/packagesize
     int test_delay = delay;
     for(int i = 0; i < 10; i++){
       logd("%i Testing connection: %i\n", i, test_delay);
       int missed = 0, missed_seqs = 0;
-      udpc_speed_client(con, test_delay, bufsize, 10000, &missed, &missed_seqs);
+      udpc_speed_client(con, test_delay, bufsize, 1000, &missed, &missed_seqs);
       logd("Missed: %i\n", missed);
       if(missed == 0){
 	delay = test_delay;
@@ -150,7 +150,7 @@ int main(int argc, char ** argv){
       }
       delay = 0;
       char * cdir = get_current_dir_name();
-      chdir(dir);
+      ASSERT(0 == chdir(dir));
       for(size_t i = 0; i < ext_dir.cnt; i++){
 	logd("match: %i\n", match[i]);
 	if(match[i] == -1 || false == udpc_md5_compare(ext_dir.md5s[i], local_dir.md5s[match[i]])){
@@ -173,7 +173,7 @@ int main(int argc, char ** argv){
 	}
 	logd("Found? %i '%s'\n", local_found[i], local_dir.files[i]);
       }
-      chdir(cdir);
+      ASSERT(0 == chdir(cdir));
     }
     
     udpc_write(con, "asd", sizeof("asd"));
