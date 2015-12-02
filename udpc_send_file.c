@@ -61,23 +61,18 @@ static void _send_file(udpc_connection * c2, char * filepath, int delay, int buf
     if( r == (size_t)-1){
       break;
     }
-    logd("Missing: %i\n", r);
     if(r == 3 && strncmp(buffer, "OK",3) == 0)
       break;
     void * ptr = buffer;
     missing_seq mis;
     udpc_unpack(&mis, sizeof(missing_seq), &ptr);
-    logd("Got missing seq %i %i\n", mis.start, mis.cnt);
     off_t offset = mis.start * (buffer_size - sizeof(int));
-    logd("OFFSET: %i %i\n", offset, buffer_size);
     size_t cnt = mis.cnt;
     fseeko(file, offset, SEEK_SET);
     for(size_t _i = 0; _i < cnt; _i++){
       int i = mis.start + _i;
       memcpy(buffer, &i, sizeof(i));
       size_t read = fread(buffer + sizeof(i), 1, buffer_size - sizeof(i), file);
-      logd("sending chunk: %i %i\n", read, i);
-      logd("buffer: %2x %2x %2x %2x\n", buffer[4], buffer[5], buffer[6], buffer[7]);
       if(delay > 0)
 	iron_usleep(delay);
       if(rand() % 2 != 0)
@@ -132,10 +127,10 @@ void _receive_file(udpc_connection * c2, char * filepath, int buffer_size){
   while(missing_cnt != 0){
     missing_cnt /= sizeof(missing_seq);
     size_t missing_cnt2 = missing_cnt;
-    logd("Missing: %i\n", missing_cnt2);
-    for(size_t i = 0; i < missing_cnt; i++){
-      logd("%i: %i %i\n", i, missing[i].start, missing[i].cnt);
-    }
+    //logd("Missing: %i\n", missing_cnt2);
+    //for(size_t i = 0; i < missing_cnt; i++){
+    //  logd("%i: %i %i\n", i, missing[i].start, missing[i].cnt);
+    //}
     missing_seq * missing2 = missing;
     missing_cnt = 0;
     missing = NULL;
@@ -148,7 +143,7 @@ void _receive_file(udpc_connection * c2, char * filepath, int buffer_size){
       while(true){
 	size_t r = udpc_read(c2, buffer, buffer_size);
 	if(r == 10 && strncmp(buffer, "ENDENDEND", 0) == 0){
-	  logd("Got end..\n");
+	  //logd("Got end..\n");
 	  break;
 	}
 
@@ -156,19 +151,19 @@ void _receive_file(udpc_connection * c2, char * filepath, int buffer_size){
 	int seq = udpc_unpack_int(&ptr);
 
 	off_t offset = seq * (buffer_size - sizeof(int));
-	logd("received chunk.. %i %i %i\n", r, seq, offset);
-	logd("buffer: %2x %2x %2x %2x\n", buffer[4], buffer[5], buffer[6], buffer[7]);
+	//logd("received chunk.. %i %i %i\n", r, seq, offset);
+	//logd("buffer: %2x %2x %2x %2x\n", buffer[4], buffer[5], buffer[6], buffer[7]);
 	fseeko(file, offset, SEEK_SET);
 	fwrite(ptr, 1, r - sizeof(int), file);
 	if(seq != current + 1){
-	  logd("This happens.. %i %i\n", seq, current);
+	  //logd("This happens.. %i %i\n", seq, current);
 	  missing_seq seq2 = {current + 1, seq - current - 1};
 	  udpc_pack(&seq2, sizeof(seq2), (void **) &missing, &missing_cnt);
 	}
 	current = seq;
       }
       if(current+1 < m.start + m.cnt){
-	logd("This happens too: %i %i %i\n", current, m.start, m.cnt);
+	//logd("This happens too: %i %i %i\n", current, m.start, m.cnt);
 	missing_seq seq2 = {current + 1, m.cnt + m.start - current - 1};
 	udpc_pack(&seq2, sizeof(seq2), (void **) &missing, &missing_cnt);
       }
