@@ -48,8 +48,9 @@ static void _send_file(udpc_connection * c2, char * filepath, int delay, int buf
       iron_usleep(delay);
     if(read == 0)
       break;
-    if(i > 8 || i < 2)
-      udpc_write(c2, buffer, read + sizeof(i));
+    if(i > 50 || i < 2 )
+      if(rand() % 50 != 0)
+	udpc_write(c2, buffer, read + sizeof(i));
   }
   iron_usleep(delay * 10);
   udpc_write(c2, "ENDENDEND", 10);
@@ -57,9 +58,11 @@ static void _send_file(udpc_connection * c2, char * filepath, int delay, int buf
   delay = 10000;
   while(true){
     size_t r = udpc_read(c2, buffer, sizeof(buffer));
-    ASSERT(r > 0 &&  r != (size_t)-1);
+    if( r == (size_t)-1){
+      break;
+    }
     logd("Missing: %i\n", r);
-    if(r >= 3 && strncmp(buffer, "OK",3) == 0)
+    if(r == 3 && strncmp(buffer, "OK",3) == 0)
       break;
     void * ptr = buffer;
     missing_seq mis;
@@ -107,7 +110,7 @@ void _receive_file(udpc_connection * c2, char * filepath, int buffer_size){
   size_t missing_cnt = 0;
   while(true){
     size_t r = udpc_read(c2, buffer, sizeof(buffer));
-    if(r == 0) break;
+    if(r == 0 || r == (size_t) -1) break;
     if(strcmp("ENDENDEND", buffer) == 0)
       break;
     void * ptr = buffer;
@@ -163,6 +166,11 @@ void _receive_file(udpc_connection * c2, char * filepath, int buffer_size){
 	  udpc_pack(&seq2, sizeof(seq2), (void **) &missing, &missing_cnt);
 	}
 	current = seq;
+      }
+      if(current+1 < m.start + m.cnt){
+	logd("This happens too: %i %i %i\n", current, m.start, m.cnt);
+	missing_seq seq2 = {current + 1, m.cnt + m.start - current - 1};
+	udpc_pack(&seq2, sizeof(seq2), (void **) &missing, &missing_cnt);
       }
     }
     if(missing2 != NULL)
