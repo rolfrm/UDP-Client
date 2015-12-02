@@ -1,4 +1,4 @@
-OPT = -g3 -O0
+OPT = -g0 -O4
 LIB_SOURCES = udpc.c udp.c ssl.c ../iron/mem.c ../iron/array.c ../iron/math.c service_descriptor.c ../iron/time.c udpc_utils.c udpc_stream_check.c udpc_send_file.c udpc_dir_scan.c ../iron/log.c
 CC = gcc
 TARGET = libudpc.so

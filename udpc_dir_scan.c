@@ -41,9 +41,11 @@ dirscan scan_directories(const char * basedir){
     return 0;
   }
   char * cdir = get_current_dir_name();
-  chdir(basedir);
+  ASSERT(0 == chdir(basedir));
+  
   ftw(".", ftwf, 100);
-  chdir(cdir);
+  ASSERT(0 == chdir(cdir));
+
   return ds;
 }
 
@@ -57,9 +59,9 @@ void ensure_directory(const char * filepath){
     memcpy(buffer,filepath, cnt);
     mkdir(buffer, 0777);
     char *cdir = get_current_dir_name();
-    chdir(buffer);
+    ASSERT(0 == chdir(buffer));
     ensure_directory(file1 + 1);
-    chdir(cdir);
+    ASSERT(0 == chdir(cdir));
   }
 }
 

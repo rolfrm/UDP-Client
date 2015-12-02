@@ -116,7 +116,7 @@ int main(int argc, char ** argv){
     for(int i = 0; i < 10; i++){
       logd("%i Testing connection: %i\n", i, test_delay);
       int missed = 0, missed_seqs = 0;
-      udpc_speed_client(con, test_delay, bufsize, 1000, &missed, &missed_seqs);
+      udpc_speed_client(con, test_delay, bufsize, 10000, &missed, &missed_seqs);
       logd("Missed: %i\n", missed);
       if(missed == 0){
 	delay = test_delay;
