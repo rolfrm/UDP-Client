@@ -46,17 +46,13 @@ static void _send_file(udpc_connection * c2, char * filepath, int delay, int buf
   for(int i = 0; true; i++){
     memcpy(buffer, &i, sizeof(i));
     size_t read = fread(buffer + sizeof(i), 1, buffer_size - sizeof(i), file);
-    if(delay > 0)
-      iron_usleep(delay);
+    iron_usleep(delay);
     if(read == 0)
       break;
-    //if((i > 50 || i < 2) && (size_t) i < n_segments - 10)
-      //if(rand() % 50 != 0)
     udpc_write(c2, buffer, read + sizeof(i));
   }
-  iron_usleep(delay * 10);
+  iron_usleep(delay * 10 + 1000);
   udpc_write(c2, "ENDENDEND", 10);
-  iron_usleep(10000);
   delay *= 2;
   while(true){
     size_t r = udpc_read(c2, buffer, sizeof(buffer));
@@ -75,12 +71,10 @@ static void _send_file(udpc_connection * c2, char * filepath, int delay, int buf
       int i = mis.start + _i;
       memcpy(buffer, &i, sizeof(i));
       size_t read = fread(buffer + sizeof(i), 1, buffer_size - sizeof(i), file);
-      if(delay > 0)
-	iron_usleep(delay);
-      //if(rand() % 2 != 0)
+      iron_usleep(delay);
       udpc_write(c2, buffer, read + sizeof(i));
     }
-    iron_usleep(delay * 10);
+    iron_usleep(delay * 10 + 1000);
     udpc_write(c2, "ENDENDEND", 10);
   }
   fclose(file);
