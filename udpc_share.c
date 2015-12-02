@@ -148,7 +148,7 @@ int main(int argc, char ** argv){
 	  }
 	}
       }
-      delay = 10000;
+      delay = 10;
       char * cdir = get_current_dir_name();
       chdir(dir);
       for(size_t i = 0; i < ext_dir.cnt; i++){

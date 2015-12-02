@@ -1,5 +1,6 @@
 // simple library to userspace UDPC lib to test connection speed.
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
 #include <stdint.h>
@@ -47,7 +48,8 @@ static void _send_file(udpc_connection * c2, char * filepath, int delay, int buf
       iron_usleep(delay);
     if(read == 0)
       break;
-    udpc_write(c2, buffer, read + sizeof(i));
+    if(i > 8 || i < 2)
+      udpc_write(c2, buffer, read + sizeof(i));
   }
   iron_usleep(delay * 10);
   udpc_write(c2, "ENDENDEND", 10);
@@ -64,16 +66,19 @@ static void _send_file(udpc_connection * c2, char * filepath, int delay, int buf
     udpc_unpack(&mis, sizeof(missing_seq), &ptr);
     logd("Got missing seq %i %i\n", mis.start, mis.cnt);
     off_t offset = mis.start * (buffer_size - sizeof(int));
+    logd("OFFSET: %i %i\n", offset, buffer_size);
     size_t cnt = mis.cnt;
     fseeko(file, offset, SEEK_SET);
     for(size_t _i = 0; _i < cnt; _i++){
       int i = mis.start + _i;
       memcpy(buffer, &i, sizeof(i));
       size_t read = fread(buffer + sizeof(i), 1, buffer_size - sizeof(i), file);
-      //logd("sending chunk: %i %i\n", read, i);
+      logd("sending chunk: %i %i\n", read, i);
+      logd("buffer: %2x %2x %2x %2x\n", buffer[4], buffer[5], buffer[6], buffer[7]);
       if(delay > 0)
 	iron_usleep(delay);
-      udpc_write(c2, buffer, read + sizeof(i));
+      if(rand() % 2 != 0)
+	udpc_write(c2, buffer, read + sizeof(i));
     }
     iron_usleep(delay * 10);
     udpc_write(c2, "ENDENDEND", 10);
@@ -143,12 +148,15 @@ void _receive_file(udpc_connection * c2, char * filepath, int buffer_size){
 	  logd("Got end..\n");
 	  break;
 	}
-	logd("received chunk.. %i\n", r);
+
 	void * ptr = buffer;
 	int seq = udpc_unpack_int(&ptr);
+
 	off_t offset = seq * (buffer_size - sizeof(int));
+	logd("received chunk.. %i %i %i\n", r, seq, offset);
+	logd("buffer: %2x %2x %2x %2x\n", buffer[4], buffer[5], buffer[6], buffer[7]);
 	fseeko(file, offset, SEEK_SET);
-	fwrite(buffer, 1, r, file);
+	fwrite(ptr, 1, r - sizeof(int), file);
 	if(seq != current + 1){
 	  logd("This happens.. %i %i\n", seq, current);
 	  missing_seq seq2 = {current + 1, seq - current - 1};
