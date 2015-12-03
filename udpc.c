@@ -68,7 +68,8 @@ udpc_service * udpc_login(const char * service){
   int fd = udp_open(&local_addr);
   int port = udp_get_port(fd);
   ssl_client * cli = ssl_start_client(fd2, (struct sockaddr *) &server_addr);
-
+  ssl_set_timeout(cli, 1000000);
+ retry:
   { // send login request
     size_t s = strlen(service);
     void * buffer = NULL;
@@ -82,7 +83,9 @@ udpc_service * udpc_login(const char * service){
   }
   
   int response;
-  size_t read_len = ssl_client_read(cli, &response, sizeof(response));
+  int read_len = ssl_client_read(cli, &response, sizeof(response));
+  if(read_len == -1)
+    goto retry;
   ASSERT(read_len == sizeof(int));
   ASSERT(response == udpc_response_ok);
   ssl_client_close(cli);
@@ -97,6 +100,7 @@ udpc_service * udpc_login(const char * service){
 }
 
 void udpc_logout(udpc_service * con){
+  
   if(con->srv != NULL){
     struct sockaddr_storage udpc_server_addr = udp_get_addr(con->service.host, udpc_server_port);
     struct sockaddr_storage local_addr = udp_get_addr("0.0.0.0", 0);
@@ -108,10 +112,12 @@ void udpc_logout(udpc_service * con){
       udpc_pack_int(udpc_mode_disconnect, &buffer, &buffer_size);
       udpc_pack_string(con->service.username, &buffer, &buffer_size);
       udpc_pack_string(con->service.service, &buffer, &buffer_size);
+    retry:
       ssl_client_write(cli, buffer, buffer_size);
-      size_t read = 0;
-      while(read == 0)
-	read = ssl_client_read(cli, buffer, buffer_size);
+      int read = ssl_client_read(cli, buffer, buffer_size);
+      if(read == -1){
+	goto retry;
+      }
       void * bufptr = buffer;
       int status = udpc_unpack_int(&bufptr);
       ASSERT(status == udpc_response_ok);
@@ -144,8 +150,13 @@ udpc_connection * udpc_connect(const char * service){
   
   struct sockaddr_storage server_addr = udp_get_addr(sitem.host, udpc_server_port);
   struct sockaddr_storage local_addr = udp_get_addr("0.0.0.0", 0);
+ retry2:;
   int fd = udp_connect(&local_addr, &server_addr, false);
+
   ssl_client * cli = ssl_start_client(fd, (struct sockaddr *) &server_addr);
+
+  ssl_set_timeout(cli, 1000000);
+  
   { // send [CONNECT *service* 0]
     void * buffer = NULL;
     size_t buffer_size = 0;
@@ -157,7 +168,13 @@ udpc_connection * udpc_connect(const char * service){
   
   {// receive [port peer_addr] and connect client
     char buffer[100];
-    size_t read_size = ssl_client_read(cli, buffer, sizeof(buffer));
+    int read_size = ssl_client_read(cli, buffer, sizeof(buffer));
+    logd("Read size: %i\n", read_size);
+    if(read_size == -1){
+      ssl_client_close(cli);
+      udp_close(fd);
+      goto retry2;
+    }
     ASSERT(read_size > 0);
     void * resp2 = buffer;
 
@@ -187,7 +204,6 @@ void udpc_set_timeout(udpc_connection * client, int us){
   if(client->cli != NULL){
     ssl_set_timeout(client->cli, us);
   }else if(client->con != NULL){
-    logd("Setting timeout\n");
     ssl_server_set_timeout(client->con, us);
   }
 }
@@ -246,77 +262,72 @@ static void * connection_handle(void * _info) {
   pthread_detach(pthread_self());
   int fd = udp_connect(&local_addr, &remote_addr, true);
   ssl_server_con * con = ssl_server_accept(pinfo, fd);
-  int max_timeouts = 5;
-  int num_timeouts = 0;
-  while (num_timeouts < max_timeouts) {
-    ssize_t len = 0;
-    char buf[100];
-    len = ssl_server_read(con, buf, sizeof(buf));
-    if(len == 0){
-      num_timeouts++;
-      continue;
-    }
-    void * bufptr = buf;
-    int status = udpc_unpack_int(&bufptr);
-    if(status == udpc_login_msg){
-      logd("UDPC LOGIN\n");
-      int port = udpc_unpack_int(&bufptr);
-      service srv;
-      srv.desc = udpc_get_service_descriptor(bufptr);
-      srv.client_addr = remote_addr;
-      srv.port = port;
-      info->server->services = ralloc(info->server->services, sizeof(service) * (info->server->service_cnt + 1) );
-      info->server->services[info->server->service_cnt] = srv;
-      info->server->service_cnt += 1;
-      ssl_server_write(con, &udpc_response_ok, sizeof(udpc_response_ok));
-      break;
-    }else if( status == udpc_mode_connect){
-      logd("UDPC CONNECT\n");
-      service_descriptor d = udpc_get_service_descriptor(bufptr);
-      
-      int cnt = info->server->service_cnt;
-      for(int i = 0; i < cnt; i++){
-	service s1 = info->server->services[i];
-	if(strcmp(s1.desc.username, d.username) == 0 &&
-	   strcmp(s1.desc.service, d.service) == 0){\
-
-	  void * buffer = NULL;
-	  size_t buf_size = 0;
-	  udpc_pack_int(udpc_response_ok_ip4, &buffer, &buf_size);
-	  udpc_pack_int(s1.port, &buffer, &buf_size);
-	  udpc_pack(&s1.client_addr, sizeof(s1.client_addr), &buffer, &buf_size);
-	  ssl_server_write(con, buffer, buf_size);
-	  return NULL;
-	}
-      }
-      ssl_server_write(con, &udpc_response_error, sizeof(udpc_response_error));
-      return NULL;
-      break;
-    }else if(status == udpc_mode_disconnect){
-      logd("UDPC DISCONNECT\n");
-      char * username = bufptr;
-      bufptr += strlen(bufptr) + 1;
-      char * servicename = bufptr;
-      int cnt = info->server->service_cnt;
-      for(int i = 0; i < cnt; i++){
-	service s1 = info->server->services[i];
-	if(strcmp(s1.desc.username, username) == 0 &&
-	   strcmp(s1.desc.service, servicename) == 0){
-	  for(int j = i + 1; j < cnt; j++){
-	    info->server->services[j - 1] = info->server->services[j];
-	  }
-	  info->server->service_cnt -=1;
-          logd("OK\n");
-          ssl_server_write(con, &udpc_response_ok, sizeof(udpc_response_ok));
-	  break;
-	}
-      }
-      ssl_server_write(con, &udpc_response_error, sizeof(udpc_response_ok));
-    }else{
-      ASSERT(false);
-      break;
-    }
+  
+  char buf[100];
+  int len = ssl_server_read(con, buf, sizeof(buf));
+  if(len == -1){
+    ssl_server_close(pinfo);
+    return NULL;
   }
+  void * bufptr = buf;
+  int status = udpc_unpack_int(&bufptr);
+  if(status == udpc_login_msg){
+    logd("UDPC LOGIN\n");
+    int port = udpc_unpack_int(&bufptr);
+    service srv;
+    srv.desc = udpc_get_service_descriptor(bufptr);
+    srv.client_addr = remote_addr;
+    srv.port = port;
+    info->server->services = ralloc(info->server->services, sizeof(service) * (info->server->service_cnt + 1) );
+    info->server->services[info->server->service_cnt] = srv;
+    info->server->service_cnt += 1;
+    ssl_server_write(con, &udpc_response_ok, sizeof(udpc_response_ok));
+  }else if( status == udpc_mode_connect){
+    logd("UDPC CONNECT\n");
+    service_descriptor d = udpc_get_service_descriptor(bufptr);
+    
+    int cnt = info->server->service_cnt;
+    for(int i = 0; i < cnt; i++){
+      service s1 = info->server->services[i];
+      if(strcmp(s1.desc.username, d.username) == 0 &&
+	 strcmp(s1.desc.service, d.service) == 0){	\
+	
+	void * buffer = NULL;
+	size_t buf_size = 0;
+	udpc_pack_int(udpc_response_ok_ip4, &buffer, &buf_size);
+	udpc_pack_int(s1.port, &buffer, &buf_size);
+	udpc_pack(&s1.client_addr, sizeof(s1.client_addr), &buffer, &buf_size);
+	ssl_server_write(con, buffer, buf_size);
+	ssl_server_close(pinfo);
+	return NULL;
+      }
+    }
+    ssl_server_write(con, &udpc_response_error, sizeof(udpc_response_error));
+
+  }else if(status == udpc_mode_disconnect){
+    logd("UDPC DISCONNECT\n");
+    char * username = bufptr;
+    bufptr += strlen(bufptr) + 1;
+    char * servicename = bufptr;
+    int cnt = info->server->service_cnt;
+    for(int i = 0; i < cnt; i++){
+      service s1 = info->server->services[i];
+      if(strcmp(s1.desc.username, username) == 0 &&
+	 strcmp(s1.desc.service, servicename) == 0){
+	for(int j = i + 1; j < cnt; j++){
+	  info->server->services[j - 1] = info->server->services[j];
+	}
+	info->server->service_cnt -=1;
+	logd("OK\n");
+	ssl_server_write(con, &udpc_response_ok, sizeof(udpc_response_ok));
+	ssl_server_close(pinfo);
+	return NULL;
+      }
+    }
+    ssl_server_write(con, &udpc_response_error, sizeof(udpc_response_error));
+    ssl_server_close(pinfo);
+  }
+  ssl_server_close(pinfo);
   return NULL;
 }
 

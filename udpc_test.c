@@ -60,34 +60,43 @@ void test_stuff(char ** argv){
 void ensure_directory(const char * path);
 
 int main(int argc, char ** argv){
+  srand(time(NULL));
   signal(SIGINT, handle_sigint);
   char buffer[10];
   if(argc == 2){
     char * servicename = argv[1];
     udpc_service * con = udpc_login(servicename);
     while(!should_close){
-      udpc_connection * c2 = udpc_listen(con);   
+      logd("Retry\n");
+      udpc_connection * c2 = udpc_listen(con);
+      
       if(c2 == NULL)
 	continue;
       udpc_set_timeout(c2, 100000);
-      
-      size_t r1 = udpc_read(c2, buffer, sizeof(buffer));
-      logd("R: %i\n", r1);
-
-      r1 = udpc_read(c2, buffer, sizeof(buffer));
-      logd("R: %i\n", r1);
-
-      r1 = udpc_read(c2, buffer, sizeof(buffer));
-      logd("R: %i\n", r1);
+      int i = -1;
+      for(int _i = 0 ; _i < 10; _i++){
+	if(i != -1)
+	  i = udpc_read(c2, buffer, sizeof(buffer));
+	
+	udpc_write(c2, "ASD", sizeof("ASD"));
+      }
+      logd("OK!: %i\n", i);
       udpc_close(c2);
     }
+    logd("Logging out..\n");
     udpc_logout(con);
   }else if(argc == 3){
     char * servicename = argv[1];
     udpc_connection * con = udpc_connect(servicename);
-    udpc_write(con, "asd", sizeof("asd"));
-    udpc_read(con, buffer, sizeof(buffer));
-    logd("OK!\n");
+    udpc_set_timeout(con, 10000);
+    int i = -1;
+    for(int _i = 0; _i < 10; _i++){
+      udpc_write(con, "asd", sizeof("asd"));
+      iron_usleep(1000);
+      if(i != -1)
+	i = udpc_read(con, buffer, sizeof(buffer));
+    }
+    logd("OK! %i\n", i);
     udpc_close(con);
     
   }else{

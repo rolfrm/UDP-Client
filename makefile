@@ -5,7 +5,7 @@ TARGET = libudpc.so
 LIB_OBJECTS =$(LIB_SOURCES:.c=.o)
 LDFLAGS= -L. $(OPT) -Wextra #-lmcheck #-ftlo #setrlimit on linux 
 LIBS= -ldl -lm -lssl -lcrypto -lpthread
-ALL= $(TARGET) server rpc speed file share
+ALL= $(TARGET) server rpc speed file share test
 CFLAGS = -I.. -std=c11 -c $(OPT) -Wall -Wextra -Werror=implicit-function-declaration -Wformat=0 -D_GNU_SOURCE -fdiagnostics-color -Wextra -Werror -Wwrite-strings #-DDEBUG
 
 $(TARGET): $(LIB_OBJECTS)

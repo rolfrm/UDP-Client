@@ -290,14 +290,11 @@ int ssl_server_read(ssl_server_con * con, void * buffer, size_t buffer_size){
   return SSL_read(con->ssl, buffer, buffer_size);
 }
 
-static int packet_loss_ratio = 3;
+//#define simulate_pk_loss int rnd = rand() % 2; if(rnd == 0)return;
+#define simulate_pk_loss ;
 
 void ssl_server_write(ssl_server_con * con, const void * buffer, size_t buffer_size){
-  logd("This happens!\n");
-  if((packet_loss_ratio % rand()) == 0){
-    logd("Dumping packet..\n");
-    return;
-  }
+  simulate_pk_loss;
   SSL_write(con->ssl, buffer, buffer_size);
 }
 
@@ -403,11 +400,7 @@ int ssl_get_timeout(ssl_client * cli){
 }
 
 void ssl_client_write(ssl_client * cli, const void * buffer, size_t length){
-  logd("This happens!\n");
-  if((packet_loss_ratio % rand()) == 0){
-    logd("Dumping packet..\n");
-    return;
-  }
+  simulate_pk_loss;
   socklen_t len = SSL_write(cli->ssl, buffer, length);
   ASSERT(SSL_get_error(cli->ssl, len) == SSL_ERROR_NONE);
 }
@@ -416,7 +409,7 @@ int ssl_client_read(ssl_client * cli, void * buffer, size_t length){
   socklen_t len = SSL_read(cli->ssl, buffer, length);
   int accepted[] = {SSL_ERROR_WANT_READ};
   if(!handle_ssl_error2(cli->ssl, len, accepted, array_count(accepted)))
-    return 0;
+    return -1;
   return len;
 }
 
