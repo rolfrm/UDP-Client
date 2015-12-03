@@ -137,7 +137,8 @@ void _receive_file(udpc_connection * c2, char * filepath, int buffer_size){
       iron_usleep(1000);
       int current = missing2[i].start - 1;
       while(true){
-	size_t r = udpc_read(c2, buffer, buffer_size);
+	int r = udpc_read(c2, buffer, buffer_size);
+	
 	if(r == 10 && strncmp(buffer, "ENDENDEND", 0) == 0){
 	  //logd("Got end..\n");
 	  break;

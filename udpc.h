@@ -24,7 +24,7 @@ udpc_connection * udpc_listen(udpc_service * con);
 void udpc_write(udpc_connection * client, const void * buffer, size_t length);
 
 // Receives data from the connection.
-size_t udpc_read(udpc_connection * client, void * buffer, size_t max_size);
+int udpc_read(udpc_connection * client, void * buffer, size_t max_size);
 
 void udpc_set_timeout(udpc_connection * client, int us);
 

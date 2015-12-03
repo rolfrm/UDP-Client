@@ -286,11 +286,18 @@ ssl_server_con * ssl_server_accept(ssl_server_client * scli, int fd){
   return con;
 }
 
-size_t ssl_server_read(ssl_server_con * con, void * buffer, size_t buffer_size){
+int ssl_server_read(ssl_server_con * con, void * buffer, size_t buffer_size){
   return SSL_read(con->ssl, buffer, buffer_size);
 }
 
+static int packet_loss_ratio = 3;
+
 void ssl_server_write(ssl_server_con * con, const void * buffer, size_t buffer_size){
+  logd("This happens!\n");
+  if((packet_loss_ratio % rand()) == 0){
+    logd("Dumping packet..\n");
+    return;
+  }
   SSL_write(con->ssl, buffer, buffer_size);
 }
 
@@ -381,9 +388,9 @@ void ssl_set_timeout(ssl_client * cli, int timeout_us){
 }
 
 void ssl_server_set_timeout(ssl_server_con*  con, int timeout_us){
-   struct timeval timeout;
+  struct timeval timeout;
   {
-    timeout.tv_sec = timeout_us / 1e6;
+    timeout.tv_sec = timeout_us / 1000000;
     timeout.tv_usec = timeout_us % 1000000;
   }
   BIO_ctrl(SSL_get_rbio(con->ssl), BIO_CTRL_DGRAM_SET_RECV_TIMEOUT, 0, &timeout);
@@ -396,11 +403,16 @@ int ssl_get_timeout(ssl_client * cli){
 }
 
 void ssl_client_write(ssl_client * cli, const void * buffer, size_t length){
+  logd("This happens!\n");
+  if((packet_loss_ratio % rand()) == 0){
+    logd("Dumping packet..\n");
+    return;
+  }
   socklen_t len = SSL_write(cli->ssl, buffer, length);
   ASSERT(SSL_get_error(cli->ssl, len) == SSL_ERROR_NONE);
 }
 
-size_t ssl_client_read(ssl_client * cli, void * buffer, size_t length){
+int ssl_client_read(ssl_client * cli, void * buffer, size_t length){
   socklen_t len = SSL_read(cli->ssl, buffer, length);
   int accepted[] = {SSL_ERROR_WANT_READ};
   if(!handle_ssl_error2(cli->ssl, len, accepted, array_count(accepted)))

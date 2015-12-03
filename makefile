@@ -1,4 +1,4 @@
-OPT = -g0 -O4
+OPT = -g3 -O0
 LIB_SOURCES = udpc.c udp.c ssl.c ../iron/mem.c ../iron/array.c ../iron/math.c service_descriptor.c ../iron/time.c udpc_utils.c udpc_stream_check.c udpc_send_file.c udpc_dir_scan.c ../iron/log.c
 CC = gcc
 TARGET = libudpc.so
@@ -36,3 +36,5 @@ file: $(TARGET) udpc_file.o
 
 share: $(TARGET) udpc_share.o
 	$(CC) $(LDFLAGS) udpc_share.o $(LIBS) -ludpc -Wl,-rpath,. -o share
+test: $(TARGET) udpc_test.o
+	$(CC) $(LDFLAGS) udpc_test.o $(LIBS) -ludpc -Wl,-rpath,. -o test

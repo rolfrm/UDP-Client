@@ -31,7 +31,7 @@ void udpc_speed_serve(udpc_connection * c2, void * ptr){
     char * code = udpc_unpack_string(&ptr);
     ASSERT(strcmp(code, udpc_speed_test_service_name) == 0);
   }
-
+  udpc_write(c2, "OK", sizeof("OK"));
   int delay = udpc_unpack_int(&ptr);
   int buffer_size = udpc_unpack_int(&ptr);
   int count = udpc_unpack_int(&ptr);
@@ -54,6 +54,19 @@ void udpc_speed_client(udpc_connection * con, int delay, int bufsize, int count,
   udpc_pack_int(bufsize, &outbuffer, &buffer_size);
   udpc_pack_int(count, &outbuffer, &buffer_size);
   udpc_write(con, outbuffer, buffer_size);
+
+  int r = udpc_read(con, outbuffer, buffer_size);
+  if(r == -1){
+    // packet lost. try again.
+    udpc_write(con, outbuffer, buffer_size);
+    r = udpc_read(con, outbuffer, buffer_size);
+    if(r == -1){
+      loge("Connection timed out\n");
+      free(outbuffer);
+      return;
+    }
+  }
+  // it should have returned "OK" now.
   free(outbuffer);
   char buffer[bufsize];
   int current = -1;

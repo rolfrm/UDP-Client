@@ -187,6 +187,7 @@ void udpc_set_timeout(udpc_connection * client, int us){
   if(client->cli != NULL){
     ssl_set_timeout(client->cli, us);
   }else if(client->con != NULL){
+    logd("Setting timeout\n");
     ssl_server_set_timeout(client->con, us);
   }
 }
@@ -198,14 +199,14 @@ void udpc_write(udpc_connection * client, const void * buffer, size_t length){
     ssl_server_write(client->con, buffer, length);
 }
 
-size_t udpc_read(udpc_connection * client, void * buffer, size_t max_size){
+int udpc_read(udpc_connection * client, void * buffer, size_t max_size){
   if(client->cli != NULL)
     return ssl_client_read(client->cli, buffer, max_size);
   else if(client->con != NULL)
     return ssl_server_read(client->con, buffer, max_size);
   else
     ASSERT(false);
-  return 0;
+  return -1;
 }
 
 void udpc_close(udpc_connection * con){
