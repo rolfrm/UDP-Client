@@ -26,7 +26,6 @@ static void _send_file(udpc_connection * c2, char * filepath, int delay, int buf
   FILE * file = fopen(filepath, "r");
   if(file == NULL){
     udpc_write(c2, "ENDENDEND", 10);
-    udpc_close(c2);
     return;
   }
   size_t n_segments = 0;
@@ -55,10 +54,9 @@ static void _send_file(udpc_connection * c2, char * filepath, int delay, int buf
   udpc_write(c2, "ENDENDEND", 10);
   delay *= 2;
   while(true){
-    size_t r = udpc_read(c2, buffer, sizeof(buffer));
-    if( r == (size_t)-1){
+    int r = udpc_read(c2, buffer, sizeof(buffer));
+    if( r == -1)
       break;
-    }
     if(r == 3 && strncmp(buffer, "OK",3) == 0)
       break;
     void * ptr = buffer;

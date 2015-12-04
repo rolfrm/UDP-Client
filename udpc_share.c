@@ -94,7 +94,7 @@ int main(int argc, char ** argv){
 	  udpc_speed_serve(c2, buf);
 	}else if(strcmp(st, udpc_dirscan_service_name) == 0){
 	  logd("Dirscan!\n");
-	  dirscan scan_result  = scan_directories(dir);
+	  dirscan scan_result = scan_directories(dir);
 	  udpc_dirscan_serve(c2, scan_result, 1000, 1400, buf);
 	  dirscan_clean(&scan_result);
 	}else{
