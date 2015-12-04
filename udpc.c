@@ -57,7 +57,6 @@ char * udpc_pop_error(){
 
 // connect to a server. Format of service must be name@host:service
 udpc_service * udpc_login(const char * service){
-
   service_descriptor sitem = udpc_get_service_descriptor(service);
   if(sitem.host == NULL)
      return NULL;
@@ -220,8 +219,6 @@ int udpc_read(udpc_connection * client, void * buffer, size_t max_size){
     return ssl_client_read(client->cli, buffer, max_size);
   else if(client->con != NULL)
     return ssl_server_read(client->con, buffer, max_size);
-  else
-    ASSERT(false);
   return -1;
 }
 
@@ -332,6 +329,7 @@ static void * connection_handle(void * _info) {
 }
 
 void udpc_start_server(const char *local_address) {
+  
   pthread_t tid;
   service_server server;
   server.service_cnt = 0;

@@ -78,7 +78,7 @@ int main(int argc, char ** argv){
 	if(i != -1)
 	  i = udpc_read(c2, buffer, sizeof(buffer));
 	
-	udpc_write(c2, "ASD", sizeof("ASD"));
+	udpc_write(c2, "", 0);
       }
       logd("OK!: %i\n", i);
       udpc_close(c2);
@@ -91,7 +91,7 @@ int main(int argc, char ** argv){
     udpc_set_timeout(con, 10000);
     int i = -1;
     for(int _i = 0; _i < 10; _i++){
-      udpc_write(con, "asd", sizeof("asd"));
+      udpc_write(con, "", sizeof(""));
       iron_usleep(1000);
       if(i != -1)
 	i = udpc_read(con, buffer, sizeof(buffer));

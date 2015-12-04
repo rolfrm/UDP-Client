@@ -128,9 +128,9 @@ static dirscan dirscan_from_buffer(void * buffer){
 void udpc_dirscan_serve(udpc_connection * con, dirscan last_dirscan,size_t buffer_size, int delay_us, void * read){
   if(read == NULL){
     char buf2[1000];
-    size_t r= 0;
-    while(r == 0)
-      r = udpc_read(con,buf2, sizeof(buf2));
+    int r = udpc_read(con, buf2, sizeof(buf2));
+    if(r == -1)
+      return;
     read = buf2;
     char * code = udpc_unpack_string(&read);
     if(strcmp(code, udpc_dirscan_service_name) != 0){
@@ -153,8 +153,8 @@ void udpc_dirscan_serve(udpc_connection * con, dirscan last_dirscan,size_t buffe
     send_buf_size -= tosend;
     iron_usleep(delay_us);
   }
-  iron_usleep(10000);
-  udpc_write(con, "ENDENDEND", 10);
+  dealloc(send_buf);
+  udpc_write(con, "", 0);
 }
 
 int udpc_dirscan_client(udpc_connection * con, dirscan * dscan){
@@ -166,13 +166,11 @@ int udpc_dirscan_client(udpc_connection * con, dirscan * dscan){
   
   while(true){
     char readbuffer[2000];
-    size_t r = 0;
-    r = udpc_read(con, &readbuffer, sizeof(readbuffer));
-    if(r == 0){
-      loge("Unable to read from stream\n");
+    int r = udpc_read(con, &readbuffer, sizeof(readbuffer));
+    if(r == -1)
       return -1;
-    }
-    if(strcmp("ENDENDEND", readbuffer) == 0)
+    
+    if(r == 0)
       break;
     udpc_pack(readbuffer, r, &buffer, &size);
   }

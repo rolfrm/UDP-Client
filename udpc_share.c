@@ -77,10 +77,12 @@ int main(int argc, char ** argv){
 	continue;
       udpc_set_timeout(c2, 1000000);
       while(true){
-	size_t r = 0;
+
 	char buf[1024];
-	r = udpc_read(c2, buf, sizeof(buf));
-	ASSERT(r != (size_t) -1);
+	int r = udpc_read(c2, buf, sizeof(buf));
+	if(r == -1)
+	  break;
+	  
 	void * rcv_str = buf;
 	char * st = udpc_unpack_string(&rcv_str);
 	if(strcmp(st, udpc_file_serve_service_name) == 0){

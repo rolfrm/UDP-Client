@@ -31,6 +31,7 @@ struct _ssl_client{
 static void ssl_ensure_initialized(){
   static bool initialized = false;
   if(initialized) return;
+  SSL_library_init();
   OpenSSL_add_ssl_algorithms();
   SSL_load_error_strings();
   initialized = true;
