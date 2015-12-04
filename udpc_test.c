@@ -39,64 +39,44 @@ void handle_sigint(int signum){
   signal(SIGINT, NULL); // next time just quit.
 }
 
-void test_stuff(char ** argv){
-  struct stat st;
-  stat(argv[1], &st);
-  
-  if( S_ISREG(st.st_mode) ) {
-    // file exists
-    udpc_md5 md5 = udpc_file_md5(argv[1]);
-    logd("MD5: ");
-    udpc_print_md5(md5);
-    logd("\n");
-  } else if( S_ISDIR(st.st_mode)){
-    // file doesn't exist
-    dirscan dsc = scan_directories(argv[1]);
-    logd("Found: %i files\n",dsc.cnt);
-    dirscan_clean(&dsc);
-  }
-}
-
 void ensure_directory(const char * path);
 
 int main(int argc, char ** argv){
   srand(time(NULL));
   signal(SIGINT, handle_sigint);
-  char buffer[10];
   if(argc == 2){
     char * servicename = argv[1];
     udpc_service * con = udpc_login(servicename);
     while(!should_close){
       logd("Retry\n");
       udpc_connection * c2 = udpc_listen(con);
-      
       if(c2 == NULL)
 	continue;
+      //char buf[1024];
+      //int r = udpc_read(c2, buf, sizeof(buf));
+      //if(r == -1)
+      //break;
+
       udpc_set_timeout(c2, 100000);
-      int i = -1;
-      for(int _i = 0 ; _i < 10; _i++){
-	if(i != -1)
-	  i = udpc_read(c2, buffer, sizeof(buffer));
-	
-	udpc_write(c2, "", 0);
-      }
-      logd("OK!: %i\n", i);
+      dirscan scan_result = scan_directories("testdir");
+      udpc_dirscan_serve(c2, scan_result, 1000, 1400, NULL);
+      dirscan_clean(&scan_result);
       udpc_close(c2);
     }
     logd("Logging out..\n");
     udpc_logout(con);
   }else if(argc == 3){
     char * servicename = argv[1];
+  getcon:;
     udpc_connection * con = udpc_connect(servicename);
+    if(con == NULL)
+      goto getcon;
     udpc_set_timeout(con, 10000);
-    int i = -1;
-    for(int _i = 0; _i < 10; _i++){
-      udpc_write(con, "", sizeof(""));
-      iron_usleep(1000);
-      if(i != -1)
-	i = udpc_read(con, buffer, sizeof(buffer));
-    }
-    logd("OK! %i\n", i);
+  do_dirscan:;
+    dirscan ext_dir;
+    int ok = udpc_dirscan_client(con, &ext_dir);
+    if(!ok) goto do_dirscan;
+    logd("Got dir!\n");
     udpc_close(con);
     
   }else{

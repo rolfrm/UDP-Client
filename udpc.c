@@ -168,7 +168,7 @@ udpc_connection * udpc_connect(const char * service){
   {// receive [port peer_addr] and connect client
     char buffer[100];
     int read_size = ssl_client_read(cli, buffer, sizeof(buffer));
-    logd("Read size: %i\n", read_size);
+    //logd("Read size: %i\n", read_size);
     if(read_size == -1){
       ssl_client_close(cli);
       udp_close(fd);

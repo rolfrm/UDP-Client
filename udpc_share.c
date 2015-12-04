@@ -134,8 +134,10 @@ int main(int argc, char ** argv){
     dirscan local_dir = scan_directories(dir);
     bool local_found[local_dir.cnt];
     memset(local_found,0, sizeof(local_found));
+  do_dirscan:;
     dirscan ext_dir;
     int ok = udpc_dirscan_client(con, &ext_dir);
+    if(!ok) goto do_dirscan;
     int match[ext_dir.cnt];
     if(ok != -1){
       for(size_t i = 0; i < ext_dir.cnt; i++){

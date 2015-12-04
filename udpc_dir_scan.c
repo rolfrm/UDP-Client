@@ -145,14 +145,23 @@ void udpc_dirscan_serve(udpc_connection * con, dirscan last_dirscan,size_t buffe
   size_t send_buf_size = 0;
   void * send_buf = dirscan_to_buffer(last_dirscan, &send_buf_size);
   void * bufptr = send_buf;
+  int seq = 0;
+  buffer_size -= sizeof(seq);
+  void * buffer = NULL;
+  size_t cnt = 0;
+    
   while(send_buf_size > 0){
     size_t tosend = MIN(send_buf_size, buffer_size);
-    
-    udpc_write(con, bufptr, tosend);
+    udpc_pack_int(seq, &buffer, &cnt);
+    udpc_pack(bufptr, tosend,&buffer, &cnt);
+    udpc_write(con, buffer, cnt);
+    cnt = 0;
     bufptr += tosend;
     send_buf_size -= tosend;
     iron_usleep(delay_us);
   }
+  if(buffer != NULL)
+    dealloc(buffer);
   dealloc(send_buf);
   udpc_write(con, "", 0);
 }
@@ -163,16 +172,21 @@ int udpc_dirscan_client(udpc_connection * con, dirscan * dscan){
   size_t size = 0;
 
   udpc_set_timeout(con, 1000000);
-  
+  int current = -1;
   while(true){
     char readbuffer[2000];
     int r = udpc_read(con, &readbuffer, sizeof(readbuffer));
-    if(r == -1)
+    void * ptr = readbuffer;
+    int seq = udpc_unpack_int(&ptr);
+    if(seq != (current + 1) || r == -1){
+      if(buffer != NULL)
+	dealloc(buffer);
       return -1;
-    
+    }
+    seq = current;
     if(r == 0)
       break;
-    udpc_pack(readbuffer, r, &buffer, &size);
+    udpc_pack(readbuffer, r - sizeof(int), &buffer, &size);
   }
   *dscan = dirscan_from_buffer(buffer);
   dealloc(buffer);

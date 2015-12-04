@@ -291,8 +291,8 @@ int ssl_server_read(ssl_server_con * con, void * buffer, size_t buffer_size){
   return SSL_read(con->ssl, buffer, buffer_size);
 }
 
-#define simulate_pk_loss int rnd = rand() % 2; if(rnd == 0)return;
-//#define simulate_pk_loss ;
+//#define simulate_pk_loss int rnd = rand() % 2; if(rnd == 0)return;
+#define simulate_pk_loss ;
 
 void ssl_server_write(ssl_server_con * con, const void * buffer, size_t buffer_size){
   simulate_pk_loss;
