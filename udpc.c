@@ -275,6 +275,20 @@ static void * connection_handle(void * _info) {
     srv.desc = udpc_get_service_descriptor(bufptr);
     srv.client_addr = remote_addr;
     srv.port = port;
+    service_descriptor d = srv.desc;
+    int cnt = info->server->service_cnt;
+    for(int i = 0; i < cnt; i++){
+      service s1 = info->server->services[i];
+      if(strcmp(s1.desc.username, d.username) == 0 &&
+	 strcmp(s1.desc.service, d.service) == 0){
+	logd("UDPC RECONNECT\n");
+	info->server->services[i] = srv;
+	ssl_server_write(con, &udpc_response_ok, sizeof(udpc_response_ok));
+	ssl_server_close(pinfo);
+	return NULL;
+      }
+    }
+
     info->server->services = ralloc(info->server->services, sizeof(service) * (info->server->service_cnt + 1) );
     info->server->services[info->server->service_cnt] = srv;
     info->server->service_cnt += 1;
@@ -287,8 +301,7 @@ static void * connection_handle(void * _info) {
     for(int i = 0; i < cnt; i++){
       service s1 = info->server->services[i];
       if(strcmp(s1.desc.username, d.username) == 0 &&
-	 strcmp(s1.desc.service, d.service) == 0){	\
-	
+	 strcmp(s1.desc.service, d.service) == 0){
 	void * buffer = NULL;
 	size_t buf_size = 0;
 	udpc_pack_int(udpc_response_ok_ip4, &buffer, &buf_size);

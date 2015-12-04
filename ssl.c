@@ -291,8 +291,8 @@ int ssl_server_read(ssl_server_con * con, void * buffer, size_t buffer_size){
   return SSL_read(con->ssl, buffer, buffer_size);
 }
 
-//#define simulate_pk_loss int rnd = rand() % 2; if(rnd == 0)return;
-#define simulate_pk_loss ;
+#define simulate_pk_loss int rnd = rand() % 2; if(rnd == 0)return;
+//#define simulate_pk_loss ;
 
 void ssl_server_write(ssl_server_con * con, const void * buffer, size_t buffer_size){
   simulate_pk_loss;
@@ -379,7 +379,7 @@ ssl_client * ssl_start_client(int fd, struct sockaddr * remote_addr){
 void ssl_set_timeout(ssl_client * cli, int timeout_us){
   struct timeval timeout;
   {
-    timeout.tv_sec = timeout_us / 1e6;
+    timeout.tv_sec = timeout_us / 1000000;
     timeout.tv_usec = timeout_us % 1000000;
   }
   BIO_ctrl(SSL_get_rbio(cli->ssl), BIO_CTRL_DGRAM_SET_RECV_TIMEOUT, 0, &timeout);
