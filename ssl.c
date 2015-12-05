@@ -237,20 +237,18 @@ void ssl_server_cleanup(ssl_server * server){
   free(server);
 }
 
-static bool handle_ssl_error2(SSL * ssl, int ret, int * accepted_errors, int accepted_error_cnt){
-  bool check_err(int error_kind){
-    for(int i = 0; i < accepted_error_cnt; i++)
-      if(accepted_errors[i] == error_kind)
-	return true;
-    return false;
-  }
+static int handle_ssl_error2(SSL * ssl, int ret, int * accepted_errors,
+			     int * retcode, int accepted_error_cnt){
   int err = SSL_get_error(ssl, ret);
-#define doerr(kind)case kind: if(false == check_err(kind)) {ERROR(#kind);} else return false;
+  for(int i = 0; i < accepted_error_cnt; i++)
+    if(accepted_errors[i] == err)
+      return retcode[i];
+
+#define doerr(kind)case kind: ERROR(#kind); break;
   switch(err){
     doerr(SSL_ERROR_SSL);
   case(SSL_ERROR_SYSCALL):
     ERROR("SSL_ERROR_SYSCALL error id: %i %i", ERR_get_error(), ret); 
-    
     //doerr(SSL_ERROR_WANT_ASYNC);
     doerr(SSL_ERROR_WANT_CONNECT);
     doerr(SSL_ERROR_WANT_ACCEPT);
@@ -260,11 +258,11 @@ static bool handle_ssl_error2(SSL * ssl, int ret, int * accepted_errors, int acc
   case SSL_ERROR_NONE:
     break;
   }
-  return true;
+  return 0;
 }
 
 static void handle_ssl_error(SSL * ssl, int ret){
-  handle_ssl_error2(ssl, ret, NULL, 0);
+  handle_ssl_error2(ssl, ret, NULL, NULL, 0);
 }
 
 ssl_server_con * ssl_server_accept(ssl_server_client * scli, int fd){
@@ -291,8 +289,8 @@ int ssl_server_read(ssl_server_con * con, void * buffer, size_t buffer_size){
   return SSL_read(con->ssl, buffer, buffer_size);
 }
 
-//#define simulate_pk_loss int rnd = rand() % 2; if(rnd == 0)return;
-#define simulate_pk_loss ;
+#define simulate_pk_loss int rnd = rand() % 2; if(rnd == 0)return;
+//#define simulate_pk_loss ;
 
 void ssl_server_write(ssl_server_con * con, const void * buffer, size_t buffer_size){
   simulate_pk_loss;
@@ -408,9 +406,11 @@ void ssl_client_write(ssl_client * cli, const void * buffer, size_t length){
 
 int ssl_client_read(ssl_client * cli, void * buffer, size_t length){
   socklen_t len = SSL_read(cli->ssl, buffer, length);
-  int accepted[] = {SSL_ERROR_WANT_READ};
-  if(!handle_ssl_error2(cli->ssl, len, accepted, array_count(accepted)))
-    return -1;
+  int accepted[] = {SSL_ERROR_WANT_READ, SSL_ERROR_ZERO_RETURN};
+  int code[] = {-1, -2};
+  int ecode = handle_ssl_error2(cli->ssl, len, accepted, code, array_count(accepted));
+  if(ecode < 0)
+    return ecode;
   return len;
 }
 

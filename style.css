@@ -1,0 +1,105 @@
+/*
+**
+** Author: Andrea Ferretti
+** Author: Hongwei Xi (for minor changes)
+**
+*/
+
+/* ****** ****** */
+
+body {
+  font-family:
+  monospace;
+  //margin: 0 auto;
+  max-width: 100%;
+  //text-align: justify;
+  //line-height: 0%;
+  font-size: 100%;
+}
+
+font {
+  font-family:
+  monospace;
+  font-size: 100%;
+  //padding: 2px 4px;
+  background-color: #e0e0e0;
+}
+
+a {
+  color: #707070;
+  font-style: italic;
+  font-weight: bold;
+  text-decoration: none;
+}
+
+h1 a {
+  color: black;
+  font-style: normal;
+}
+
+#addform {
+    margin: 10px;
+}
+
+#shares{
+    float: left;
+}
+
+#divitem{
+    background: #99FFAA;
+    padding: 10px;
+    margin: 1px;
+}
+
+
+#divitem:hover{
+    background: #AAFFAA;
+}
+
+#selected{
+    background: #FFFF66;
+    padding: 10px;
+    margin: 1px;
+} 
+
+#selected:hover{
+    background: #ffFFAA;
+}
+
+#share_details{
+    float: left;
+    margin: 5px;
+}
+
+#submit {
+    background-color: #E4E0E0;
+    border-radius: 0px;
+    text-decoration: none;
+    cursor: pointer;
+//    border: medium none;
+    border-width: 1px;
+    border-color: black;
+}
+
+#submit:hover {
+    background-color: #FFE0E0;
+    border-radius: 0px;
+    text-decoration: none;
+    cursor: pointer;
+//    border: medium none;
+    border-width: 1px;
+    border-color: black;
+}
+
+/* ****** ****** */
+
+.programlisting {
+  padding: 4px 8px;
+  line-height: 100%;
+  border-radius: 6px;
+  background-color: #e0e0e0;
+}
+
+/* ****** ****** */
+
+/* end of [INT2PROGINATS-BOOK.css] */

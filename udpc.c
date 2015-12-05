@@ -83,7 +83,7 @@ udpc_service * udpc_login(const char * service){
   
   int response;
   int read_len = ssl_client_read(cli, &response, sizeof(response));
-  if(read_len == -1)
+  if(read_len < 0)
     goto retry;
   ASSERT(read_len == sizeof(int));
   ASSERT(response == udpc_response_ok);
@@ -114,7 +114,7 @@ void udpc_logout(udpc_service * con){
     retry:
       ssl_client_write(cli, buffer, buffer_size);
       int read = ssl_client_read(cli, buffer, buffer_size);
-      if(read == -1){
+      if(read < 0){
 	goto retry;
       }
       void * bufptr = buffer;
@@ -169,7 +169,7 @@ udpc_connection * udpc_connect(const char * service){
     char buffer[100];
     int read_size = ssl_client_read(cli, buffer, sizeof(buffer));
     //logd("Read size: %i\n", read_size);
-    if(read_size == -1){
+    if(read_size < 0){
       ssl_client_close(cli);
       udp_close(fd);
       goto retry2;

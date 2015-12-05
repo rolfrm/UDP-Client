@@ -49,6 +49,11 @@ dirscan scan_directories(const char * basedir){
   return ds;
 }
 
+void dirscan_print(dirscan ds){
+  for(size_t i = 0; i < ds.cnt; i++){
+    logd(" %20s |", ds.files[i]); udpc_print_md5(ds.md5s[i]); logd("\n");
+  }
+}
 
 void ensure_directory(const char * filepath){
   char * file1 = strstr(filepath, "/");
@@ -152,18 +157,22 @@ void udpc_dirscan_serve(udpc_connection * con, dirscan last_dirscan,size_t buffe
     
   while(send_buf_size > 0){
     size_t tosend = MIN(send_buf_size, buffer_size);
+    // pack seq into buffer
     udpc_pack_int(seq, &buffer, &cnt);
-    udpc_pack(bufptr, tosend,&buffer, &cnt);
+    // pack data into buffer
+    udpc_pack(bufptr, tosend, &buffer, &cnt);
+    
     udpc_write(con, buffer, cnt);
     cnt = 0;
     bufptr += tosend;
     send_buf_size -= tosend;
     iron_usleep(delay_us);
+    seq++;
   }
   if(buffer != NULL)
     dealloc(buffer);
   dealloc(send_buf);
-  udpc_write(con, "", 0);
+  udpc_write(con, "",1);
 }
 
 int udpc_dirscan_client(udpc_connection * con, dirscan * dscan){
@@ -176,17 +185,32 @@ int udpc_dirscan_client(udpc_connection * con, dirscan * dscan){
   while(true){
     char readbuffer[2000];
     int r = udpc_read(con, &readbuffer, sizeof(readbuffer));
-    void * ptr = readbuffer;
-    int seq = udpc_unpack_int(&ptr);
-    if(seq != (current + 1) || r == -1){
+    logd("Read: %i\n", r);
+    if(r < 0){
+      logd("something went wrong: %i!\n", r);
       if(buffer != NULL)
 	dealloc(buffer);
       return -1;
     }
-    seq = current;
-    if(r == 0)
+    void * ptr = readbuffer;
+    int seq = udpc_unpack_int(&ptr);
+    logd("Seq: %i\n", seq);
+    if(seq != (current + 1)){
+      logd("package skip happens!\n");
+      if(buffer != NULL)
+	dealloc(buffer);
+      return -1;
+    }
+    if(r == 1){
+      logd("Found end!\n");
       break;
-    udpc_pack(readbuffer, r - sizeof(int), &buffer, &size);
+    }
+    seq = current;
+    
+    udpc_pack(ptr, r - sizeof(int), &buffer, &size);
+  }
+  if(current == -1){
+    return -1;
   }
   *dscan = dirscan_from_buffer(buffer);
   dealloc(buffer);
