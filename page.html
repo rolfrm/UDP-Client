@@ -4,7 +4,7 @@
     <script src="https://fb.me/react-dom-0.14.0.min.js"></script>-->
   <script type="text/javascript">
 
-var get_thing = function(request, callback){
+var request = function(request, callback){
     var xmlhttp = new XMLHttpRequest();
     xmlhttp.overrideMimeType('application/json');
     xmlhttp.onreadystatechange = function(){
@@ -26,17 +26,32 @@ var main_viewmodel = {
 var test_share = {
     path: "testdir1",
     user: "test@0.0.0.0:a",
-    content : []
+    name: "test1"
 };
 
 var test_share2 = {
     path: "testdir2",
     user: "test@0.0.0.0:a",
-    content : []
+    name: "test2"
 };
 
 main_viewmodel.selected_share = test_share;
 main_viewmodel.shares = [test_share, test_share2];
+var load_available_shares = function(){
+    var cb = function(items){
+	var len = items.length;
+	main_viewmodel.shares.length = 0;
+	for(var i = 0; i < len; i++){
+	    main_viewmodel.shares.push(items[i]);
+	    if(items[i].name == main_viewmodel.selected_share.name){
+		main_viewmodel.selected_share = item[i];
+	    }
+	}
+	update_shares();
+	update_content();
+    };
+    request("sharesinfo", cb);
+}
 
 var divdown = function(item){
     main_viewmodel.selected_share = main_viewmodel.shares[item.tabIndex];
@@ -63,21 +78,35 @@ var update_shares = function(){
 
 var update_content = function(){
     var cb = function(item){
+	item = item.files;
 	var details = document.getElementById("share_details");
 	var len = item.length;
 	var newcontent = "";
-	for(var i = 0; i < len; i++)
+	for(var i = 0; i < len; i++){
 	    newcontent += "<p>" + item[i].path+ " " + item[i].md5 + "</p>";
-	
+	}
 	details.innerHTML = newcontent;
     };
-    get_thing("shares/" + main_viewmodel.selected_share.path +".json", cb);
+    request("shares/" + main_viewmodel.selected_share.name, cb);
 }
 
 
 var on_load = function(){
     update_shares();
     update_content();
+    load_available_shares();
+}
+
+var add_clicked = function(item){
+
+    var cb = function(item){
+	alert(item);
+    }
+    
+    var user = document.getElementsByName("user")[0].value;
+    var name = document.getElementsByName("name")[0].value;
+    var path = document.getElementsByName("path")[0].value;
+    request("add_share?user=" + user + "&name=" + name + "&path=" + path, cb);
 }
 
 window.onload = on_load;
@@ -89,18 +118,12 @@ window.onload = on_load;
       
     </div>
     <div id="addform">
-      <form  action="add_share">
-	<table>
-	  <tr>
-	    <td> Path</td> <td> <input type="directory" name="fname" class="directory"></td>
-	  </tr>
-	  <tr>
-	    <td> Share </td><td><input type="text" name="lname"></td>
-	  </tr>
-	  <tr><td></td><td><input id="submit" type="submit" value="Add"></td></tr>
-	</table>
-
-      </form>
+      <table>
+	<tr> <td> Path  </td><td><input type="directory" name="path" class="directory"> </td> </tr>
+	<tr> <td> Share </td><td><input type="text" name="user"></td></tr>
+	<tr> <td> Name  </td><td><input type="text" name="name"></td> </tr>
+	<tr> <td>       </td><td><button onclick="add_clicked(this)">Click me!</button></td></tr>
+      </table>
     </div>
   </div>
   <div id="share_details">

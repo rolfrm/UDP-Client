@@ -25,6 +25,12 @@ void udpc_print_md5(udpc_md5 md5){
   }
 }
 
+void udpc_fprintf_md5(FILE * f, udpc_md5 md5){
+  for(int i = 0; i < MD5_DIGEST_LENGTH; i++){
+    fprintf(f, "%2X ",  md5.md5[i]);
+  }
+}
+
 dirscan scan_directories(const char * basedir){
   dirscan ds = {0};
   int ftwf(const char * filename, const struct stat * st, int ft){
@@ -40,11 +46,11 @@ dirscan scan_directories(const char * basedir){
     }
     return 0;
   }
-  char * cdir = get_current_dir_name();
-  ASSERT(0 == chdir(basedir));
+  //char * cdir = get_current_dir_name();
+  //ASSERT(0 == chdir(basedir));
   
-  ftw(".", ftwf, 100);
-  ASSERT(0 == chdir(cdir));
+  ftw(basedir, ftwf, 100);
+  //ASSERT(0 == chdir(cdir));
 
   return ds;
 }
@@ -101,18 +107,17 @@ void dirscan_clean(dirscan * _dirscan){
   memset(_dirscan, 0, sizeof(_dirscan[0]));
 }
 
-static void * dirscan_to_buffer(dirscan _dirscan, size_t * size){
+void * dirscan_to_buffer(dirscan _dirscan, size_t * size){
   void * buffer = NULL;
   udpc_pack_size_t(_dirscan.cnt, &buffer, size);
   for(size_t i = 0; i < _dirscan.cnt; i++)
     udpc_pack_string(_dirscan.files[i], &buffer, size);
   udpc_pack(_dirscan.md5s, _dirscan.cnt * sizeof(_dirscan.md5s[0]), &buffer, size);
   udpc_pack(_dirscan.last_change, _dirscan.cnt * sizeof(_dirscan.last_change[0]), &buffer, size);
-
   return buffer;
 }
 
-static dirscan dirscan_from_buffer(void * buffer){
+dirscan dirscan_from_buffer(void * buffer){
   void * ptr = buffer;
   size_t cnt = udpc_unpack_size_t(&ptr);
   char * strs[cnt];
