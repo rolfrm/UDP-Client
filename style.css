@@ -1,25 +1,16 @@
-/*
-**
-** Author: Andrea Ferretti
-** Author: Hongwei Xi (for minor changes)
-**
-*/
-
-/* ****** ****** */
-
 body {
-  font-family:
-  monospace;
+  //font-family:
+  //monospace;
   //margin: 0 auto;
-  max-width: 100%;
+  //max-width: 100%;
   //text-align: justify;
   //line-height: 0%;
-  font-size: 100%;
+  //font-size: 100%;
 }
 
 font {
-  font-family:
-  monospace;
+  //font-family:
+  //monospace;
   font-size: 100%;
   //padding: 2px 4px;
   background-color: #e0e0e0;
@@ -43,8 +34,17 @@ h1 a {
 
 #shares{
     float: left;
+    width: 250px;
+    border: 1px solid;
+    resize: horizontal;
+    overflow: auto;
+    height: 100%;
+    clear: left;
 }
 
+#table1{
+    height:100%;
+}
 #divitem{
     background: #99FFAA;
     padding: 10px;
@@ -66,9 +66,27 @@ h1 a {
     background: #ffFFAA;
 }
 
+td{
+    vertical-align: top;
+}
+
 #share_details{
-    float: left;
-    margin: 5px;
+}
+
+#tab{
+        padding-top: 2px;
+        padding-right: 0px;
+        padding-bottom: 0px;
+        padding-left: 5px;
+	vertical-align:top
+}
+
+td > #div2 {
+    width:300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: monospace;
 }
 
 #submit {
@@ -90,16 +108,3 @@ h1 a {
     border-width: 1px;
     border-color: black;
 }
-
-/* ****** ****** */
-
-.programlisting {
-  padding: 4px 8px;
-  line-height: 100%;
-  border-radius: 6px;
-  background-color: #e0e0e0;
-}
-
-/* ****** ****** */
-
-/* end of [INT2PROGINATS-BOOK.css] */

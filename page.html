@@ -1,6 +1,10 @@
 <html>
-    <link rel="STYLESHEET" type="text/css" href="./style.css"/>
-    <!-- <script src="https://fb.me/react-0.14.0.min.js"></script>
+  <link rel="STYLESHEET" type="text/css" href="./style.css"/>
+  <link rel="shortcut icon" type="image/png" href="/favicon.png"/>
+  <link rel="shortcut icon" type="image/png" href="localhost:8000/favicon.png"/>
+  
+  <link href="/favicon.ico" rel="shortcut icon">
+  <!-- <script src="https://fb.me/react-0.14.0.min.js"></script>
     <script src="https://fb.me/react-dom-0.14.0.min.js"></script>-->
   <script type="text/javascript">
 
@@ -81,11 +85,11 @@ var update_content = function(){
 	item = item.files;
 	var details = document.getElementById("share_details");
 	var len = item.length;
-	var newcontent = "";
+	var newcontent = "<table id=\"tab\"><th>Path</th><th>MD5</th>";
 	for(var i = 0; i < len; i++){
-	    newcontent += "<p>" + item[i].path+ " " + item[i].md5 + "</p>";
+	    newcontent += "<tr><td><div id=\"div2\">" + item[i].path+ "</div></td><td><div id=\"div2\">" + item[i].md5 + "</div></td> </tr>";
 	}
-	details.innerHTML = newcontent;
+	details.innerHTML = newcontent + "</table>";
     };
     request("shares/" + main_viewmodel.selected_share.name, cb);
 }
@@ -112,23 +116,30 @@ var add_clicked = function(item){
 window.onload = on_load;
 </script>  
 <body>
-  
-  <div id="shares">
-    <div id="shares_list">
-      
-    </div>
-    <div id="addform">
-      <table>
-	<tr> <td> Path  </td><td><input type="directory" name="path" class="directory"> </td> </tr>
-	<tr> <td> Share </td><td><input type="text" name="user"></td></tr>
-	<tr> <td> Name  </td><td><input type="text" name="name"></td> </tr>
-	<tr> <td>       </td><td><button onclick="add_clicked(this)">Click me!</button></td></tr>
-      </table>
-    </div>
-  </div>
-  <div id="share_details">
-    Hello!
-  </div>
 
+  <table id="table1">
+    <tr>
+      <td>
+	<div id="shares">
+	  <div id="shares_list">
+      
+	  </div>
+	  <hr/>
+	  <div id="addform">
+	    <table>
+	      <tr> <td> Path  </td><td><input type="directory" name="path" class="directory"> </td> </tr>
+	      <tr> <td> Share </td><td><input type="text" name="user"></td></tr>
+	      <tr> <td> Name  </td><td><input type="text" name="name"></td> </tr>
+	      <tr> <td>       </td><td><button onclick="add_clicked(this)">Add</button></td></tr>
+	    </table>
+	  </div>
+	  </div>
+      </td>
+      <td>
+	<div id="share_details">
+	</div>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>

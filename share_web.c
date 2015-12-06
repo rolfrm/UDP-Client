@@ -98,10 +98,17 @@ int web_main(void * _ed, struct MHD_Connection * con, const char * url,
 		     void ** con_cls){
   UNUSED(url); UNUSED(version); UNUSED(upload_data); UNUSED(upload_data_size);
   UNUSED(method); UNUSED(con_cls); UNUSED(_ed);
+  const char * file = "page.html";
   bool style_loc = compare_strs((char *) "style.css", (char *) url + 1);
-  const char * file = (char *) (style_loc ?  "style.css" : "page.html");
+  if(style_loc){
+    file = "style.css";
+  }else if(compare_strs((char *) "favicon.png", (char *) url + 1)){
+    file = "favicon.png";
+  }
+  
   char fnamebuffer[100];
   logd("'%s' %s %s %i\n", url, method, version, upload_data_size);
+  logd("File: %s\n", file);
   if(url == strstr(url, "/sharesinfo")){
     logd("Sending shares info..\n");
     //char * currentdir = get_current_dir_name();
@@ -138,7 +145,7 @@ int web_main(void * _ed, struct MHD_Connection * con, const char * url,
     char * name = udpc_unpack_string(&bufptr);
     char * user = udpc_unpack_string(&bufptr);
     logd("path: %s, name: %s, user: %s\n", dir, name, user);
-    update_dirfile(dir, name, user);
+    //update_dirfile(dir, name, user);
     sprintf(fnamebuffer, "shares/%s.json", name);
     dealloc(buffer);
     logd("Sending: %s\n", fnamebuffer);
@@ -187,9 +194,10 @@ int web_main(void * _ed, struct MHD_Connection * con, const char * url,
     MHD_destroy_response(response);
     return ret;
   }
-  
-  char * pg = read_file_to_string(file);
-  struct MHD_Response * response = MHD_create_response_from_data(strlen(pg),
+
+  size_t filesize = 0;
+  void * pg = read_file_to_buffer(file, &filesize);
+  struct MHD_Response * response = MHD_create_response_from_data(filesize,
 					   pg,
 					   1,
 					   MHD_NO);
