@@ -27,20 +27,6 @@ var main_viewmodel = {
     shares: []
 };
 
-var test_share = {
-    path: "testdir1",
-    user: "test@0.0.0.0:a",
-    name: "test1"
-};
-
-var test_share2 = {
-    path: "testdir2",
-    user: "test@0.0.0.0:a",
-    name: "test2"
-};
-
-main_viewmodel.selected_share = test_share;
-main_viewmodel.shares = [test_share, test_share2];
 var load_available_shares = function(){
     var cb = function(items){
 	var len = items.length;
