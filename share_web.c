@@ -64,6 +64,7 @@ void update_dirfile(const char * dir, const char * name, const char * user){
     fclose(f);
     dealloc(shareinfo_filename);
   }
+  ensure_directory("shares/");
   
   char * bin_filename = fmtstr("shares/%s.bin", name);
   size_t s = 0;
@@ -145,7 +146,7 @@ int web_main(void * _ed, struct MHD_Connection * con, const char * url,
     char * name = udpc_unpack_string(&bufptr);
     char * user = udpc_unpack_string(&bufptr);
     logd("path: %s, name: %s, user: %s\n", dir, name, user);
-    //update_dirfile(dir, name, user);
+    update_dirfile(dir, name, user);
     sprintf(fnamebuffer, "shares/%s.json", name);
     dealloc(buffer);
     logd("Sending: %s\n", fnamebuffer);
