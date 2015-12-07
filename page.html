@@ -34,7 +34,7 @@ var load_available_shares = function(){
 	for(var i = 0; i < len; i++){
 	    main_viewmodel.shares.push(items[i]);
 	    if(items[i].name == main_viewmodel.selected_share.name){
-		main_viewmodel.selected_share = item[i];
+		main_viewmodel.selected_share = items[i];
 	    }
 	}
 	update_shares();
@@ -82,20 +82,19 @@ var update_content = function(){
 
 
 var on_load = function(){
-    update_shares();
-    update_content();
     load_available_shares();
 }
 
 var add_clicked = function(item){
-
-    var cb = function(item){
-	alert(item);
-    }
-    
     var user = document.getElementsByName("user")[0].value;
     var name = document.getElementsByName("name")[0].value;
-    var path = document.getElementsByName("path")[0].value;
+    var path = document.getElementsByName("path")[0].value;			   
+
+    var cb = function(item2){
+	load_available_shares();
+    }
+    
+    
     request("add_share?user=" + user + "&name=" + name + "&path=" + path, cb);
 }
 

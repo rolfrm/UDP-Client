@@ -33,17 +33,14 @@ h1 a {
 }
 
 #shares{
-    float: left;
-    width: 250px;
     border: 1px solid;
     resize: horizontal;
-    overflow: auto;
     height: 100%;
-    clear: left;
 }
 
 #table1{
     height:100%;
+    width: 100%;
 }
 
 #divitem{
@@ -74,11 +71,17 @@ td{
 }
 
 #tab{
-	vertical-align:top
+    vertical-align:top;
+    width: 100%;
+    table-layout: fixed;
+}
+
+th {
+    text-align: left;
 }
 
 td > #div2 {
-    width:300px;
+    display: block;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
