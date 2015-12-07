@@ -16,6 +16,7 @@
 #include "udpc.h"
 #include "udpc_utils.h"
 #include "udpc_dir_scan.h"
+#include "service_descriptor.h"
 
 typedef struct{
   bool request_quit;
@@ -145,6 +146,13 @@ int web_main(void * _ed, struct MHD_Connection * con, const char * url,
     char * dir = udpc_unpack_string(&bufptr);
     char * name = udpc_unpack_string(&bufptr);
     char * user = udpc_unpack_string(&bufptr);
+    service_descriptor sd;
+    if(!udpc_get_service_descriptor(user, &sd)){
+      logd("Unable to parse service name: '%s'\n", user);
+      dealloc(buffer);
+      goto error;
+    }
+
     logd("path: %s, name: %s, user: %s\n", dir, name, user);
     update_dirfile(dir, name, user);
     sprintf(fnamebuffer, "shares/%s.json", name);
@@ -160,6 +168,12 @@ int web_main(void * _ed, struct MHD_Connection * con, const char * url,
     if(path == NULL || name == NULL || user == NULL){
       goto error;
     }
+    service_descriptor sd;
+    if(!udpc_get_service_descriptor(user, &sd)){
+      logd("Unable to parse service name: '%s'\n", user);
+      goto error;
+    }
+    logd("Service descriptor seems ok \n");
     ensure_directory("shareinfo/");
     char * sharepath = fmtstr("shareinfo/%s", name);
     struct stat filest;

@@ -57,9 +57,9 @@ char * udpc_pop_error(){
 
 // connect to a server. Format of service must be name@host:service
 udpc_service * udpc_login(const char * service){
-  service_descriptor sitem = udpc_get_service_descriptor(service);
-  if(sitem.host == NULL)
-     return NULL;
+  service_descriptor sitem;
+  if(false == udpc_get_service_descriptor(service, &sitem))
+    return NULL;
   struct sockaddr_storage server_addr = udp_get_addr(sitem.host, udpc_server_port);
   struct sockaddr_storage local_addr = udp_get_addr("0.0.0.0", 0);
   
@@ -143,8 +143,8 @@ udpc_connection * udpc_listen(udpc_service * con){
 }
 
 udpc_connection * udpc_connect(const char * service){
-  service_descriptor sitem = udpc_get_service_descriptor(service);
-  if(sitem.host == NULL)
+  service_descriptor sitem;
+  if(false == udpc_get_service_descriptor(service, &sitem))
     return NULL;
   
   struct sockaddr_storage server_addr = udp_get_addr(sitem.host, udpc_server_port);
@@ -272,7 +272,10 @@ static void * connection_handle(void * _info) {
     logd("UDPC LOGIN\n");
     int port = udpc_unpack_int(&bufptr);
     service srv;
-    srv.desc = udpc_get_service_descriptor(bufptr);
+    bool ok = udpc_get_service_descriptor(bufptr, &srv.desc);
+    if(!ok)
+      goto error;
+    
     srv.client_addr = remote_addr;
     srv.port = port;
     service_descriptor d = srv.desc;
@@ -295,7 +298,11 @@ static void * connection_handle(void * _info) {
     ssl_server_write(con, &udpc_response_ok, sizeof(udpc_response_ok));
   }else if( status == udpc_mode_connect){
     logd("UDPC CONNECT\n");
-    service_descriptor d = udpc_get_service_descriptor(bufptr);
+    
+    service_descriptor d;
+    if(false == udpc_get_service_descriptor(bufptr, &d)){
+      goto error;
+    }
     
     int cnt = info->server->service_cnt;
     for(int i = 0; i < cnt; i++){
@@ -334,11 +341,16 @@ static void * connection_handle(void * _info) {
 	return NULL;
       }
     }
-    ssl_server_write(con, &udpc_response_error, sizeof(udpc_response_error));
-    ssl_server_close(pinfo);
+    goto error;
   }
   ssl_server_close(pinfo);
   return NULL;
+  
+ error:
+  ssl_server_write(con, &udpc_response_error, sizeof(udpc_response_error));
+  ssl_server_close(pinfo);
+  return NULL;
+  
 }
 
 void udpc_start_server(const char *local_address) {
