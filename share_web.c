@@ -82,14 +82,6 @@ bool test_connections(){
   return true;
 }
 
-static bool compare_strs(char * s1, char * s2){
-  while(*s1 == *s2 && *s1 && *s2){
-    s1++; s2++;
-  }
-  if(*s1 == 0) return true;
-  return false;
-}
-
 void _error(const char * file, int line, const char * msg, ...){
   char buffer[1000];  
   va_list arglist;
@@ -161,12 +153,12 @@ int web_main(void * _ed, struct MHD_Connection * con, const char * url,
   UNUSED(url); UNUSED(version); UNUSED(upload_data); UNUSED(upload_data_size);
   UNUSED(method); UNUSED(con_cls); UNUSED(_ed);
   const char * file = "page.html";
+
   bool style_loc = strcmp((char *) url + 1, "style.css") == 0;
-  if(style_loc){
+  if(style_loc)
     file = "style.css";
-  }else if(compare_strs((char *) "favicon.png", (char *) url + 1)){
+  else if(0 == strcmp((char *) url + 1, (char *) "favicon.png"))
     file = "favicon.png";
-  }
   
   char fnamebuffer[100];
   logd("'%s' %s %s %i\n", url, method, version, upload_data_size);
@@ -293,16 +285,31 @@ int web_main(void * _ed, struct MHD_Connection * con, const char * url,
   
 }
 
+void load_available_con(web_context * ctx){
+  dirscan dir = scan_directories("shareinfo");
+  for(size_t i = 0; i < dir.cnt; i++){
+    char * f = dir.files[i];
+    void * buffer = read_file_to_string(f);
+    void * bufptr = buffer;
+    char * dir = udpc_unpack_string(&bufptr);
+    char * name = udpc_unpack_string(&bufptr);
+    char * user = udpc_unpack_string(&bufptr);
+    logd(" %s %s %s \n", dir, name, user);
+    add_connection(ctx, name, NULL);
+  }
+}
+
 int main(int argv, char ** argc){
   if(argv > 1 && strcmp(argc[1], "--test") == 0){
     test_connections();
     logd("TEST SUCCESS\n");
     return 0;
   }
-  web_context ctx = {false};
-
-  struct MHD_Daemon * d =MHD_start_daemon(MHD_USE_THREAD_PER_CONNECTION, 8000, NULL, NULL, &web_main, &ctx,
-			   MHD_OPTION_END);
+  web_context ctx = {0};
+  //load_available_con(&ctx);
+  //return 0;
+  struct MHD_Daemon * d = MHD_start_daemon(MHD_USE_THREAD_PER_CONNECTION, 8000,
+					   NULL, NULL, &web_main, &ctx, MHD_OPTION_END);
   logd("%i\n", d);
   while(false == ctx.request_quit)
     iron_usleep(100000);
