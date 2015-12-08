@@ -21,6 +21,8 @@
 typedef struct{
   udpc_connection * connection;
   char * name;
+  dirscan local;
+  dirscan remote;
 }connection;
 
 typedef struct{
@@ -282,7 +284,6 @@ int web_main(void * _ed, struct MHD_Connection * con, const char * url,
   ret = MHD_queue_response(con, MHD_HTTP_BAD_REQUEST, response);
   MHD_destroy_response(response);
   return ret;
-  
 }
 
 void load_available_con(web_context * ctx){
@@ -294,8 +295,25 @@ void load_available_con(web_context * ctx){
     char * dir = udpc_unpack_string(&bufptr);
     char * name = udpc_unpack_string(&bufptr);
     char * user = udpc_unpack_string(&bufptr);
+    if(NULL != get_connection_by_name(ctx, name)){
+      dealloc(buffer);
+      continue;
+    }
     logd(" %s %s %s \n", dir, name, user);
-    add_connection(ctx, name, NULL);
+    udpc_connection * con = udpc_connect(user);
+    if(con == NULL){
+      dealloc(buffer);
+      continue;
+    }
+    add_connection(ctx, name, con);
+    connection * c = get_connection_by_name(ctx, name);
+    c->local = scan_directories(dir);
+    int ok = udpc_dirscan_client(con, &c->remote);
+    if(ok < 0){
+      logd("User %s\n", name);
+      remove_connection(ctx, name);
+    }
+    dealloc(buffer);
   }
 }
 
@@ -306,12 +324,13 @@ int main(int argv, char ** argc){
     return 0;
   }
   web_context ctx = {0};
-  //load_available_con(&ctx);
-  //return 0;
+  load_available_con(&ctx);
   struct MHD_Daemon * d = MHD_start_daemon(MHD_USE_THREAD_PER_CONNECTION, 8000,
 					   NULL, NULL, &web_main, &ctx, MHD_OPTION_END);
   logd("%i\n", d);
-  while(false == ctx.request_quit)
+  while(false == ctx.request_quit){
     iron_usleep(100000);
+    load_available_con(&ctx);
+  }
 
 }
