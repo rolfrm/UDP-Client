@@ -19,10 +19,70 @@
 #include "service_descriptor.h"
 
 typedef struct{
+  udpc_connection * connection;
+  char * name;
+}connection;
+
+typedef struct{
   bool request_quit;
+  connection  * active_connections;
+  size_t connection_cnt;
 }web_context;
 
-bool compare_strs(char * s1, char * s2){
+static connection * get_connection_by_name(web_context * ctx, const char * name){
+  size_t * size = &ctx->connection_cnt;
+  connection ** conns = &ctx->active_connections;
+  size_t presize = *size;
+  for(size_t i = 0; i < presize; i++)
+    if(strcmp((*conns)[i].name, name) == 0){
+      return &(*conns)[i];
+    }
+  return NULL;
+}
+
+static bool add_connection(web_context * ctx, const char * name, udpc_connection * con){
+  size_t * size = &ctx->connection_cnt;
+  connection** conns = &ctx->active_connections;
+  size_t presize = *size;
+  if(get_connection_by_name(ctx, name) != NULL){
+    ERROR("Name already used by other connection\n");
+    return false;
+  }
+  *conns = realloc(*conns, sizeof(connection) * (presize + 1));
+  (*conns)[presize].connection = con;
+  (*conns)[presize].name = fmtstr("%s", name);
+  *size += 1;
+  return true;	   
+}
+
+static void remove_connection(web_context * ctx, const char * name){
+  size_t * size = &ctx->connection_cnt;
+  connection * conns = ctx->active_connections;
+  connection * con = get_connection_by_name(ctx, name);
+  dealloc(con->name);
+  ASSERT(con != NULL);
+  size_t next_offset = ((con + 1) - conns);
+  memmove(con, con + 1, (*size - next_offset) * sizeof(connection));
+  *size -= 1;
+}
+
+bool test_connections(){
+  web_context * ctx = alloc0(sizeof(web_context));
+  for(int i = 0; i < 100; i++){
+    char namebuf[100];
+    sprintf(namebuf, "__test%i", i);
+    add_connection(ctx, namebuf, (udpc_connection *) (size_t) i);
+  }
+  ASSERT(get_connection_by_name(ctx, "__test1"));
+  remove_connection(ctx, "__test1");
+  ASSERT(get_connection_by_name(ctx, "__test1") == NULL);
+  ASSERT(get_connection_by_name(ctx, "__test14")->connection == (udpc_connection *) 14);
+  dealloc(ctx->active_connections);
+  dealloc(ctx);
+  return true;
+}
+
+static bool compare_strs(char * s1, char * s2){
   while(*s1 == *s2 && *s1 && *s2){
     s1++; s2++;
   }
@@ -52,7 +112,7 @@ void update_dirfile(const char * dir, const char * name, const char * user){
     scan = scan_directories(".");
     chdir(current_dir);
   }
-
+  
   {
     void * buffer = NULL;
     size_t cnt = 0;
@@ -101,7 +161,7 @@ int web_main(void * _ed, struct MHD_Connection * con, const char * url,
   UNUSED(url); UNUSED(version); UNUSED(upload_data); UNUSED(upload_data_size);
   UNUSED(method); UNUSED(con_cls); UNUSED(_ed);
   const char * file = "page.html";
-  bool style_loc = compare_strs((char *) "style.css", (char *) url + 1);
+  bool style_loc = strcmp((char *) url + 1, "style.css") == 0;
   if(style_loc){
     file = "style.css";
   }else if(compare_strs((char *) "favicon.png", (char *) url + 1)){
@@ -112,8 +172,7 @@ int web_main(void * _ed, struct MHD_Connection * con, const char * url,
   logd("'%s' %s %s %i\n", url, method, version, upload_data_size);
   logd("File: %s\n", file);
   if(url == strstr(url, "/sharesinfo")){
-    logd("Sending shares info..\n");
-    //char * currentdir = get_current_dir_name();
+    // Send back json code describing all the available shares.
 
     file = "shareinfo_data";
     
@@ -136,6 +195,8 @@ int web_main(void * _ed, struct MHD_Connection * con, const char * url,
     fclose(outfile);
     dirscan_clean(&dir);
   }else if(url == strstr(url,"/shares/")){
+    // fetch the active shares item inside the shares folder
+    
     char * shareid = (char *) url + strlen("/shares/");
     logd("Shareid: %s\n", shareid);
     char * shareinfo_filename = fmtstr("shareinfo/%s", shareid);
@@ -232,7 +293,12 @@ int web_main(void * _ed, struct MHD_Connection * con, const char * url,
   
 }
 
-int main(){
+int main(int argv, char ** argc){
+  if(argv > 1 && strcmp(argc[1], "--test") == 0){
+    test_connections();
+    logd("TEST SUCCESS\n");
+    return 0;
+  }
   web_context ctx = {false};
 
   struct MHD_Daemon * d =MHD_start_daemon(MHD_USE_THREAD_PER_CONNECTION, 8000, NULL, NULL, &web_main, &ctx,

@@ -55,7 +55,7 @@ var update_shares = function(){
     var shares_len = shares.length;
     var items = "";
     for(var i = 0; i < shares_len; i++){
-	var item = shares[i].path;
+	var item = shares[i].name;
 	if(shares[i] == main_viewmodel.selected_share)
 	    item = "<div id=\"selected\" >" + item + "</div>";
 	else
