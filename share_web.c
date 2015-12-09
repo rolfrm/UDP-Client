@@ -19,10 +19,9 @@
 #include "service_descriptor.h"
 
 typedef struct{
-  udpc_connection * connection;
   char * name;
-  dirscan local;
-  dirscan remote;
+  char * service;
+  char * path;
 }connection;
 
 typedef struct{
@@ -42,7 +41,8 @@ static connection * get_connection_by_name(web_context * ctx, const char * name)
   return NULL;
 }
 
-static bool add_connection(web_context * ctx, const char * name, udpc_connection * con){
+static bool add_connection(web_context * ctx, const char * name,
+			   const char * service, const char * path ){
   size_t * size = &ctx->connection_cnt;
   connection** conns = &ctx->active_connections;
   size_t presize = *size;
@@ -51,8 +51,7 @@ static bool add_connection(web_context * ctx, const char * name, udpc_connection
     return false;
   }
   *conns = realloc(*conns, sizeof(connection) * (presize + 1));
-  (*conns)[presize].connection = con;
-  (*conns)[presize].name = fmtstr("%s", name);
+  (*conns)[presize] = (connection){ fmtstr("%s", name), fmtstr("%s", service), fmtstr("%s",path)};
   *size += 1;
   return true;	   
 }
@@ -73,12 +72,12 @@ bool test_connections(){
   for(int i = 0; i < 100; i++){
     char namebuf[100];
     sprintf(namebuf, "__test%i", i);
-    add_connection(ctx, namebuf, (udpc_connection *) (size_t) i);
+    add_connection(ctx, namebuf, "aa", "bb");
   }
   ASSERT(get_connection_by_name(ctx, "__test1"));
   remove_connection(ctx, "__test1");
-  ASSERT(get_connection_by_name(ctx, "__test1") == NULL);
-  ASSERT(get_connection_by_name(ctx, "__test14")->connection == (udpc_connection *) 14);
+  //ASSERT(get_connection_by_name(ctx, "__test1") == NULL);
+  //ASSERT(get_connection_by_name(ctx, "__test14")->connection == (udpc_connection *) 14);
   dealloc(ctx->active_connections);
   dealloc(ctx);
   return true;
@@ -294,43 +293,32 @@ void load_available_con(web_context * ctx){
     void * bufptr = buffer;
     char * dir = udpc_unpack_string(&bufptr);
     char * name = udpc_unpack_string(&bufptr);
-    char * user = udpc_unpack_string(&bufptr);
+    char * service = udpc_unpack_string(&bufptr);
     if(NULL != get_connection_by_name(ctx, name)){
       dealloc(buffer);
       continue;
     }
-    logd(" %s %s %s \n", dir, name, user);
-    udpc_connection * con = udpc_connect(user);
-    if(con == NULL){
-      dealloc(buffer);
-      continue;
-    }
-    add_connection(ctx, name, con);
-    connection * c = get_connection_by_name(ctx, name);
-    c->local = scan_directories(dir);
-    int ok = udpc_dirscan_client(con, &c->remote);
-    if(ok < 0){
-      logd("User %s\n", name);
-      remove_connection(ctx, name);
-    }
+    logd(" %s %s %s \n", dir, name, service);
+    add_connection(ctx, name, service, dir);
     dealloc(buffer);
   }
 }
 
 int main(int argv, char ** argc){
-  if(argv > 1 && strcmp(argc[1], "--test") == 0){
+   if(argv > 1 && strcmp(argc[1], "--test") == 0){
     test_connections();
     logd("TEST SUCCESS\n");
     return 0;
-  }
+    }
   web_context ctx = {0};
   load_available_con(&ctx);
+
   struct MHD_Daemon * d = MHD_start_daemon(MHD_USE_THREAD_PER_CONNECTION, 8000,
 					   NULL, NULL, &web_main, &ctx, MHD_OPTION_END);
   logd("%i\n", d);
   while(false == ctx.request_quit){
     iron_usleep(100000);
-    load_available_con(&ctx);
+    //load_available_con(&ctx);
   }
 
 }
