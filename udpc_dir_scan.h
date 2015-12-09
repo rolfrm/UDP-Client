@@ -8,6 +8,7 @@ typedef struct{
   char ** files;
   udpc_md5 * md5s;
   time_t * last_change;
+  size_t * size;
   size_t cnt;
 }dirscan;
 
@@ -21,6 +22,8 @@ bool udpc_md5_compare(udpc_md5 a, udpc_md5 b);
 
 // dir
 dirscan scan_directories(const char * basedir);
+// Updates a previously calculated dirscan. Note that this is a descructive operation.
+void udpc_dirscan_update(const char * basedir, dirscan * dir);
 void dirscan_clean(dirscan * _dirscan);
 void dirscan_print(dirscan ds);
 dirscan dirscan_from_buffer(void * buffer);

@@ -31,27 +31,56 @@ void udpc_fprintf_md5(FILE * f, udpc_md5 md5){
   }
 }
 
-dirscan scan_directories(const char * basedir){
-  dirscan ds = {0};
+static size_t dirscan_get_item(dirscan * ds, const char * file){
+  for(size_t i = 0; i < ds->cnt; i++)
+    if(0 == strcmp(file, ds->files[i]))
+      return i;
+  list_push(ds->files, ds->cnt, iron_clone(file, strlen(file) + 1));
+  list_push(ds->md5s, ds->cnt, (udpc_md5){0});
+  list_push(ds->last_change, ds->cnt, (time_t){0});
+  list_push(ds->size, ds->cnt, (size_t)0);
+  return ds->cnt++;
+}
+
+void udpc_dirscan_update(const char * basedir, dirscan * dir){
+  size_t init_cnt = dir->cnt;
+  bool found[dir->cnt];
+  memset(found, 0, sizeof(found));
   int ftwf(const char * filename, const struct stat * st, int ft){
     UNUSED(ft);
     if(S_ISREG(st->st_mode)){
-      udpc_md5 md5 = udpc_file_md5(filename);
-      char * file = iron_clone(filename, strlen(filename) + 1);
-      list_add((void **)&ds.files, &ds.cnt, &file, sizeof(file));
-      ds.cnt--;
-      list_add((void **) &ds.md5s, &ds.cnt, &md5, sizeof(md5));
-      ds.cnt--;
-      list_add((void **) &ds.last_change, &ds.cnt, &st->st_mtime, sizeof(st->st_mtime));
+      size_t i = dirscan_get_item(dir, filename);
+      if(i < init_cnt)
+	found[i] = true;
+      size_t old_s = dir->size[i];
+      time_t old_t = dir->last_change[i];
+      size_t s = st->st_size;
+      time_t t = st->st_mtime;
+      if(s != old_s || old_t != t){
+	dir->md5s[i] = udpc_file_md5(filename);            
+	dir->size[i] = s;
+	dir->last_change[i] = t;
+      }
     }
     return 0;
   }
-  //char * cdir = get_current_dir_name();
-  //ASSERT(0 == chdir(basedir));
-  
   ftw(basedir, ftwf, 100);
-  //ASSERT(0 == chdir(cdir));
+  for(size_t i = init_cnt; i != 0;){
+    i -= 1;
+    if(false == found[i]){
+      dealloc(dir->files[i]);
+      list_remove2(dir->last_change, dir->cnt, i);
+      list_remove2(dir->files, dir->cnt, i);
+      list_remove2(dir->size, dir->cnt, i);
+      list_remove2(dir->md5s, dir->cnt, i);
+      dir->cnt--;
+    }
+  }
+}
 
+dirscan scan_directories(const char * basedir){
+  dirscan ds = {0};
+  udpc_dirscan_update(basedir, &ds);
   return ds;
 }
 
@@ -104,6 +133,7 @@ void dirscan_clean(dirscan * _dirscan){
   dealloc(_dirscan->files);
   dealloc(_dirscan->md5s);
   dealloc(_dirscan->last_change);
+  dealloc(_dirscan->size);
   memset(_dirscan, 0, sizeof(_dirscan[0]));
 }
 
@@ -114,6 +144,7 @@ void * dirscan_to_buffer(dirscan _dirscan, size_t * size){
     udpc_pack_string(_dirscan.files[i], &buffer, size);
   udpc_pack(_dirscan.md5s, _dirscan.cnt * sizeof(_dirscan.md5s[0]), &buffer, size);
   udpc_pack(_dirscan.last_change, _dirscan.cnt * sizeof(_dirscan.last_change[0]), &buffer, size);
+  udpc_pack(_dirscan.size, _dirscan.cnt * sizeof(_dirscan.size[0]), &buffer, size);
   return buffer;
 }
 
@@ -128,10 +159,12 @@ dirscan dirscan_from_buffer(void * buffer){
   dirscan out;
   out.cnt = cnt;
   out.files = iron_clone(strs, sizeof(strs));
-  out.md5s = alloc0(sizeof(out.md5s[0]) * cnt);
+  out.md5s = alloc(sizeof(out.md5s[0]) * cnt);
   udpc_unpack(out.md5s, sizeof(out.md5s[0]) * cnt, &ptr);
   out.last_change = alloc0(sizeof(out.last_change[0]) * cnt);
   udpc_unpack(out.last_change, sizeof(out.last_change[0]) * cnt, &ptr);
+  out.size = alloc(sizeof(out.size[0]) * cnt);
+  udpc_unpack(out.size, sizeof(out.size[0]) * cnt, &ptr);
   return out;
 }
 

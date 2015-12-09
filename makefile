@@ -36,7 +36,12 @@ file: $(TARGET) udpc_file.o
 
 share: $(TARGET) udpc_share.o
 	$(CC) $(LDFLAGS) udpc_share.o $(LIBS) -ludpc -Wl,-rpath,. -o share
+
 test: $(TARGET) udpc_test.o
 	$(CC) $(LDFLAGS) udpc_test.o $(LIBS) -ludpc -Wl,-rpath,. -o test
+
 web: $(TARGET) share_web.o
-	$(CC) $(LDFLAGS) share_web.o $(LIBS) -lmicrohttpd -ludpc -Wl,-rpath,. -o web	
+	$(CC) $(LDFLAGS) share_web.o $(LIBS) -lmicrohttpd -ludpc -Wl,-rpath,. -o web
+
+dir_scanner: $(TARGET) udpc_dir_scanner.o
+	$(CC) $(LDFLAGS) udpc_dir_scanner.o $(LIBS) -ludpc -Wl,-rpath,. -o dir_scanner
