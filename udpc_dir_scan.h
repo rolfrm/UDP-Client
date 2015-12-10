@@ -4,10 +4,12 @@ typedef struct {
   unsigned char md5[16]; //16 = MD5_DIGEST_LENGTH
 }udpc_md5;
 
+typedef u64 t_us;
+
 typedef struct{
   char ** files;
   udpc_md5 * md5s;
-  time_t * last_change;
+  t_us * last_change;
   size_t * size;
   size_t cnt;
 }dirscan;

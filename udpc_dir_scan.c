@@ -53,9 +53,9 @@ void udpc_dirscan_update(const char * basedir, dirscan * dir){
       if(i < init_cnt)
 	found[i] = true;
       size_t old_s = dir->size[i];
-      time_t old_t = dir->last_change[i];
-      size_t s = st->st_size;
-      time_t t = st->st_mtime;
+      t_us old_t = dir->last_change[i];
+      size_t s = st->st_size; 
+      t_us t = st->st_mtim.tv_sec * 1000000 + st->st_mtim.tv_nsec / 1000;
       if(s != old_s || old_t != t){
 	dir->md5s[i] = udpc_file_md5(filename);            
 	dir->size[i] = s;

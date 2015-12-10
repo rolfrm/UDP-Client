@@ -7,12 +7,12 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdint.h>
-
+#include <sys/stat.h>
 #include <iron/types.h>
 #include <iron/log.h>
 #include <iron/mem.h>
 #include <iron/time.h>
-
+#include <iron/fileio.h>
 #include "udpc.h"
 #include "udpc_utils.h"
 #include "udpc_dir_scan.h"
@@ -45,24 +45,38 @@ void handle_sigint(int signum){
 int main(int argc, char ** argv){
 
   if(1 < argc && 0 == strcmp(argv[1], "--test")){
+    int buffer_test[1000];
+    for(size_t i = 0; i <array_count(buffer_test); i++){
+      buffer_test[i] = i;
+    }
+    mkdir("dir test 1", 0777);
+    mkdir("dir test 1/sub dir", 0777);
     
+    write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/test1" );
+    write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/test2");
     //void udpc_dirscan_update(const char * basedir, dirscan * dir)
     dirscan ds = {0};
     for(int i = 0; i < 100; i++){
-      udpc_dirscan_update("testdir1", &ds);
+      udpc_dirscan_update("dir test 1", &ds);
+      logd("\n %i cnt: %i\n", i, ds.cnt);
       for(size_t i = 0; i < ds.cnt; i++){
 	logd("%s ", ds.files[i]);
 	udpc_print_md5(ds.md5s[i]);
 	logd("\n");
       }
       ASSERT(ds.cnt > 0);
-      iron_usleep(1000000);
+      iron_usleep(100000);
+    
+      buffer_test[0] += 10;
+      write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/test2" );
+      buffer_test[0] += 10;
+      if((i % 10) == 9)
+	write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/sub dir/test3" );
     }
     return 0;
   }
 
      
-  
   signal(SIGINT, handle_sigint);
   if(argc == 2){
     udpc_service * con = udpc_login(argv[1]);
