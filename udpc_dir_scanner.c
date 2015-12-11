@@ -57,6 +57,11 @@ int main(int argc, char ** argv){
     //void udpc_dirscan_update(const char * basedir, dirscan * dir)
     dirscan ds = {0};
     for(int i = 0; i < 100; i++){
+      size_t s = 0;
+      void * buffer = dirscan_to_buffer(ds, &s);
+      dirscan copy = dirscan_from_buffer(buffer);
+      dealloc(buffer);
+      ASSERT(ds.cnt == copy.cnt);
       udpc_dirscan_update("dir test 1", &ds);
       logd("\n %i cnt: %i\n", i, ds.cnt);
       for(size_t i = 0; i < ds.cnt; i++){

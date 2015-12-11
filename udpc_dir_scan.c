@@ -105,6 +105,43 @@ void ensure_directory(const char * filepath){
   }
 }
 
+typedef enum{
+  DIRSCAN_NEW,
+  DIRSCAN_GONE,
+  DIRSCAN_MD5,
+  DIRSCAN_NEWER
+}dirscan_state;
+
+typedef struct{
+  dirscan_state * states;
+  size_t * index1;
+  size_t * index2;
+  size_t cnt;
+}dirscan_diff;
+
+dirscan_diff udpc_dirscan_diff(dirscan d1, dirscan d2){
+  int found_1[d1.cnt];
+  int found_2[d2.cnt];
+  memset(found_1, 0, sizeof(found_1));
+  memset(found_2, 0, sizeof(found_2));
+  dirscan_diff diff;
+  for(size_t i = 0; i < d1.cnt; i++){
+    for(size_t j = 0; j < d2.cnt; j++){
+      if(strcmp(d1.files[i],d2.files[j]) == 0){
+	found_1[i] = 1;
+	found_2[j] = 1;
+	if(udpc_md5_compare(d1.md5s[i], d2.md5s[j]) == false){
+	  list_push(diff.states, diff.cnt, DIRSCAN_MD5);
+	  list_push(diff.index1, diff.cnt, i);
+	  list_push(diff.index2, diff.cnt, j);
+	}
+      }
+    }
+  }
+  for(size_t i =0; i < d1.cnt; i++){}
+    
+    return diff;
+}
 
 udpc_md5 udpc_file_md5(const char * path){
   FILE * f = fopen(path, "r");
