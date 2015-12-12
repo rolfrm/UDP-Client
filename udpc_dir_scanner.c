@@ -51,30 +51,39 @@ int main(int argc, char ** argv){
     for(size_t i = 0; i <array_count(buffer_test); i++){
       buffer_test[i] = i;
     }
-    mkdir("dir test 1", 0777);
-    mkdir("dir test 1/sub dir", 0777);
-    
-    //write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/test1" );
-    //write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/test2");
-    //void udpc_dirscan_update(const char * basedir, dirscan * dir)
+    allocator * _allocator = trace_allocator_make();
+    allocator * old_allocator = iron_get_allocator();
+    iron_set_allocator(_allocator);
+    void print_used_pointers(){
+      int used_pointers = (int) trace_allocator_allocated_pointers(_allocator);
+      logd("Used pointers: %i\n", used_pointers);
+    }
     dirscan ds = {0};
-    for(int i = 0; i < 11; i++){
+    for(int i = 0; i < 100; i++){
+      print_used_pointers();
       size_t s = 0;
       void * buffer = dirscan_to_buffer(ds, &s);
       dirscan copy = dirscan_from_buffer(buffer);
+      print_used_pointers();
       dealloc(buffer);
+      print_used_pointers();
       ASSERT(ds.cnt == copy.cnt);
-      udpc_dirscan_update("dir test 1", &ds);
+      udpc_dirscan_update("dir test 1", &ds, false);
       dirscan_diff diff = udpc_dirscan_diff(copy, ds);
+      print_used_pointers();
       logd("\n %i cnt: %i diff cnt: %i\n", i, ds.cnt, diff.cnt);
       udpc_dirscan_clear_diff(&diff);
+      dirscan_clean(&copy);
       for(size_t i = 0; i < ds.cnt; i++){
-	logd("%s ", ds.files[i]);
-	udpc_print_md5(ds.md5s[i]);
+	logd("%s \t", ds.files[i]);
+	if(ds.type[i] == UDPC_DIRSCAN_FILE)
+	  udpc_print_md5(ds.md5s[i]);
 	logd("\n");
       }
-      //ASSERT(ds.cnt > 0);
-      iron_usleep(100000);
+      //iron_usleep(100000);
+      print_used_pointers();
+      mkdir("dir test 1", 0777);
+      mkdir("dir test 1/sub dir", 0777);
       write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/test1" );    
       buffer_test[0] += 10;
       write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/test2" );
@@ -82,12 +91,17 @@ int main(int argc, char ** argv){
       if((i % 10) == 5)
 	write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/sub dir/test3" );
     }
+    dirscan_clean(&ds);
     remove("dir test 1/test2");
     remove("dir test 1/sub dir/test3");
     remove("dir test 1/sub dir");
     remove("dir test 1/test1");
     int ok = remove("dir test 1");
     logd("Unlink: %i\n", ok);
+    iron_set_allocator(old_allocator);
+    int used_pointers = (int) trace_allocator_allocated_pointers(_allocator);
+    ASSERT(used_pointers == 0);
+    trace_allocator_release(_allocator);
     return 0;
   }
 

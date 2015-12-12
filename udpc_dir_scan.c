@@ -39,16 +39,21 @@ static size_t dirscan_get_item(dirscan * ds, const char * file){
   list_push(ds->md5s, ds->cnt, (udpc_md5){0});
   list_push(ds->last_change, ds->cnt, (time_t){0});
   list_push(ds->size, ds->cnt, (size_t)0);
+  list_push(ds->type, ds->cnt, UDPC_DIRSCAN_FILE);
   return ds->cnt++;
 }
 
-void udpc_dirscan_update(const char * basedir, dirscan * dir){
+void udpc_dirscan_update(const char * basedir, dirscan * dir, bool include_directories){
   size_t init_cnt = dir->cnt;
   bool found[dir->cnt];
   memset(found, 0, sizeof(found));
   int ftwf(const char * filename, const struct stat * st, int ft){
     UNUSED(ft);
-    if(S_ISREG(st->st_mode)){
+    bool isdir = S_ISDIR(st->st_mode);
+    if(isdir && !include_directories)
+      return 0;
+    bool isfile = S_ISREG(st->st_mode);
+    if(isdir || isfile){
       size_t i = dirscan_get_item(dir, filename);
       if(i < init_cnt)
 	found[i] = true;
@@ -57,9 +62,11 @@ void udpc_dirscan_update(const char * basedir, dirscan * dir){
       size_t s = st->st_size; 
       t_us t = st->st_mtim.tv_sec * 1000000 + st->st_mtim.tv_nsec / 1000;
       if(s != old_s || old_t != t){
-	dir->md5s[i] = udpc_file_md5(filename);            
+	if(isfile)
+	  dir->md5s[i] = udpc_file_md5(filename);            
 	dir->size[i] = s;
 	dir->last_change[i] = t;
+	dir->type[i] = isfile ? UDPC_DIRSCAN_FILE : UDPC_DIRSCAN_DIR;
       }
     }
     return 0;
@@ -73,6 +80,7 @@ void udpc_dirscan_update(const char * basedir, dirscan * dir){
       list_remove2(dir->files, dir->cnt, i);
       list_remove2(dir->size, dir->cnt, i);
       list_remove2(dir->md5s, dir->cnt, i);
+      list_remove2(dir->type, dir->cnt, i);
       dir->cnt--;
     }
   }
@@ -80,7 +88,7 @@ void udpc_dirscan_update(const char * basedir, dirscan * dir){
 
 dirscan scan_directories(const char * basedir){
   dirscan ds = {0};
-  udpc_dirscan_update(basedir, &ds);
+  udpc_dirscan_update(basedir, &ds, false);
   return ds;
 }
 
@@ -183,6 +191,7 @@ void dirscan_clean(dirscan * _dirscan){
   dealloc(_dirscan->md5s);
   dealloc(_dirscan->last_change);
   dealloc(_dirscan->size);
+  dealloc(_dirscan->type);
   memset(_dirscan, 0, sizeof(_dirscan[0]));
 }
 
@@ -194,6 +203,7 @@ void * dirscan_to_buffer(dirscan _dirscan, size_t * size){
   udpc_pack(_dirscan.md5s, _dirscan.cnt * sizeof(_dirscan.md5s[0]), &buffer, size);
   udpc_pack(_dirscan.last_change, _dirscan.cnt * sizeof(_dirscan.last_change[0]), &buffer, size);
   udpc_pack(_dirscan.size, _dirscan.cnt * sizeof(_dirscan.size[0]), &buffer, size);
+  udpc_pack(_dirscan.type, _dirscan.cnt * sizeof(_dirscan.type[0]), &buffer, size);
   return buffer;
 }
 
@@ -214,6 +224,8 @@ dirscan dirscan_from_buffer(void * buffer){
   udpc_unpack(out.last_change, sizeof(out.last_change[0]) * cnt, &ptr);
   out.size = alloc(sizeof(out.size[0]) * cnt);
   udpc_unpack(out.size, sizeof(out.size[0]) * cnt, &ptr);
+  out.type = alloc(sizeof(out.type[0]) * cnt);
+  udpc_unpack(out.type, sizeof(out.type[0]) * cnt, &ptr);
   return out;
 }
 

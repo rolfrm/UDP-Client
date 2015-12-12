@@ -5,12 +5,16 @@ typedef struct {
 }udpc_md5;
 
 typedef u64 t_us;
-
+typedef enum{
+  UDPC_DIRSCAN_FILE,
+  UDPC_DIRSCAN_DIR
+}udpc_dirscan_type;
 typedef struct{
   char ** files;
   udpc_md5 * md5s;
   t_us * last_change;
   size_t * size;
+  udpc_dirscan_type * type;
   size_t cnt;
 }dirscan;
 
@@ -24,8 +28,8 @@ bool udpc_md5_compare(udpc_md5 a, udpc_md5 b);
 
 // dir
 dirscan scan_directories(const char * basedir);
-// Updates a previously calculated dirscan. Note that this is a descructive operation.
-void udpc_dirscan_update(const char * basedir, dirscan * dir);
+// Updates a previously calculated dirscan. Note that this is a destructive operation.
+void udpc_dirscan_update(const char * basedir, dirscan * dir, bool include_directories);
 void dirscan_clean(dirscan * _dirscan);
 void dirscan_print(dirscan ds);
 dirscan dirscan_from_buffer(void * buffer);
