@@ -14,7 +14,7 @@
 #include <iron/mem.h>
 #include <iron/time.h>
 #include <iron/fileio.h>
-
+#include <iron/utils.h>
 #include "udpc.h"
 #include "udpc_utils.h"
 #include "udpc_dir_scan.h"
@@ -59,6 +59,8 @@ int main(int argc, char ** argv){
       logd("Used pointers: %i\n", used_pointers);
     }
     dirscan ds = {0};
+    size_t max_diff_cnt = 0;
+    size_t max_file_cnt = 0;
     for(int i = 0; i < 100; i++){
       print_used_pointers();
       size_t s = 0;
@@ -70,6 +72,8 @@ int main(int argc, char ** argv){
       ASSERT(ds.cnt == copy.cnt);
       udpc_dirscan_update("dir test 1", &ds, false);
       dirscan_diff diff = udpc_dirscan_diff(copy, ds);
+      max_diff_cnt = MAX(diff.cnt, max_diff_cnt);
+      max_file_cnt = MAX(ds.cnt, max_file_cnt);
       print_used_pointers();
       logd("\n %i cnt: %i diff cnt: %i\n", i, ds.cnt, diff.cnt);
       udpc_dirscan_clear_diff(&diff);
@@ -92,6 +96,7 @@ int main(int argc, char ** argv){
 	write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/sub dir/test3" );
     }
     dirscan_clean(&ds);
+    print_used_pointers();
     remove("dir test 1/test2");
     remove("dir test 1/sub dir/test3");
     remove("dir test 1/sub dir");
@@ -101,6 +106,8 @@ int main(int argc, char ** argv){
     iron_set_allocator(old_allocator);
     int used_pointers = (int) trace_allocator_allocated_pointers(_allocator);
     ASSERT(used_pointers == 0);
+    ASSERT(max_file_cnt == 3);
+    ASSERT(max_diff_cnt == 2);
     trace_allocator_release(_allocator);
     return 0;
   }

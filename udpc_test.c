@@ -1,23 +1,24 @@
+// simple library to userspace UDPC lib to test connection speed.
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
 #include <signal.h>
-#include <sys/stat.h>
 #include <stdarg.h>
-#include <unistd.h> //chdir
-#include <time.h> //difftime
-
-#include "udpc.h"
-#include "udpc_utils.h"
+#include <stdio.h>
 #include <stdint.h>
+#include <unistd.h>
+#include <sys/stat.h>
 #include <iron/types.h>
 #include <iron/log.h>
-#include <iron/utils.h>
+#include <iron/mem.h>
 #include <iron/time.h>
-#include "udpc_send_file.h"
-#include "udpc_stream_check.h"
+#include <iron/fileio.h>
+#include <iron/utils.h>
+#include "udpc.h"
+#include "udpc_utils.h"
 #include "udpc_dir_scan.h"
+#include "udpc_stream_check.h"
 
 void _error(const char * file, int line, const char * msg, ...){
   char buffer[1000];  
@@ -32,144 +33,76 @@ void _error(const char * file, int line, const char * msg, ...){
 }
 
 bool should_close = false;
-
 void handle_sigint(int signum){
   logd("Caught sigint %i\n", signum);
   should_close = true;
   signal(SIGINT, NULL); // next time just quit.
 }
 
-typedef struct{
-  int sequence_id;
-  udpc_connection * con;
-  
-  void * send_buffer;
-  int * snd_idx;
-  int * snd_size;
-  int send_idx_cnt;
-  int send_index;
-  int total_send_size;
-  
-}rudpc_con;
 
-rudpc_con * rudpc_start(udpc_connection * con){
-  static int nseq = 0;
-  rudpc_con * ncon = alloc0(sizeof(rudpc_con));
-  ncon->sequence_id = nseq++;
-  return ncon;
-}
+// UDPC Speed test
+// usage:
+// SERVER: udpc_get name@server:service
+// CLIENT: udpc_get name@server:service delay [buffer_size] [package-count]
+int main(){
 
-void rudpc_update(rudpc_con * con){
-  
-}
-
-void rudpc_write(rudpc_con * con, void * buffer, size_t size){
-  con->send_buffer = ralloc(con->send_buffer, size + con->total_send_size);
-  int this_start = con->total_send_size;
-  int idx = con->send_index++;
-  con->total_send_size += size;
-  
-}
-
-int rudpc_read(rudpc_con * con, void * buffer, int max_size){
-
-}
-
-void rudpc_stop(rudpc_con * con){
-
-}
-
-void ensure_directory(const char * path);
-
-int main(int argc, char ** argv){
-  int start_seq = 1010;
-  int get_seq = 1011;
-  int end_seq = 1012;
-  srand(time(NULL));
-  signal(SIGINT, handle_sigint);
-  if(argc == 2){
-    char * servicename = argv[1];
-    udpc_service * con = udpc_login(servicename);
-    while(!should_close){
-      logd("Retry\n");
-      udpc_connection * c2 = udpc_listen(con);
-      if(c2 == NULL)
-	continue;
-      udpc_set_timeout(c2, 100000);
-      int current_seq = -1;
-      while(true){
-	void * sndbuf = NULL;
-	size_t sndbuf_size = 0;
-	  
-	char buf[1024];
-	int r = udpc_read(c2, buf, sizeof(buf));
-	if(r < 0)
-	  continue;
-	void *ptr = buf;
-	int cmd = unpack_int(&ptr);
-	if(cmd == start_seq){
-	  current_seq = unpack_int(&ptr);
-	}else if(cmd == get_seq){
-	  udpc_pack_int(current_seq, &sndbuf, &sndbuf_size);
-	  udpc_write(c2, sndbuf, sndbuf_size);
-	  sndbuf_size = 0;
-	}else if(cmd == end_seq){
-	  current_seq = -1;
-	}
-      }
-      //break;
-      /*
-      udpc_set_timeout(c2, 100000);
-      dirscan scan_result = scan_directories("testdir");
-      udpc_dirscan_serve(c2, scan_result, 1000, 1400, NULL);
-      dirscan_clean(&scan_result);
-      */
-      udpc_close(c2);
-    }
-    logd("Logging out..\n");
-    udpc_logout(con);
-  }else if(argc == 3){
-    char * servicename = argv[1];
-  getcon:;
-    udpc_connection * con = udpc_connect(servicename);
-    logd("logging in\n");
-    if(con == NULL)
-      goto getcon;
-    
-    udpc_set_timeout(con, 100000);
-    int seq_id = 1234;
-    void * buffer = NULL;
-    size_t buf_size = 0;
-    pack_int(start_seq,&buffer, &buf_size);
-    pack_int(seq_id, &buffer, &buf_size);
-  establish_seq:
-    udpc_write(con, buffer, buf_size);
-    buf_size = 0;
-    pack_int(get_seq, &buffer, &buf_size);
-    udpc_write(con, buffer, buf_size);
-    char r_buf[10];
-    int r = udpc_read(con, r_buf, sizeof(r_buf));
-    if(r < 0)
-      goto establish_seq;
-      
-          /*logd("logged in\n");
-    //  do_dirscan:;
-    
-    dirscan ext_dir;
-
-    int ok = udpc_dirscan_client(con, &ext_dir);
-    logd("Done with scan..\n");
-    if(ok == -1) {
-      udpc_close(con);
-      goto getcon;
-    }
-    dirscan_print(ext_dir);
-    logd("Got dir!\n");/*
-    udpc_close(con);
-    
-  }else{
-    loge("Missing arguments\n");
+  int buffer_test[1000];
+  for(size_t i = 0; i <array_count(buffer_test); i++){
+    buffer_test[i] = i;
   }
+  allocator * _allocator = trace_allocator_make();
+  allocator * old_allocator = iron_get_allocator();
+  iron_set_allocator(_allocator);
   
+  dirscan ds = {0};
+  size_t max_diff_cnt = 0;
+  size_t max_file_cnt = 0;
+  mkdir("dir test 1", 0777);
+  mkdir("dir test 1/sub dir", 0777);
+  for(int i = 0; i < 10; i++){
+    size_t s = 0;
+    void * buffer = dirscan_to_buffer(ds, &s);
+    dirscan copy = dirscan_from_buffer(buffer);
+    dealloc(buffer);
+    ASSERT(ds.cnt == copy.cnt);
+    //sync();
+    udpc_dirscan_update("dir test 1", &ds, false);
+    dirscan_diff diff = udpc_dirscan_diff(copy, ds);
+    max_diff_cnt = MAX(diff.cnt, max_diff_cnt);
+    max_file_cnt = MAX(ds.cnt, max_file_cnt);
+    logd("%i cnt: %i diff cnt: %i\n", i, ds.cnt, diff.cnt);
+    udpc_dirscan_clear_diff(&diff);
+    dirscan_clean(&copy);
+    for(size_t i = 0; i < ds.cnt; i++){
+      logd("%s \t", ds.files[i]);
+      if(ds.type[i] == UDPC_DIRSCAN_FILE)
+	udpc_print_md5(ds.md5s[i]);
+      logd("\n");
+      }
+    //iron_usleep(100000);
+  
+    write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/test1" );    
+    buffer_test[0] += 10;
+    write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/test2" );
+    buffer_test[0] += 10;
+    if((i % 10) == 5)
+      write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/sub dir/test3" );
+  }
+  dirscan_clean(&ds);
+  remove("dir test 1/test2");
+  remove("dir test 1/sub dir/test3");
+  remove("dir test 1/sub dir");
+  remove("dir test 1/test1");
+  int ok = remove("dir test 1");
+  logd("Unlink: %i\n", ok);
+  iron_set_allocator(old_allocator);
+  int used_pointers = (int) trace_allocator_allocated_pointers(_allocator);
+  logd("unfreed pointers: %i\n", used_pointers);
+  trace_allocator_release(_allocator);
+  
+  ASSERT(used_pointers == 0);
+  ASSERT(max_file_cnt == 3);
+  ASSERT(max_diff_cnt == 3);
   return 0;
+  
 }
