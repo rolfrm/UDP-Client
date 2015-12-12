@@ -7,12 +7,14 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <unistd.h>
 #include <sys/stat.h>
 #include <iron/types.h>
 #include <iron/log.h>
 #include <iron/mem.h>
 #include <iron/time.h>
 #include <iron/fileio.h>
+
 #include "udpc.h"
 #include "udpc_utils.h"
 #include "udpc_dir_scan.h"
@@ -52,32 +54,40 @@ int main(int argc, char ** argv){
     mkdir("dir test 1", 0777);
     mkdir("dir test 1/sub dir", 0777);
     
-    write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/test1" );
-    write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/test2");
+    //write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/test1" );
+    //write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/test2");
     //void udpc_dirscan_update(const char * basedir, dirscan * dir)
     dirscan ds = {0};
-    for(int i = 0; i < 100; i++){
+    for(int i = 0; i < 11; i++){
       size_t s = 0;
       void * buffer = dirscan_to_buffer(ds, &s);
       dirscan copy = dirscan_from_buffer(buffer);
       dealloc(buffer);
       ASSERT(ds.cnt == copy.cnt);
       udpc_dirscan_update("dir test 1", &ds);
-      logd("\n %i cnt: %i\n", i, ds.cnt);
+      dirscan_diff diff = udpc_dirscan_diff(copy, ds);
+      logd("\n %i cnt: %i diff cnt: %i\n", i, ds.cnt, diff.cnt);
+      udpc_dirscan_clear_diff(&diff);
       for(size_t i = 0; i < ds.cnt; i++){
 	logd("%s ", ds.files[i]);
 	udpc_print_md5(ds.md5s[i]);
 	logd("\n");
       }
-      ASSERT(ds.cnt > 0);
+      //ASSERT(ds.cnt > 0);
       iron_usleep(100000);
-    
+      write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/test1" );    
       buffer_test[0] += 10;
       write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/test2" );
       buffer_test[0] += 10;
-      if((i % 10) == 9)
+      if((i % 10) == 5)
 	write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/sub dir/test3" );
     }
+    remove("dir test 1/test2");
+    remove("dir test 1/sub dir/test3");
+    remove("dir test 1/sub dir");
+    remove("dir test 1/test1");
+    int ok = remove("dir test 1");
+    logd("Unlink: %i\n", ok);
     return 0;
   }
 

@@ -30,6 +30,22 @@ void dirscan_clean(dirscan * _dirscan);
 void dirscan_print(dirscan ds);
 dirscan dirscan_from_buffer(void * buffer);
 void * dirscan_to_buffer(dirscan _dirscan, size_t * size);
+typedef enum{
+  DIRSCAN_NEW,
+  DIRSCAN_GONE,
+  DIRSCAN_DIFF_MD5
+}dirscan_state;
+
+typedef struct{
+  dirscan_state * states;
+  size_t * index1;
+  size_t * index2;
+  size_t cnt;
+}dirscan_diff;
+
+dirscan_diff udpc_dirscan_diff(dirscan d1, dirscan d2);
+void udpc_dirscan_clear_diff(dirscan_diff * diff);
+
 
 // server/client
 void udpc_dirscan_serve(udpc_connection * con, dirscan last_dirscan, size_t buffer_size, int delay_us, void * read);
