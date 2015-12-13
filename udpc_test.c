@@ -15,6 +15,7 @@
 #include <iron/time.h>
 #include <iron/fileio.h>
 #include <iron/utils.h>
+#include <iron/test.h>
 #include "udpc.h"
 #include "udpc_utils.h"
 #include "udpc_dir_scan.h"
@@ -38,16 +39,9 @@ void handle_sigint(int signum){
   should_close = true;
   signal(SIGINT, NULL); // next time just quit.
 }
-void test_buffer_bug();
 
-// UDPC Speed test
-// usage:
-// SERVER: udpc_get name@server:service
-// CLIENT: udpc_get name@server:service delay [buffer_size] [package-count]
-int main(){
-  //test_buffer_bug();
-  //return 0;
-  int buffer_test[1000];
+bool test_dirscan(){
+  int buffer_test[10000];
   for(size_t i = 0; i <array_count(buffer_test); i++){
     buffer_test[i] = i;
   }
@@ -68,8 +62,6 @@ int main(){
     dealloc(buffer);
     buffer = NULL;
     ASSERT(ds.cnt == copy.cnt);
-
-    //sync();
     udpc_dirscan_update("dir test 1", &ds, false);
 
     dirscan_diff diff = udpc_dirscan_diff(copy, ds);
@@ -77,17 +69,8 @@ int main(){
       ASSERT(diff.cnt > 0);
     max_diff_cnt = MAX(diff.cnt, max_diff_cnt);
     max_file_cnt = MAX(ds.cnt, max_file_cnt);
-    logd("%i cnt: %i diff cnt: %i\n", i, ds.cnt, diff.cnt);
     udpc_dirscan_clear_diff(&diff);
     dirscan_clean(&copy);
-    for(size_t i = 0; i < ds.cnt; i++){
-      logd("%s \t", ds.files[i]);
-      if(ds.type[i] == UDPC_DIRSCAN_FILE)
-	udpc_print_md5(ds.md5s[i]);
-      logd("\n");
-      }
-    //iron_usleep(100000);
-  
     write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/test1" );    
     buffer_test[0] += 10;
     write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/test2" );
@@ -95,29 +78,29 @@ int main(){
     if((i % 10) == 5)
       write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/sub dir/test3" );
     size_t __s;
-    iron_usleep(10000);
-    //sync();
+    // wait for timestamps to update.
+    iron_usleep(20000);
     int * __buffer = read_file_to_buffer("dir test 1/test1", &__s);
-    logd("AB: %i %i %i\n",__buffer[0], buffer_test[0] - 20, __buffer[0] == (buffer_test[0] - 20));
     ASSERT(__buffer[0] == (buffer_test[0] - 20));
     dealloc(__buffer);
-    
   }
   dirscan_clean(&ds);
-  remove("dir test 1/test2");
-  remove("dir test 1/sub dir/test3");
-  remove("dir test 1/sub dir");
-  remove("dir test 1/test1");
-  int ok = remove("dir test 1");
-  logd("Unlink: %i\n", ok);
+  ASSERT(!remove("dir test 1/test2"));
+  ASSERT(!remove("dir test 1/sub dir/test3"));
+  ASSERT(!remove("dir test 1/sub dir"));
+  ASSERT(!remove("dir test 1/test1"));
+  ASSERT(!remove("dir test 1"));
   iron_set_allocator(old_allocator);
   int used_pointers = (int) trace_allocator_allocated_pointers(_allocator);
-  logd("unfreed pointers: %i\n", used_pointers);
   trace_allocator_release(_allocator);
   
   ASSERT(used_pointers == 0);
   ASSERT(max_file_cnt == 3);
   ASSERT(max_diff_cnt == 3);
-  return 0;
+  return TEST_SUCCESS;
   
+}
+
+int main(){
+  TEST(test_dirscan);
 }

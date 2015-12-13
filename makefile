@@ -42,6 +42,3 @@ test: $(TARGET) udpc_test.o
 
 web: $(TARGET) share_web.o
 	$(CC) $(LDFLAGS) share_web.o $(LIBS) -lmicrohttpd -ludpc -Wl,-rpath,. -o web
-
-dir_scanner: $(TARGET) udpc_dir_scanner.o
-	$(CC) $(LDFLAGS) udpc_dir_scanner.o $(LIBS) -ludpc -Wl,-rpath,. -o dir_scanner

@@ -23,8 +23,10 @@ typedef struct{
 }missing_seq;
 
 static void _send_file(udpc_connection * c2, char * filepath, int delay, int buffer_size){
+
   FILE * file = fopen(filepath, "r");
   if(file == NULL){
+    logd("NO FILE %s\n", filepath);
     udpc_write(c2, "ENDENDEND", 10);
     return;
   }
@@ -38,6 +40,7 @@ static void _send_file(udpc_connection * c2, char * filepath, int delay, int buf
     udpc_pack_size_t(file_size, &bufptr, &bufptr_size);
     n_segments = file_size / (buffer_size - sizeof(int));
     udpc_pack_size_t(n_segments, &bufptr, &bufptr_size);
+    logd("Sending file: %s, file size: %i, segments: %i\n", filepath, file_size, n_segments);
     udpc_write(c2, bufptr, bufptr_size);
   }
   
@@ -79,13 +82,14 @@ static void _send_file(udpc_connection * c2, char * filepath, int delay, int buf
 }
 
 void _receive_file(udpc_connection * c2, char * filepath, int buffer_size){
+  logd("Sending file: %s\n", filepath);
   ensure_directory(filepath);
   FILE * file = fopen(filepath, "w");
   ASSERT(file != NULL);
   udpc_set_timeout(c2, 1000000);
   char buffer[buffer_size];
-  size_t file_size;
-  int num_chunks;
+  size_t file_size = 0;
+  int num_chunks = 0;
   { // get file size/number of chunks.
     void *bufptr = buffer;
     udpc_read(c2, buffer, sizeof(buffer));
@@ -98,10 +102,10 @@ void _receive_file(udpc_connection * c2, char * filepath, int buffer_size){
   missing_seq * missing = NULL;
   size_t missing_cnt = 0;
   while(true){
-    size_t r = udpc_read(c2, buffer, sizeof(buffer));
-    if(r == 0 || r == (size_t) -1) break;
+    int r = udpc_read(c2, buffer, sizeof(buffer));
+    if(r < 0) goto end;
     if(strcmp("ENDENDEND", buffer) == 0)
-      break;
+      goto end;
     void * ptr = buffer;
     int seq = udpc_unpack_int(&ptr);
     if(current + 1 != seq){
@@ -166,6 +170,7 @@ void _receive_file(udpc_connection * c2, char * filepath, int buffer_size){
     if(missing2 != NULL)
       dealloc(missing2);
   }
+ end:
   udpc_write(c2, "OK", sizeof("OK"));
   fclose(file);
 }

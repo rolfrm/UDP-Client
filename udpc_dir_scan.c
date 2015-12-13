@@ -307,20 +307,21 @@ int udpc_dirscan_client(udpc_connection * con, dirscan * dscan){
 	dealloc(buffer);
       return -1;
     }
+    if(r == 1){
+      logd("Found end!\n");
+      break;
+    }
     void * ptr = readbuffer;
     int seq = udpc_unpack_int(&ptr);
-    logd("Seq: %i\n", seq);
+    logd("Seq: %i %i\n", current, seq);
     if(seq != (current + 1)){
       logd("package skip happens!\n");
       if(buffer != NULL)
 	dealloc(buffer);
       return -1;
     }
-    if(r == 1){
-      logd("Found end!\n");
-      break;
-    }
-    seq = current;
+    
+    current = seq;
     
     udpc_pack(ptr, r - sizeof(int), &buffer, &size);
   }

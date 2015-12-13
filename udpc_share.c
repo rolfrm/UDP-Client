@@ -69,6 +69,7 @@ int main(int argc, char ** argv){
   ASSERT(S_ISDIR(dirst.st_mode));
 
   if(argc == 3){
+    dirscan scan_result = {0};
     char * servicename = argv[1];
     udpc_service * con = udpc_login(servicename);
     while(!should_close){
@@ -77,7 +78,6 @@ int main(int argc, char ** argv){
 	continue;
       udpc_set_timeout(c2, 1000000);
       while(true){
-
 	char buf[1024];
 	int r = udpc_read(c2, buf, sizeof(buf));
 	if(r == -1)
@@ -86,17 +86,16 @@ int main(int argc, char ** argv){
 	void * rcv_str = buf;
 	char * st = udpc_unpack_string(&rcv_str);
 	if(strcmp(st, udpc_file_serve_service_name) == 0){
-	  char * cdir = get_current_dir_name();
-	  ASSERT(0 == chdir(dir));
+	  //char * cdir = get_current_dir_name();
+	  //ASSERT(0 == chdir(dir));
 	  udpc_file_serve(c2, buf);
-	  ASSERT(0 == chdir(cdir));
+	  //ASSERT(0 == chdir(cdir));
 	}else if(strcmp(st, udpc_speed_test_service_name) == 0){
 	  udpc_speed_serve(c2, buf);
 	}else if(strcmp(st, udpc_dirscan_service_name) == 0){
-	  logd("Dirscan!\n");
-	  dirscan scan_result = scan_directories(dir);
+	  logd("Sending dir..\n");
+	  udpc_dirscan_update(dir, &scan_result,false);
 	  udpc_dirscan_serve(c2, scan_result, 1000, 1400, buf);
-	  dirscan_clean(&scan_result);
 	}else{
 	  loge("Unknown service '%s'\n", st);
 	  break;
@@ -137,7 +136,7 @@ int main(int argc, char ** argv){
   do_dirscan:;
     dirscan ext_dir;
     int ok = udpc_dirscan_client(con, &ext_dir);
-    if(!ok) goto do_dirscan;
+    if(ok < 0) goto do_dirscan;
     int match[ext_dir.cnt];
     if(ok != -1){
       for(size_t i = 0; i < ext_dir.cnt; i++){
@@ -153,7 +152,7 @@ int main(int argc, char ** argv){
 	  }
 	}
       }
-      delay = 0;
+      delay = 10;
       char * cdir = get_current_dir_name();
       ASSERT(0 == chdir(dir));
       for(size_t i = 0; i < ext_dir.cnt; i++){
