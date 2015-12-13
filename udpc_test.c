@@ -54,8 +54,45 @@ bool test_dirscan(){
   size_t max_file_cnt = 0;
   mkdir("dir test 1", 0777);
   mkdir("dir test 1/sub dir", 0777);
+  memset(buffer_test, 10, sizeof(buffer_test));
+  udpc_dirscan_update("dir test 1", &ds, false);
+  ASSERT(ds.cnt == 0);
+  write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/test1" );
+  buffer_test[0] += 10;
+  write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/test2" );
+  iron_usleep(30000);  
+  size_t s = 0;
+  void * buffer = dirscan_to_buffer(ds, &s);
+  dirscan copy = dirscan_from_buffer(buffer);
+  udpc_dirscan_update("dir test 1", &ds, false);
+
+  dirscan_diff diff = udpc_dirscan_diff(copy, ds);
+  ASSERT(diff.cnt == 2);
+  ASSERT(diff.states[0] == DIRSCAN_NEW);
+  ASSERT(ds.type[0] == UDPC_DIRSCAN_FILE);
+  remove("dir test 1/test1");
+  iron_usleep(20000);
+  udpc_dirscan_update("dir test 1", &ds, false);
+  
+  int idx = -1;
+  if(strcmp(ds.files[0], "test1") == 0)
+    idx = 0;
+  else if(strcmp(ds.files[1], "test1") == 0)
+    idx = 1;
+
+  ASSERT(idx != -1);
+  iron_usleep(30000);
+  ASSERT(ds.cnt == 2);
+  ASSERT(ds.type[idx] == UDPC_DIRSCAN_DELETED);
+  
+
+  buffer_test[0] += 10;
+  write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/test1" );
+
+  
+  /*
   for(int i = 0; i < 10; i++){
-    memset(buffer_test, i, sizeof(buffer_test));
+    
     size_t s = 0;
     void * buffer = dirscan_to_buffer(ds, &s);
     dirscan copy = dirscan_from_buffer(buffer);
@@ -84,9 +121,9 @@ bool test_dirscan(){
     ASSERT(__buffer[0] == (buffer_test[0] - 20));
     dealloc(__buffer);
   }
-  dirscan_clean(&ds);
+  dirscan_clean(&ds);*/
   ASSERT(!remove("dir test 1/test2"));
-  ASSERT(!remove("dir test 1/sub dir/test3"));
+  //ASSERT(!remove("dir test 1/sub dir/test3"));
   ASSERT(!remove("dir test 1/sub dir"));
   ASSERT(!remove("dir test 1/test1"));
   ASSERT(!remove("dir test 1"));

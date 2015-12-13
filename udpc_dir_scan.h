@@ -7,7 +7,8 @@ typedef struct {
 typedef u64 t_us;
 typedef enum{
   UDPC_DIRSCAN_FILE,
-  UDPC_DIRSCAN_DIR
+  UDPC_DIRSCAN_DIR,
+  UDPC_DIRSCAN_DELETED
 }udpc_dirscan_type;
 typedef struct{
   char ** files;

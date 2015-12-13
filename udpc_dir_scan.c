@@ -80,13 +80,8 @@ void udpc_dirscan_update(const char * basedir, dirscan * dir, bool include_direc
   for(size_t i = init_cnt; i != 0;){
     i -= 1;
     if(false == found[i]){
-      dealloc(dir->files[i]);
-      list_remove2(dir->last_change, dir->cnt, i);
-      list_remove2(dir->files, dir->cnt, i);
-      list_remove2(dir->size, dir->cnt, i);
-      list_remove2(dir->md5s, dir->cnt, i);
-      list_remove2(dir->type, dir->cnt, i);
-      dir->cnt--;
+      // missing files
+      dir->type[i] = UDPC_DIRSCAN_DELETED;
     }
   }
 }

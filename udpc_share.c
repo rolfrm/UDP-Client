@@ -173,10 +173,10 @@ int main(int argc, char ** argv){
 	  logd("FIle: %s\n", filepathbuffer);
 	  if( difft >= 0){
 	    logd("Send to local\n");
-	    udpc_file_client(con, delay, 1400, ext_dir.files[i], filepathbuffer);
+	    udpc_file_client(con, delay, 1400, ext_dir.files[i2], filepathbuffer);
 	  }else if (difft < 0){
 	    logd("Send to remote\n");
-	    udpc_file_client2(con, delay, 1400, ext_dir.files[i], filepathbuffer);
+	    udpc_file_client2(con, delay, 1400, ext_dir.files[i2], filepathbuffer);
 	  }
 	  
 	}
