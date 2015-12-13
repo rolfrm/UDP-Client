@@ -175,7 +175,7 @@ void _receive_file(udpc_connection * c2, char * filepath, int buffer_size){
   fclose(file);
 }
 
-void udpc_file_serve(udpc_connection * c2, void * ptr){
+void udpc_file_serve(udpc_connection * c2, void * ptr, char * dir){
   if(ptr == NULL){
     char buf2[1000]; 
     size_t r = 0;
@@ -195,10 +195,12 @@ void udpc_file_serve(udpc_connection * c2, void * ptr){
   int buffer_size = udpc_unpack_int(&ptr);
   char * filepath = udpc_unpack_string(&ptr);
   int rcv = udpc_unpack_int(&ptr);
+  char filepathbuffer[1000] = {0};
+  sprintf(filepathbuffer, "%s/%s",dir, filepath);
   if(rcv == 1){
-    _receive_file(c2, filepath, buffer_size);
+    _receive_file(c2, filepathbuffer, buffer_size);
   }else{
-    _send_file(c2, filepath, delay, buffer_size);
+    _send_file(c2, filepathbuffer, delay, buffer_size);
   }
 }
 

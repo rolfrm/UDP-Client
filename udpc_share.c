@@ -76,32 +76,37 @@ int main(int argc, char ** argv){
       udpc_connection * c2 = udpc_listen(con);   
       if(c2 == NULL)
 	continue;
-      udpc_set_timeout(c2, 1000000);
+      udpc_set_timeout(c2, 10000000);
       while(true){
 	char buf[1024];
 	int r = udpc_read(c2, buf, sizeof(buf));
 	if(r == -1)
 	  break;
-	  
+
 	void * rcv_str = buf;
 	char * st = udpc_unpack_string(&rcv_str);
 	if(strcmp(st, udpc_file_serve_service_name) == 0){
+	  logd("File share\n");
 	  //char * cdir = get_current_dir_name();
 	  //ASSERT(0 == chdir(dir));
-	  udpc_file_serve(c2, buf);
+	  udpc_file_serve(c2, buf, dir);
 	  //ASSERT(0 == chdir(cdir));
+	  logd("File share END\n");
 	}else if(strcmp(st, udpc_speed_test_service_name) == 0){
+	  logd("Speed \n");
 	  udpc_speed_serve(c2, buf);
+	  logd("Speed END \n");
 	}else if(strcmp(st, udpc_dirscan_service_name) == 0){
 	  logd("Sending dir..\n");
 	  udpc_dirscan_update(dir, &scan_result,false);
 	  udpc_dirscan_serve(c2, scan_result, 1000, 1400, buf);
+	  logd("Sending dir END\n");
 	}else{
 	  loge("Unknown service '%s'\n", st);
 	  break;
 	}
       }
-	
+      logd("END!\n");
       udpc_close(c2);
     }
     udpc_logout(con);
@@ -134,51 +139,51 @@ int main(int argc, char ** argv){
     bool local_found[local_dir.cnt];
     memset(local_found,0, sizeof(local_found));
   do_dirscan:;
-    dirscan ext_dir;
+    dirscan ext_dir = {0};
     int ok = udpc_dirscan_client(con, &ext_dir);
     if(ok < 0) goto do_dirscan;
-    int match[ext_dir.cnt];
-    if(ok != -1){
-      for(size_t i = 0; i < ext_dir.cnt; i++){
-	match[i] = -1;
-	char * ext_file = ext_dir.files[i];
-	logd("ext file: %s\n", ext_file);
-	for(size_t j = 0; j < local_dir.cnt; j++){
-	  char * loc_file = local_dir.files[j];
-	  if(strcmp(ext_file, loc_file) == 0){
-	    local_found[j] = true;
-	    match[i] = j;
-	    break;
-	  }
+
+    logd ("got dirscan\n");
+    dirscan_diff diff = udpc_dirscan_diff(local_dir, ext_dir);
+    for(size_t i = 0; i < diff.cnt; i++){
+      size_t i1 = diff.index1[i];
+      size_t i2 = diff.index2[i];
+      dirscan_state state = diff.states[i];
+      double difft = 1;
+      switch(state){
+      case DIRSCAN_GONE:
+	{
+	  char * f = ext_dir.files[i1];
+	  logd("Gone: %s\n");
+	  char filepathbuffer[1000] = {0};
+	  sprintf(filepathbuffer, "%s/%s",dir, f);
+
+	  remove(filepathbuffer);
 	}
-      }
-      delay = 10;
-      char * cdir = get_current_dir_name();
-      ASSERT(0 == chdir(dir));
-      for(size_t i = 0; i < ext_dir.cnt; i++){
-	logd("match: %i\n", match[i]);
-	if(match[i] == -1 || false == udpc_md5_compare(ext_dir.md5s[i], local_dir.md5s[match[i]])){
-	  double difft = (match[i] == -1) ? 1 : (difftime(ext_dir.last_change[i], local_dir.last_change[match[i]]));
-	  logd("Transferring: '%s'\n", ext_dir.files[i]);
-	  ensure_directory(ext_dir.files[i]);
-	  if( difft > 0){
+	break;
+      case DIRSCAN_DIFF_MD5:
+	difft = difftime(ext_dir.last_change[i2], local_dir.last_change[i1]);
+      case DIRSCAN_NEW:
+	{
+	  delay = 10;
+	  char * f = ext_dir.files[i2];
+	  logd("changed/new: %s\n");
+	  char filepathbuffer[1000] = {0};
+	  sprintf(filepathbuffer, "%s/%s",dir, f);
+	  logd("FIle: %s\n", filepathbuffer);
+	  if( difft >= 0){
 	    logd("Send to local\n");
-	    udpc_file_client(con, delay, 1400, ext_dir.files[i], ext_dir.files[i]);
+	    udpc_file_client(con, delay, 1400, ext_dir.files[i], filepathbuffer);
 	  }else if (difft < 0){
 	    logd("Send to remote\n");
-	    udpc_file_client2(con, delay, 1400, ext_dir.files[i], ext_dir.files[i]);
+	    udpc_file_client2(con, delay, 1400, ext_dir.files[i], filepathbuffer);
 	  }
+	  
 	}
+	break;
       }
-      for(size_t i = 0; i < local_dir.cnt; i++){
-	if(local_found[i] == false){
-	  logd("Sending file back: '%s'\n", local_dir.files[i]);
-	  udpc_file_client2(con, delay, 1400, local_dir.files[i], local_dir.files[i]);
-	}
-	logd("Found? %i '%s'\n", local_found[i], local_dir.files[i]);
-      }
-      ASSERT(0 == chdir(cdir));
     }
+
     
     udpc_write(con, "asd", sizeof("asd"));
 

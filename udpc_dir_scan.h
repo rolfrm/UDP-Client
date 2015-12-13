@@ -35,9 +35,9 @@ void dirscan_print(dirscan ds);
 dirscan dirscan_from_buffer(void * buffer);
 void * dirscan_to_buffer(dirscan _dirscan, size_t * size);
 typedef enum{
-  DIRSCAN_NEW,
-  DIRSCAN_GONE,
-  DIRSCAN_DIFF_MD5
+  DIRSCAN_NEW = 2,
+  DIRSCAN_GONE = 4,
+  DIRSCAN_DIFF_MD5 = 8
 }dirscan_state;
 
 typedef struct{

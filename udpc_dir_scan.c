@@ -47,6 +47,9 @@ void udpc_dirscan_update(const char * basedir, dirscan * dir, bool include_direc
   size_t init_cnt = dir->cnt;
   bool found[dir->cnt];
   memset(found, 0, sizeof(found));
+  size_t len = strlen(basedir);
+  if(basedir[len - 1] != '/')
+    len += 1;
   int ftwf(const char * filename, const struct stat * st, int ft){
     UNUSED(ft);
     bool isdir = S_ISDIR(st->st_mode);
@@ -54,7 +57,9 @@ void udpc_dirscan_update(const char * basedir, dirscan * dir, bool include_direc
       return 0;
     bool isfile = S_ISREG(st->st_mode);
     if(isdir || isfile){
-      size_t i = dirscan_get_item(dir, filename);
+
+      char * stripped_filename = (char *) filename + len;
+      size_t i = dirscan_get_item(dir, stripped_filename);
       if(i < init_cnt)
 	found[i] = true;
       size_t old_s = dir->size[i];
@@ -63,7 +68,7 @@ void udpc_dirscan_update(const char * basedir, dirscan * dir, bool include_direc
       t_us t = st->st_mtim.tv_sec * 1000000 + st->st_mtim.tv_nsec / 1000;
       if(s != old_s || old_t != t){
 	if(isfile)
-	  dir->md5s[i] = udpc_file_md5(filename);            
+	  dir->md5s[i] = udpc_file_md5(filename);
 	dir->size[i] = s;
 	dir->last_change[i] = t;
 	dir->type[i] = isfile ? UDPC_DIRSCAN_FILE : UDPC_DIRSCAN_DIR;
@@ -145,9 +150,9 @@ dirscan_diff udpc_dirscan_diff(dirscan d1, dirscan d2){
   }
   for(size_t j =0; j < d2.cnt; j++){
     if(found_2[j] == 0){
-      list_push(diff.states, diff.cnt, DIRSCAN_GONE);
-      list_push(diff.index1, diff.cnt, j);
-      list_push(diff.index2, diff.cnt, 0);
+      list_push(diff.states, diff.cnt, DIRSCAN_NEW);
+      list_push(diff.index1, diff.cnt, 0);
+      list_push(diff.index2, diff.cnt, j);
       diff.cnt +=1;
     }
   }
@@ -162,35 +167,21 @@ void udpc_dirscan_clear_diff(dirscan_diff * diff){
   }
   memset(diff,0,sizeof(*diff));
 }
-#include <iron/fileio.h>
+
 udpc_md5 udpc_file_md5(const char * path){
-  MD5_CTX md5;
-  MD5_Init(&md5);
-  size_t s;
-  void * buffer = read_file_to_buffer(path, &s);
-  MD5_Update(&md5, buffer, s);
-  udpc_md5 digest;
-  MD5_Final(digest.md5, &md5);
-  dealloc(buffer);
-  return digest;
-  /*
+
   FILE * f = fopen(path, "r");
   ASSERT(f != NULL);
   unsigned long r = 0;
   char buffer[1024] = {0};
   MD5_CTX md5;
   MD5_Init(&md5);
-  int i = 0;
-  while(0 != (r = fread(buffer, 1, sizeof(buffer), f))){
-    if(i == 0){
-      logd("____First byte: %i\n", buffer[0]);
-    }
-    i++;
+  while(0 != (r = fread(buffer, 1, sizeof(buffer), f)))
     MD5_Update(&md5, buffer, r);
-  }
-  udpc_md5 digest;
+  
+  udpc_md5 digest = {0};
   MD5_Final(digest.md5, &md5);
-  return digest;*/
+  return digest;
 }
 
 bool udpc_md5_compare(udpc_md5 a, udpc_md5 b){

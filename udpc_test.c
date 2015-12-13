@@ -98,9 +98,9 @@ bool test_dirscan(){
   ASSERT(max_file_cnt == 3);
   ASSERT(max_diff_cnt == 3);
   return TEST_SUCCESS;
-  
 }
 
 int main(){
   TEST(test_dirscan);
+  return 0;
 }
