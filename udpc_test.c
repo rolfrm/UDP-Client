@@ -28,7 +28,7 @@ void _error(const char * file, int line, const char * msg, ...){
   va_end(arglist);
   loge("%s\n", buffer);
   loge("Got error at %s line %i\n", file,line);
-  raise(SIGSTOP);
+  raise(SIGINT);
   exit(255);
 }
 
@@ -38,14 +38,15 @@ void handle_sigint(int signum){
   should_close = true;
   signal(SIGINT, NULL); // next time just quit.
 }
-
+void test_buffer_bug();
 
 // UDPC Speed test
 // usage:
 // SERVER: udpc_get name@server:service
 // CLIENT: udpc_get name@server:service delay [buffer_size] [package-count]
 int main(){
-
+  //test_buffer_bug();
+  //return 0;
   int buffer_test[1000];
   for(size_t i = 0; i <array_count(buffer_test); i++){
     buffer_test[i] = i;
@@ -60,14 +61,20 @@ int main(){
   mkdir("dir test 1", 0777);
   mkdir("dir test 1/sub dir", 0777);
   for(int i = 0; i < 10; i++){
+    memset(buffer_test, i, sizeof(buffer_test));
     size_t s = 0;
     void * buffer = dirscan_to_buffer(ds, &s);
     dirscan copy = dirscan_from_buffer(buffer);
     dealloc(buffer);
+    buffer = NULL;
     ASSERT(ds.cnt == copy.cnt);
+
     //sync();
     udpc_dirscan_update("dir test 1", &ds, false);
+
     dirscan_diff diff = udpc_dirscan_diff(copy, ds);
+    if(i > 0)
+      ASSERT(diff.cnt > 0);
     max_diff_cnt = MAX(diff.cnt, max_diff_cnt);
     max_file_cnt = MAX(ds.cnt, max_file_cnt);
     logd("%i cnt: %i diff cnt: %i\n", i, ds.cnt, diff.cnt);
@@ -87,6 +94,14 @@ int main(){
     buffer_test[0] += 10;
     if((i % 10) == 5)
       write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/sub dir/test3" );
+    size_t __s;
+    iron_usleep(10000);
+    //sync();
+    int * __buffer = read_file_to_buffer("dir test 1/test1", &__s);
+    logd("AB: %i %i %i\n",__buffer[0], buffer_test[0] - 20, __buffer[0] == (buffer_test[0] - 20));
+    ASSERT(__buffer[0] == (buffer_test[0] - 20));
+    dealloc(__buffer);
+    
   }
   dirscan_clean(&ds);
   remove("dir test 1/test2");

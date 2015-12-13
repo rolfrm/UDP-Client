@@ -162,19 +162,35 @@ void udpc_dirscan_clear_diff(dirscan_diff * diff){
   }
   memset(diff,0,sizeof(*diff));
 }
-
+#include <iron/fileio.h>
 udpc_md5 udpc_file_md5(const char * path){
+  MD5_CTX md5;
+  MD5_Init(&md5);
+  size_t s;
+  void * buffer = read_file_to_buffer(path, &s);
+  MD5_Update(&md5, buffer, s);
+  udpc_md5 digest;
+  MD5_Final(digest.md5, &md5);
+  dealloc(buffer);
+  return digest;
+  /*
   FILE * f = fopen(path, "r");
   ASSERT(f != NULL);
   unsigned long r = 0;
-  char buffer[1024];
+  char buffer[1024] = {0};
   MD5_CTX md5;
   MD5_Init(&md5);
-  while(0 != (r = fread(buffer, 1, sizeof(buffer), f)))
+  int i = 0;
+  while(0 != (r = fread(buffer, 1, sizeof(buffer), f))){
+    if(i == 0){
+      logd("____First byte: %i\n", buffer[0]);
+    }
+    i++;
     MD5_Update(&md5, buffer, r);
+  }
   udpc_md5 digest;
   MD5_Final(digest.md5, &md5);
-  return digest;
+  return digest;*/
 }
 
 bool udpc_md5_compare(udpc_md5 a, udpc_md5 b){
