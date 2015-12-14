@@ -101,7 +101,22 @@ bool test_dirscan(){
   udpc_dirscan_update("dir test 1", &ds, false);
   ASSERT(ds.cnt == 3);
   ASSERT(udpc_md5_compare(ds.md5s[idx], ds.md5s[2]));
+
+  for(int i = 0; i < 10; i++){
+    char filename[40];
+    sprintf(filename, "dir test 1/sub dir/testx_%i", i);
+    write_buffer_to_file(buffer_test, sizeof(buffer_test), filename );
+  }
+  udpc_dirscan_update("dir test 1", &ds, false);
+  ASSERT(ds.cnt == 13);
+ 
   dirscan_clean(&ds);
+
+  for(int i = 0; i < 10; i++){
+    char filename[40];
+    sprintf(filename, "dir test 1/sub dir/testx_%i", i);
+    remove(filename);
+  }
   
   ASSERT(!remove("dir test 1/test2"));
   ASSERT(!remove("dir test 1/sub dir/test3"));
@@ -113,8 +128,6 @@ bool test_dirscan(){
   trace_allocator_release(_allocator);
   
   ASSERT(used_pointers == 0);
-  //ASSERT(max_file_cnt == 3);
-  //ASSERT(max_diff_cnt == 3);
   return TEST_SUCCESS;
 }
 
