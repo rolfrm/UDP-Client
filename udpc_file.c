@@ -42,7 +42,7 @@ int main(int argc, char ** argv){
       udpc_connection * c2 = udpc_listen(con);      
       if(c2 == NULL)
 	continue;
-      udpc_file_serve(c2, NULL);
+      udpc_file_serve(c2, NULL, (char *) ".");
     }
     udpc_logout(con);
   }else if(argc > 3){

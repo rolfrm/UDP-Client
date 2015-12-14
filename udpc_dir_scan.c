@@ -126,8 +126,18 @@ dirscan_diff udpc_dirscan_diff(dirscan d1, dirscan d2){
       if(strcmp(d1.files[i],d2.files[j]) == 0){
 	found_1[i] = 1;
 	found_2[j] = 1;
-	if(udpc_md5_compare(d1.md5s[i], d2.md5s[j]) == false){
+	bool changed = false;
+	if(d1.type[i] == UDPC_DIRSCAN_DELETED && d2.type[j] == UDPC_DIRSCAN_FILE){
+	  list_push(diff.states, diff.cnt, DIRSCAN_NEW);
+	  changed = true;
+	}else if(d1.type[i] == UDPC_DIRSCAN_FILE && d2.type[j] == UDPC_DIRSCAN_DELETED){
+	  list_push(diff.states, diff.cnt, DIRSCAN_GONE);
+	  changed = true;
+	}else if(udpc_md5_compare(d1.md5s[i], d2.md5s[j]) == false){
 	  list_push(diff.states, diff.cnt, DIRSCAN_DIFF_MD5);
+	  changed = true;
+	}
+	if(changed){
 	  list_push(diff.index1, diff.cnt, i);
 	  list_push(diff.index2, diff.cnt, j);
 	  diff.cnt += 1;

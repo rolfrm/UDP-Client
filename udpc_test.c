@@ -50,8 +50,8 @@ bool test_dirscan(){
   iron_set_allocator(_allocator);
   
   dirscan ds = {0};
-  size_t max_diff_cnt = 0;
-  size_t max_file_cnt = 0;
+  //size_t max_diff_cnt = 0;
+  //size_t max_file_cnt = 0;
   mkdir("dir test 1", 0777);
   mkdir("dir test 1/sub dir", 0777);
   memset(buffer_test, 10, sizeof(buffer_test));
@@ -64,11 +64,13 @@ bool test_dirscan(){
   size_t s = 0;
   void * buffer = dirscan_to_buffer(ds, &s);
   dirscan copy = dirscan_from_buffer(buffer);
+  dealloc(buffer);
   udpc_dirscan_update("dir test 1", &ds, false);
 
   dirscan_diff diff = udpc_dirscan_diff(copy, ds);
   ASSERT(diff.cnt == 2);
   ASSERT(diff.states[0] == DIRSCAN_NEW);
+  udpc_dirscan_clear_diff(&diff);
   ASSERT(ds.type[0] == UDPC_DIRSCAN_FILE);
   remove("dir test 1/test1");
   iron_usleep(20000);
@@ -84,46 +86,25 @@ bool test_dirscan(){
   iron_usleep(30000);
   ASSERT(ds.cnt == 2);
   ASSERT(ds.type[idx] == UDPC_DIRSCAN_DELETED);
-  
 
   buffer_test[0] += 10;
   write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/test1" );
-
+  udpc_dirscan_update("dir test 1", &copy, false);
+  diff = udpc_dirscan_diff(ds, copy);
+  ASSERT(diff.cnt == 1);
+  ASSERT(diff.states[0] == DIRSCAN_NEW);
+  udpc_dirscan_clear_diff(&diff);
   
-  /*
-  for(int i = 0; i < 10; i++){
-    
-    size_t s = 0;
-    void * buffer = dirscan_to_buffer(ds, &s);
-    dirscan copy = dirscan_from_buffer(buffer);
-    dealloc(buffer);
-    buffer = NULL;
-    ASSERT(ds.cnt == copy.cnt);
-    udpc_dirscan_update("dir test 1", &ds, false);
+  dirscan_clean(&copy);
 
-    dirscan_diff diff = udpc_dirscan_diff(copy, ds);
-    if(i > 0)
-      ASSERT(diff.cnt > 0);
-    max_diff_cnt = MAX(diff.cnt, max_diff_cnt);
-    max_file_cnt = MAX(ds.cnt, max_file_cnt);
-    udpc_dirscan_clear_diff(&diff);
-    dirscan_clean(&copy);
-    write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/test1" );    
-    buffer_test[0] += 10;
-    write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/test2" );
-    buffer_test[0] += 10;
-    if((i % 10) == 5)
-      write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/sub dir/test3" );
-    size_t __s;
-    // wait for timestamps to update.
-    iron_usleep(20000);
-    int * __buffer = read_file_to_buffer("dir test 1/test1", &__s);
-    ASSERT(__buffer[0] == (buffer_test[0] - 20));
-    dealloc(__buffer);
-  }
-  dirscan_clean(&ds);*/
+  write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/sub dir/test3" );
+  udpc_dirscan_update("dir test 1", &ds, false);
+  ASSERT(ds.cnt == 3);
+  ASSERT(udpc_md5_compare(ds.md5s[idx], ds.md5s[2]));
+  dirscan_clean(&ds);
+  
   ASSERT(!remove("dir test 1/test2"));
-  //ASSERT(!remove("dir test 1/sub dir/test3"));
+  ASSERT(!remove("dir test 1/sub dir/test3"));
   ASSERT(!remove("dir test 1/sub dir"));
   ASSERT(!remove("dir test 1/test1"));
   ASSERT(!remove("dir test 1"));
@@ -132,8 +113,8 @@ bool test_dirscan(){
   trace_allocator_release(_allocator);
   
   ASSERT(used_pointers == 0);
-  ASSERT(max_file_cnt == 3);
-  ASSERT(max_diff_cnt == 3);
+  //ASSERT(max_file_cnt == 3);
+  //ASSERT(max_diff_cnt == 3);
   return TEST_SUCCESS;
 }
 
