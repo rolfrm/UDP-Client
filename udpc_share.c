@@ -39,24 +39,6 @@ void handle_sigint(int signum){
   signal(SIGINT, NULL); // next time just quit.
 }
 
-void test_stuff(char ** argv){
-  struct stat st;
-  stat(argv[1], &st);
-  
-  if( S_ISREG(st.st_mode) ) {
-    // file exists
-    udpc_md5 md5 = udpc_file_md5(argv[1]);
-    logd("MD5: ");
-    udpc_print_md5(md5);
-    logd("\n");
-  } else if( S_ISDIR(st.st_mode)){
-    // file doesn't exist
-    dirscan dsc = scan_directories(argv[1]);
-    logd("Found: %i files\n",dsc.cnt);
-    dirscan_clean(&dsc);
-  }
-}
-
 void ensure_directory(const char * path);
 
 int main(int argc, char ** argv){

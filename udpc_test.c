@@ -131,6 +131,19 @@ bool test_dirscan(){
   return TEST_SUCCESS;
 }
 
+void test_udpc_share(){
+  void start_server(){
+    udpc_start_server("0.0.0.0");
+  }
+  void start_share(){
+    udpc_share_server("test@0.0.0.0:test","__testdir");
+  }
+  void connect_share(){
+    udpc_share_client("test_client@0.0.0.0:test", "__testdir2", "test@0.0.0.0:test");
+  }
+  // setup dirs
+}
+
 int main(){
   TEST(test_dirscan);
   return 0;
