@@ -131,15 +131,37 @@ bool test_dirscan(){
   return TEST_SUCCESS;
 }
 
-int run_process(const char * program, const char * args){
+static int run_process(const char * program, const char ** args){
   int pid = fork();
   if(pid == 0){
-    execl(program, "%s", args);
+    
+    int exitstatus = execv(program, (char * const *) args);
+    exit(exitstatus == -1 ? 253 : 252);
   }else if(pid < 0)
     return -1;
   return pid;
 }
+
+typedef enum{
+  UDPC_PROCESS_EXITED = 1,
+  UDPC_PROCESS_FAULTED = 2,
+  UDPC_PROCESS_RUNNING = 3
+}udpc_process_status;
 #include <sys/wait.h>
+static udpc_process_status get_process_status(int pid){
+  int status;
+  //pid_t pid2;
+  waitpid(pid, &status, WUNTRACED | WNOHANG);
+  int stopped = WIFSTOPPED(status) || WIFEXITED(status);
+
+  if(!stopped)
+    return UDPC_PROCESS_RUNNING;
+  int exit_status = WEXITSTATUS(status);
+  logd("Exit status: %i\n", exit_status);
+  return exit_status == 0 ? UDPC_PROCESS_EXITED : UDPC_PROCESS_FAULTED;
+}
+
+
 bool test_udpc_share(){
   /*void start_server(){
     udpc_start_server("0.0.0.0");
@@ -150,35 +172,36 @@ bool test_udpc_share(){
   void connect_share(){
     udpc_share_client("test_client@0.0.0.0:test", "__testdir2", "test@0.0.0.0:test");
     }*/
+
   // setup dirs
-  int pid = run_process("./server","");
-  
   remove("test share/hello.txt");
   remove("test share");
+  remove("test share/2hello.txt");
+  remove("test share2");
   
   mkdir("test share/", 0777);
   write_string_to_file("hello", "test share/hello.txt");
-  
-
+  mkdir("test share2/", 0777);
+  const char * arg0[] = {"server", NULL};
+  const char *arg1[] = {"share", "test@0.0.0.0:a", "test share", NULL};
+  const char * arg2[]= {"share","test@0.0.0.0:a","test share2","test@0.0.0.0:a", NULL};
+  int pid = run_process("./server",arg0);
+  int pid_c1 = run_process("share",arg1);
+  int pid_c2 = run_process("share",arg2);
   
   ASSERT(pid != -1);
-  u64 start = timestamp();
-  while(true){
-    int status;
-    //pid_t pid2;
-    waitpid(pid, &status, WUNTRACED | WNOHANG);
-    logd("STATUS: %i %i\n", status, WIFSTOPPED(status));
-    u64 current = timestamp();
-    if(current - start > 100000){
-      logd("TIMED OUT%i");
-      kill(pid, SIGSTOP);
-      //break;
-    }
-    if(WIFSTOPPED(status)){
-      break;
-    }
-    iron_usleep(10000);
-  }
+  //u64 start = timestamp();
+  
+    
+  iron_usleep(1000000);
+  kill(pid, SIGSTOP);
+  kill(pid_c1, SIGSTOP);
+  udpc_process_status s_c2 = get_process_status(pid_c2);
+  kill(pid_c2, SIGSTOP);
+  iron_usleep(100000);
+  udpc_process_status s1 = get_process_status(pid);
+  udpc_process_status s_c1 = get_process_status(pid_c1);
+  logd("exit statuses: %i %i %i\n", s1, s_c1, s_c2);
   return TEST_SUCCESS;
 }
 
