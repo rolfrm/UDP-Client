@@ -131,8 +131,17 @@ bool test_dirscan(){
   return TEST_SUCCESS;
 }
 
-void test_udpc_share(){
-  void start_server(){
+int run_process(const char * program, const char * args){
+  int pid = fork();
+  if(pid == 0){
+    execl(program, "%s", args);
+  }else if(pid < 0)
+    return -1;
+  return pid;
+}
+#include <sys/wait.h>
+bool test_udpc_share(){
+  /*void start_server(){
     udpc_start_server("0.0.0.0");
   }
   void start_share(){
@@ -140,11 +149,32 @@ void test_udpc_share(){
   }
   void connect_share(){
     udpc_share_client("test_client@0.0.0.0:test", "__testdir2", "test@0.0.0.0:test");
-  }
+    }*/
   // setup dirs
+  int pid = run_process("./server","");
+  ASSERT(pid != -1);
+  u64 start = timestamp();
+  while(true){
+    int status;
+    //pid_t pid2;
+    waitpid(pid, &status, WUNTRACED | WNOHANG);
+    logd("STATUS: %i %i\n", status, WIFSTOPPED(status));
+    u64 current = timestamp();
+    if(current - start > 100000){
+      logd("TIMED OUT%i");
+      kill(pid, SIGSTOP);
+      //break;
+    }
+    if(WIFSTOPPED(status)){
+      break;
+    }
+    iron_usleep(10000);
+  }
+  return TEST_SUCCESS;
 }
 
 int main(){
   TEST(test_dirscan);
+  TEST(test_udpc_share);
   return 0;
 }
