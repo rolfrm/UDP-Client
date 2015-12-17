@@ -152,6 +152,15 @@ bool test_udpc_share(){
     }*/
   // setup dirs
   int pid = run_process("./server","");
+  
+  remove("test share/hello.txt");
+  remove("test share");
+  
+  mkdir("test share/", 0777);
+  write_string_to_file("hello", "test share/hello.txt");
+  
+
+  
   ASSERT(pid != -1);
   u64 start = timestamp();
   while(true){
