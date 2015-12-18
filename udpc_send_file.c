@@ -195,7 +195,8 @@ void udpc_file_serve(udpc_connection * c2, void * ptr, char * dir){
   int buffer_size = udpc_unpack_int(&ptr);
   char * filepath = udpc_unpack_string(&ptr);
   int rcv = udpc_unpack_int(&ptr);
-  char filepathbuffer[1000] = {0};
+  char filepathbuffer[1000];
+  memset(filepathbuffer, 0, sizeof(filepathbuffer));
   sprintf(filepathbuffer, "%s/%s",dir, filepath);
   if(rcv == 1){
     _receive_file(c2, filepathbuffer, buffer_size);

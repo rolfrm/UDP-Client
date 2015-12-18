@@ -178,7 +178,7 @@ udpc_md5 udpc_file_md5(const char * path){
   FILE * f = fopen(path, "r");
   ASSERT(f != NULL);
   unsigned long r = 0;
-  char buffer[1024] = {0};
+  char buffer[1024];
   MD5_CTX md5;
   MD5_Init(&md5);
   while(0 != (r = fread(buffer, 1, sizeof(buffer), f)))

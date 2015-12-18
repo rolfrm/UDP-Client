@@ -137,7 +137,7 @@ int main(int argc, char ** argv){
 	{
 	  char * f = ext_dir.files[i1];
 	  logd("Gone: %s\n");
-	  char filepathbuffer[1000] = {0};
+	  char filepathbuffer[1000];
 	  sprintf(filepathbuffer, "%s/%s",dir, f);
 
 	  remove(filepathbuffer);
@@ -150,7 +150,7 @@ int main(int argc, char ** argv){
 	  delay = 10;
 	  char * f = ext_dir.files[i2];
 	  logd("changed/new: %s\n");
-	  char filepathbuffer[1000] = {0};
+	  char filepathbuffer[1000];
 	  sprintf(filepathbuffer, "%s/%s",dir, f);
 	  logd("FIle: %s\n", filepathbuffer);
 	  if( difft >= 0){

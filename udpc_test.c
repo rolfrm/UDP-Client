@@ -164,22 +164,27 @@ static udpc_process_status get_process_status(int pid){
 
 
 bool test_udpc_share(){
-
-  const char * test_code = "hello\nhello\nhello\nhello\n";
-  // setup dirs
-  remove("test share/hello.txt");
-  remove("test share");
-  remove("test share/2hello.txt");
-  remove("test share2");
-  
-  mkdir("test share/", 0777);
-  write_string_to_file(test_code, "test share/hello.txt");
-  mkdir("test share2/", 0777);
   const char * arg0[] = {"server", NULL};
   const char *arg1[] = {"share", "test@0.0.0.0:a", "test share", NULL};
   const char * arg2[]= {"share","test@0.0.0.0:a","test share2","test@0.0.0.0:a", NULL};
-  int pid = run_process("./server",arg0);
+  char test_code[1000] = {'a'};
+  memset(test_code, 'a', sizeof(test_code));
+  test_code[999] = 0;
+  
+  int pid = run_process("./server",arg0);  
+
+  // setup dirs
+  remove("test share/hello.txt");
+  remove("test share");
+  remove("test share2/hello.txt");
+  remove("test share2");
+
+  mkdir("test share/", 0777);
+  write_string_to_file(test_code, "test share/hello.txt");
+  mkdir("test share2/", 0777);
+
   iron_usleep(100000);
+
   int pid_c1 = run_process("./share",arg1);
   iron_usleep(100000);
   int pid_c2 = run_process("./share",arg2);
@@ -196,6 +201,7 @@ bool test_udpc_share(){
   udpc_process_status s_c1 = get_process_status(pid_c1);
   logd("exit statuses: %i %i %i\n", s1, s_c1, s_c2);
   char * file_content = read_file_to_string("test share2/hello.txt");
+  ASSERT(file_content != NULL);
   ASSERT(strcmp(test_code, file_content) == 0);
   dealloc(file_content);
   return TEST_SUCCESS;
