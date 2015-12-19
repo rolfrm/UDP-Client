@@ -50,7 +50,7 @@ udpc_seq udpc_setup_seq(udpc_connection * con){
   return seq_struct;
 }
 
-udpc_seq udpc_setup_seq2(udpc_connection * con){
+udpc_seq udpc_setup_seq_peer(udpc_connection * con){
   
   u64 seq_id = get_rand_u64();
   u64 datatosend[2];
@@ -63,30 +63,31 @@ udpc_seq udpc_setup_seq2(udpc_connection * con){
   datatosend[1] = seq_id;
   udpc_write(con, datatosend, sizeof(datatosend));
   return (udpc_seq){con, seq_id, 0, other_seqid, 0};
-  
 }
 
 int udpc_seq_read(udpc_seq * con, void * buffer, size_t max_size, u64 * seq_number){
   char nbuffer[max_size + sizeof(u64) * 2];
   int r = udpc_peek(con->con, nbuffer, sizeof(nbuffer));
+
   if(r == -1) return r;
   if(r < (int)sizeof(u64) * 2) return -2;
   u64 * n = (u64 *) nbuffer;
-  if(n[0] != get_seq_work_id())
+  if(n[0] != con->seq_id)
     return -2;
-  if(n[1] <= con->seq_id){
+  if(n[1] < con->seq_cnt){
     return -2;
   }
+  con->seq_cnt = n[1];
   memcpy(buffer, nbuffer + sizeof(u64) * 2, r - sizeof(u64) * 2);
   udpc_read(con->con, nbuffer, sizeof(nbuffer));
-  *seq_number = con->seq_id;
+  *seq_number = con->seq_cnt;
   return r - sizeof(u64) * 2;
 }
 
-void udpc_seq_write(udpc_seq * con, void * buffer, size_t size){
+void udpc_seq_write(udpc_seq * con, const void * buffer, size_t size){
   char nbuffer[size + sizeof(u64) * 2];
   u64 * n = (u64 *) nbuffer;
-  n[0] = get_seq_work_id();
+  n[0] = con->seq_other_id;
   n[1] = ++(con->seq_other_cnt);
   memcpy(n + 2, buffer, size);
   udpc_write(con->con, n, sizeof(nbuffer));

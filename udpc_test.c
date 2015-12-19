@@ -130,11 +130,11 @@ bool test_dirscan(){
   ASSERT(used_pointers == 0);
   return TEST_SUCCESS;
 }
-
+#include <sys/prctl.h>
 static int run_process(const char * program, const char ** args){
   int pid = fork();
   if(pid == 0){
-    
+    prctl(PR_SET_PDEATHSIG, SIGHUP);
     int exitstatus = execv(program, (char * const *) args);
     exit(exitstatus == -1 ? 253 : 252);
   }else if(pid < 0)
@@ -229,8 +229,62 @@ bool test_udpc_share(){
   return TEST_SUCCESS;
 }
 
+#include "udpc_seq.h"
+#include <pthread.h>
+bool test_udpc_seq(){
+  const char * arg0[] = {"server", NULL};
+  int pid = run_process("./server", arg0);
+
+  iron_usleep(10000);
+  udpc_service * s1 = udpc_login("test@0.0.0.0:a");
+  ASSERT(s1 != NULL);
+  void * connection_handle(void * info){
+    UNUSED(info);
+    udpc_connection * c2 = udpc_listen(s1);
+    ASSERT( c2 != NULL);
+    udpc_set_timeout(c2, 1000000);
+    udpc_seq seq1 = udpc_setup_seq_peer(c2);
+    char buffer[100];
+    u64 seq_num = 0;
+    int size = udpc_seq_read(&seq1, buffer, sizeof(buffer), &seq_num);
+    ASSERT(size > 0);
+    udpc_seq_write(&seq1, buffer, size);
+    size = udpc_seq_read(&seq1, buffer, sizeof(buffer), &seq_num);
+    ASSERT(size > 0);
+    udpc_seq_write(&seq1, buffer, size);
+    size = udpc_seq_read(&seq1, buffer, sizeof(buffer), &seq_num);
+    ASSERT(size > 0);
+    udpc_seq_write(&seq1, buffer, size);    
+    udpc_close(c2);
+    return NULL;
+    
+  }
+  pthread_t tid;
+  pthread_create( &tid, NULL, connection_handle, NULL);
+  iron_usleep(10000);
+  udpc_connection * con2 = udpc_connect("test@0.0.0.0:a");
+  udpc_set_timeout(con2, 1000000);
+  ASSERT(con2 != NULL);
+  udpc_seq seq2 = udpc_setup_seq(con2);
+  const char * ello = "Ello!\n";
+  udpc_seq_write(&seq2, ello, strlen(ello) + 1);
+  char buffer[100];
+  u64 seq_num2 = 0;
+  udpc_seq_read(&seq2, buffer, sizeof(buffer), &seq_num2);
+  udpc_seq_write(&seq2, ello, strlen(ello) + 1);
+  udpc_seq_read(&seq2, buffer, sizeof(buffer), &seq_num2);
+  udpc_seq_write(&seq2, ello, strlen(ello) + 1);
+  udpc_seq_read(&seq2, buffer, sizeof(buffer), &seq_num2);
+  logd("Buffer: %i: %s", seq_num2, buffer); 
+  udpc_close(con2);
+  
+  kill(pid, SIGSTOP);
+  return TEST_SUCCESS;
+}
+
 int main(){
-  TEST(test_dirscan);
-  TEST(test_udpc_share);
+  //TEST(test_dirscan);
+  //TEST(test_udpc_share);
+  TEST(test_udpc_seq);
   return 0;
 }
