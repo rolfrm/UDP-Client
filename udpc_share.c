@@ -69,10 +69,7 @@ int main(int argc, char ** argv){
 	char * st = udpc_unpack_string(&rcv_str);
 	if(strcmp(st, udpc_file_serve_service_name) == 0){
 	  logd("File share\n");
-	  //char * cdir = get_current_dir_name();
-	  //ASSERT(0 == chdir(dir));
 	  udpc_file_serve(c2, buf, dir);
-	  //ASSERT(0 == chdir(cdir));
 	  logd("File share END\n");
 	}else if(strcmp(st, udpc_speed_test_service_name) == 0){
 	  logd("Speed \n");

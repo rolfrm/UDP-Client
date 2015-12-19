@@ -149,17 +149,27 @@ typedef enum{
 }udpc_process_status;
 
 #include <sys/wait.h>
-
+#include <signal.h>
 static udpc_process_status get_process_status(int pid){
   int status;
   waitpid(pid, &status, WUNTRACED | WNOHANG);
-  int stopped = WIFSTOPPED(status) || WIFEXITED(status);
-
-  if(!stopped)
+  int exists = kill(pid, 0);
+  if(exists != -1)
     return UDPC_PROCESS_RUNNING;
   int exit_status = WEXITSTATUS(status);
-  logd("Exit status: %i\n", exit_status);
   return exit_status == 0 ? UDPC_PROCESS_EXITED : UDPC_PROCESS_FAULTED;
+}
+
+static udpc_process_status udpc_wait_for_process(int pid, u64 timeout_us){
+  udpc_process_status status = get_process_status(pid);
+  u64 start_time = timestamp();
+  logd("Wait.. %i\n", status);
+  while(UDPC_PROCESS_RUNNING == (status = get_process_status(pid))
+	&& (timestamp() - start_time) < timeout_us){
+    iron_usleep(40000);
+  }
+  logd("process took %f s to complete\n", ((double)timestamp() - start_time) / 1000000.0);
+  return status;
 }
 
 
@@ -167,7 +177,7 @@ bool test_udpc_share(){
   const char * arg0[] = {"server", NULL};
   const char *arg1[] = {"share", "test@0.0.0.0:a", "test share", NULL};
   const char * arg2[]= {"share","test@0.0.0.0:a","test share2","test@0.0.0.0:a", NULL};
-  char test_code[1000] = {'a'};
+  char test_code[1000];
   memset(test_code, 'a', sizeof(test_code));
   test_code[999] = 0;
   
@@ -188,10 +198,14 @@ bool test_udpc_share(){
   int pid_c1 = run_process("./share",arg1);
   iron_usleep(100000);
   int pid_c2 = run_process("./share",arg2);
-  
+  //iron_usleep(500000);
+
   ASSERT(pid != -1);
-  
-  iron_usleep(1000000);
+
+  logd("Waiting for process %p\n", timestamp());
+  logd("STATUS C2: %i\n", get_process_status(pid_c2));
+  udpc_wait_for_process(pid_c2, 3000000);
+  logd("end %p\n", timestamp());  
   kill(pid, SIGSTOP);
   kill(pid_c1, SIGSTOP);
   udpc_process_status s_c2 = get_process_status(pid_c2);
@@ -204,6 +218,7 @@ bool test_udpc_share(){
   ASSERT(file_content != NULL);
   ASSERT(strcmp(test_code, file_content) == 0);
   dealloc(file_content);
+  ASSERT(s_c2 == UDPC_PROCESS_EXITED);
   return TEST_SUCCESS;
 }
 
