@@ -176,13 +176,14 @@ void _receive_file(udpc_connection * c2, char * filepath, int buffer_size){
 }
 
 void udpc_file_serve(udpc_connection * c2, void * ptr, char * dir){
+  char buf2[1000]; 
   if(ptr == NULL){
-    char buf2[1000]; 
-    size_t r = 0;
-    while(r == 0)
-      r = udpc_read(c2,buf2, sizeof(buf2));
+    
+    int r = udpc_read(c2,buf2, sizeof(buf2));
+    ASSERT(r != -1);
     ptr = buf2;
     char * code = udpc_unpack_string(&ptr);
+    logd("The code: %s\n", code);
     if(strcmp(code, udpc_file_serve_service_name) != 0){
       return;
     }

@@ -18,11 +18,11 @@ const char * udpc_speed_test_service_name = "UDPC_SPEED_TEST";
 void udpc_speed_serve(udpc_connection * c2, void * ptr){
   if(ptr == NULL){
     char buf2[1000]; 
-    size_t r = 0;
-    while(r == 0)
-      r = udpc_read(c2,buf2, sizeof(buf2));
+    int r = udpc_read(c2,buf2, sizeof(buf2));
+    ASSERT(r != -1);
     ptr = buf2;
     char * code = udpc_unpack_string(&ptr);
+    logd("Test: %s\n", code);
     if(strcmp(code, udpc_speed_test_service_name) != 0){
       udpc_close(c2);
       return;

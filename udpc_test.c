@@ -185,12 +185,15 @@ bool test_udpc_share(){
 
   // setup dirs
   remove("test share/hello.txt");
+  remove("test share/hello2.txt");
   remove("test share");
   remove("test share2/hello.txt");
+  remove("test share2/hello2.txt");
   remove("test share2");
 
   mkdir("test share/", 0777);
   write_string_to_file(test_code, "test share/hello.txt");
+  write_string_to_file(test_code, "test share/hello2.txt");
   mkdir("test share2/", 0777);
 
   iron_usleep(100000);
@@ -198,8 +201,6 @@ bool test_udpc_share(){
   int pid_c1 = run_process("./share",arg1);
   iron_usleep(100000);
   int pid_c2 = run_process("./share",arg2);
-  //iron_usleep(500000);
-
   ASSERT(pid != -1);
 
   logd("Waiting for process %p\n", timestamp());
@@ -214,10 +215,16 @@ bool test_udpc_share(){
   udpc_process_status s1 = get_process_status(pid);
   udpc_process_status s_c1 = get_process_status(pid_c1);
   logd("exit statuses: %i %i %i\n", s1, s_c1, s_c2);
+  sync();
   char * file_content = read_file_to_string("test share2/hello.txt");
-  ASSERT(file_content != NULL);
+  char * file_content2 = read_file_to_string("test share2/hello2.txt");
+  
+  ASSERT(file_content != NULL && file_content2 != NULL);
+  logd("S: %i\n%s\n", strlen(file_content), file_content);
   ASSERT(strcmp(test_code, file_content) == 0);
+  ASSERT(strcmp(test_code, file_content2) == 0);
   dealloc(file_content);
+  dealloc(file_content2);
   ASSERT(s_c2 == UDPC_PROCESS_EXITED);
   return TEST_SUCCESS;
 }

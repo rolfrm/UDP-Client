@@ -26,6 +26,9 @@ void udpc_write(udpc_connection * client, const void * buffer, size_t length);
 // Receives data from the connection.
 int udpc_read(udpc_connection * client, void * buffer, size_t max_size);
 
+// Reads data from the connection without removing it from the buffer.
+int udpc_peek(udpc_connection * client, void * buffer, size_t max_size);
+
 void udpc_set_timeout(udpc_connection * client, int us);
 
 // Closes the connection.

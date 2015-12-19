@@ -292,7 +292,9 @@ int ssl_server_read(ssl_server_con * con, void * buffer, size_t buffer_size){
   return SSL_read(con->ssl, buffer, buffer_size);
 }
 
-
+int ssl_server_peek(ssl_server_con * con, void * buffer, size_t buffer_size){
+  return SSL_peek(con->ssl, buffer, buffer_size);
+}
 
 void ssl_server_write(ssl_server_con * con, const void * buffer, size_t buffer_size){
   simulate_pk_loss;
@@ -408,6 +410,16 @@ void ssl_client_write(ssl_client * cli, const void * buffer, size_t length){
 
 int ssl_client_read(ssl_client * cli, void * buffer, size_t length){
   socklen_t len = SSL_read(cli->ssl, buffer, length);
+  int accepted[] = {SSL_ERROR_WANT_READ, SSL_ERROR_ZERO_RETURN};
+  int code[] = {-1, -2};
+  int ecode = handle_ssl_error2(cli->ssl, len, accepted, code, array_count(accepted));
+  if(ecode < 0)
+    return ecode;
+  return len;
+}
+
+int ssl_client_peek(ssl_client * cli, void * buffer, size_t length){
+  socklen_t len = SSL_peek(cli->ssl, buffer, length);
   int accepted[] = {SSL_ERROR_WANT_READ, SSL_ERROR_ZERO_RETURN};
   int code[] = {-1, -2};
   int ecode = handle_ssl_error2(cli->ssl, len, accepted, code, array_count(accepted));

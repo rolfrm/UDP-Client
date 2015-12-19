@@ -61,24 +61,24 @@ int main(int argc, char ** argv){
       udpc_set_timeout(c2, 10000000);
       while(true){
 	char buf[1024];
-	int r = udpc_read(c2, buf, sizeof(buf));
+	int r = udpc_peek(c2, buf, sizeof(buf));
 	if(r == -1)
 	  break;
-
+	logd("Buffer: %s\n", buf);
 	void * rcv_str = buf;
 	char * st = udpc_unpack_string(&rcv_str);
 	if(strcmp(st, udpc_file_serve_service_name) == 0){
 	  logd("File share\n");
-	  udpc_file_serve(c2, buf, dir);
+	  udpc_file_serve(c2, NULL, dir);
 	  logd("File share END\n");
 	}else if(strcmp(st, udpc_speed_test_service_name) == 0){
 	  logd("Speed \n");
-	  udpc_speed_serve(c2, buf);
+	  udpc_speed_serve(c2, NULL);
 	  logd("Speed END \n");
 	}else if(strcmp(st, udpc_dirscan_service_name) == 0){
 	  logd("Sending dir..\n");
 	  udpc_dirscan_update(dir, &scan_result,false);
-	  udpc_dirscan_serve(c2, scan_result, 1000, 1400, buf);
+	  udpc_dirscan_serve(c2, scan_result, 1000, 1400, NULL);
 	  logd("Sending dir END\n");
 	}else{
 	  loge("Unknown service '%s'\n", st);

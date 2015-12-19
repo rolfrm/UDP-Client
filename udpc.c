@@ -29,6 +29,9 @@ struct _udpc_connection {
   ssl_server_con * con;
   struct sockaddr_storage local_addr;
   struct sockaddr_storage remote_addr;
+  // buffer for peeking.
+  void * buffer;
+  int buffer_size;
 };
 
 struct _udpc_service{
@@ -219,6 +222,14 @@ int udpc_read(udpc_connection * client, void * buffer, size_t max_size){
     return ssl_client_read(client->cli, buffer, max_size);
   else if(client->con != NULL)
     return ssl_server_read(client->con, buffer, max_size);
+  return -1;
+}
+
+int udpc_peek(udpc_connection * client, void * buffer, size_t max_size){
+  if(client->cli != NULL)
+    return ssl_client_peek(client->cli, buffer, max_size);
+  else if(client->con != NULL)
+    return ssl_server_peek(client->con, buffer, max_size);
   return -1;
 }
 
