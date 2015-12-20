@@ -69,7 +69,8 @@ int main(int argc, char ** argv){
     if(con != NULL){
       int missed = 0, missed_seqs = 0;
       u64 ts1 = timestamp();
-      udpc_speed_client(con, delay, bufsize, count, &missed, &missed_seqs);
+      double mean_rtt, peak_rtt;
+      udpc_speed_client(con, delay, bufsize, count, &missed, &missed_seqs, &mean_rtt, &peak_rtt);
       i64 successfull = (count - missed);
       logd("Missed: %i seqs: %i\n", missed, missed_seqs);
       logd("Sent: %llu MB\n",((i64)bufsize * successfull) / 1000000);

@@ -94,7 +94,7 @@ int main(int argc, char ** argv){
 
     UNUSED(servicename);
     char * other_service = argv[3];
-    int delay = 40;
+    int delay = 200;
     int bufsize = 1400;
     udpc_connection * con = udpc_connect(other_service);
     // find speed/packagesize
@@ -102,14 +102,16 @@ int main(int argc, char ** argv){
     for(int i = 0; i < 10; i++){
       logd("%i Testing connection: %i\n", i, test_delay);
       int missed = 0, missed_seqs = 0;
-      udpc_speed_client(con, test_delay, bufsize, 1000, &missed, &missed_seqs);
-      logd("Missed: %i\n", missed);
+      double mean_rtt, peak_rtt;
+      udpc_speed_client(con, test_delay, bufsize, 30, &missed, &missed_seqs, &mean_rtt, &peak_rtt);
+      logd("Connection Check:\ndelay: %i\nMissed: %i\nMean RTT: %f s\nPeak RTT:%f s\n", test_delay, missed, mean_rtt, peak_rtt);
+      
       if(missed == 0){
 	delay = test_delay;
-	test_delay = test_delay / 2;
+	test_delay = (test_delay * 2) / 3 ;
       }
       else{
-	test_delay = 2 * test_delay;
+	test_delay = (3 * test_delay) / 2;
       }
       
     }

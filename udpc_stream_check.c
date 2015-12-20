@@ -8,7 +8,7 @@
 #include <iron/types.h>
 #include <iron/log.h>
 #include <iron/time.h>
-
+#include <iron/utils.h>
 #include "udpc.h"
 #include "udpc_utils.h"
 #include "udpc_stream_check.h"
@@ -16,13 +16,12 @@
 const char * udpc_speed_test_service_name = "UDPC_SPEED_TEST";
 
 void udpc_speed_serve(udpc_connection * c2, void * ptr){
+  char buf2[4000]; 
   if(ptr == NULL){
-    char buf2[1000]; 
     int r = udpc_read(c2,buf2, sizeof(buf2));
     ASSERT(r != -1);
     ptr = buf2;
     char * code = udpc_unpack_string(&ptr);
-    logd("Test: %s\n", code);
     if(strcmp(code, udpc_speed_test_service_name) != 0){
       udpc_close(c2);
       return;
@@ -31,25 +30,19 @@ void udpc_speed_serve(udpc_connection * c2, void * ptr){
     char * code = udpc_unpack_string(&ptr);
     ASSERT(strcmp(code, udpc_speed_test_service_name) == 0);
   }
-  udpc_write(c2, "OK", sizeof("OK"));
+  
   udpc_seq s = udpc_setup_seq_peer(c2);
-  
-  
-  int delay = udpc_unpack_int(&ptr);
-  int buffer_size = udpc_unpack_int(&ptr);
-  int count = udpc_unpack_int(&ptr);
-  char buffer[buffer_size];
-  for(int i = 0; i < count; i++){
-    memcpy(buffer, &i, sizeof(i));
-    udpc_write(c2, buffer, buffer_size);
-    if(delay > 0)
-      iron_usleep(delay);
+  while(true){
+    char buffer[4000];
+    u64 seq;
+    int r = udpc_seq_read(&s, buffer, sizeof(buffer), &seq);
+    if(r == -1) continue;
+    if(r == -2) return;
+    udpc_seq_write(&s, buffer, r);
   }
-  iron_usleep(10000);
-  udpc_write(c2, "ENDENDEND", 10);
 }
 
-void udpc_speed_client(udpc_connection * con, int delay, int bufsize, int count, int * out_missed, int * out_missed_seqs){
+void udpc_speed_client(udpc_connection * con, int delay, int bufsize, int count, int * out_missed, int * out_missed_seqs, double * out_mean_rtt, double * out_peak_rtt){
   void * outbuffer = NULL;
   size_t buffer_size = 0;
   udpc_pack_string(udpc_speed_test_service_name, &outbuffer, &buffer_size);
@@ -58,35 +51,36 @@ void udpc_speed_client(udpc_connection * con, int delay, int bufsize, int count,
   udpc_pack_int(count, &outbuffer, &buffer_size);
   udpc_write(con, outbuffer, buffer_size);
 
-  int r = udpc_read(con, outbuffer, buffer_size);
   udpc_seq s = udpc_setup_seq(con);
-  if(r == -1){
-    // packet lost. try again.
-    udpc_write(con, outbuffer, buffer_size);
-    r = udpc_read(con, outbuffer, buffer_size);
-    if(r == -1){
-      loge("Connection timed out\n");
-      free(outbuffer);
-      return;
-    }
-  }
-  // it should have returned "OK" now.
+  
   free(outbuffer);
   char buffer[bufsize];
-  int current = -1;
-  while(true){
-    size_t r = 0;
-    while(r == 0)
-      r = udpc_read(con, buffer, sizeof(buffer));
-
-    if(strcmp("ENDENDEND", buffer) == 0)
-      break;
+  int current = 0;
+  double mean_rtt = 0.0;
+  double peak_rtt = 0.0;
+  for(int i = 0; i < count; i++){
+    u64 * bufptr = (u64 *) buffer;
+    bufptr[0] = timestamp();
+    udpc_seq_write(&s, buffer, bufsize);
+    u64 seqid = 0;
+    int r = udpc_seq_read(&s, buffer, sizeof(buffer), &seqid);
+    if(r == -2)
+      return;
+    if(r == -1)
+      continue;
     void * ptr = buffer;
-    int seq = udpc_unpack_int(&ptr);
+    u64 ts = udpc_unpack_size_t(&ptr);
+    u64 _delay = timestamp() - ts;
+    mean_rtt += ((double)_delay) / ((double)count);
+    peak_rtt = MAX(peak_rtt, _delay);
+    int seq = seqid;
     if(current + 1 != seq){
       *out_missed += seq - current - 1;
       *out_missed_seqs += 1;
     }
     current = seq;
+    iron_usleep(delay);
   }
+  *out_mean_rtt = mean_rtt / 1e6;
+  *out_peak_rtt = peak_rtt / 1e6;
 }

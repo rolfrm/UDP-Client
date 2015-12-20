@@ -229,7 +229,6 @@ bool test_udpc_share(){
   char * file_content2 = read_file_to_string("test share2/hello2.txt");
   
   ASSERT(file_content != NULL && file_content2 != NULL);
-  logd("S: %i\n%s\n", strlen(file_content), file_content);
   ASSERT(strcmp(test_code, file_content) == 0);
   ASSERT(strcmp(test_code, file_content2) == 0);
   dealloc(file_content);
@@ -285,7 +284,7 @@ bool test_udpc_seq(){
   udpc_seq_read(&seq2, buffer, sizeof(buffer), &seq_num2);
   udpc_seq_write(&seq2, ello, strlen(ello) + 1);
   udpc_seq_read(&seq2, buffer, sizeof(buffer), &seq_num2);
-  logd("Buffer: %i: %s", seq_num2, buffer); 
+  //logd("Buffer: %i: %s", seq_num2, buffer); 
   udpc_close(con2);
 
   // Interrupt first then kill in case it did not work.

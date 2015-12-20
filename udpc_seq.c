@@ -45,7 +45,7 @@ udpc_seq udpc_setup_seq(udpc_connection * con){
   u64 nseq = udpc_unpack_size_t(&buf);
   ASSERT(nseq == seq_id);
   u64 other_seq = udpc_unpack_size_t(&buf);
-  udpc_seq seq_struct = {con, seq_id, 0, other_seq, 0};
+  udpc_seq seq_struct = {con, seq_id, 0, other_seq, 0, timestamp()};
   udpc_read(con, buffer, sizeof(buffer));
   return seq_struct;
 }
@@ -62,7 +62,7 @@ udpc_seq udpc_setup_seq_peer(udpc_connection * con){
   datatosend[0] = other_seqid;
   datatosend[1] = seq_id;
   udpc_write(con, datatosend, sizeof(datatosend));
-  return (udpc_seq){con, seq_id, 0, other_seqid, 0};
+  return (udpc_seq){con, seq_id, 0, other_seqid, 0, timestamp()};
 }
 
 int udpc_seq_read(udpc_seq * con, void * buffer, size_t max_size, u64 * seq_number){
@@ -81,6 +81,7 @@ int udpc_seq_read(udpc_seq * con, void * buffer, size_t max_size, u64 * seq_numb
   memcpy(buffer, nbuffer + sizeof(u64) * 2, r - sizeof(u64) * 2);
   udpc_read(con->con, nbuffer, sizeof(nbuffer));
   *seq_number = con->seq_cnt;
+  con->last_msg_time = timestamp();
   return r - sizeof(u64) * 2;
 }
 
