@@ -5,6 +5,7 @@ typedef struct{
   u64 seq_cnt;
   u64 seq_other_id ;
   u64 seq_other_cnt;
+  u64 last_msg_time;
 }udpc_seq;
 
 udpc_seq udpc_setup_seq(udpc_connection * con);
