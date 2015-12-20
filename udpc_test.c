@@ -206,12 +206,21 @@ bool test_udpc_share(){
   logd("Waiting for process %p\n", timestamp());
   logd("STATUS C2: %i\n", get_process_status(pid_c2));
   udpc_wait_for_process(pid_c2, 3000000);
-  logd("end %p\n", timestamp());  
-  kill(pid, SIGSTOP);
-  kill(pid_c1, SIGSTOP);
+  logd("end %p\n", timestamp());
   udpc_process_status s_c2 = get_process_status(pid_c2);
-  kill(pid_c2, SIGSTOP);
-  iron_usleep(100000);
+  // Interrupt first then kill in case it did not work.
+  kill(pid, SIGINT);
+  kill(pid_c1, SIGINT);
+  kill(pid_c2, SIGINT);
+  iron_usleep(10000);
+  kill(pid, SIGINT);
+  kill(pid_c1, SIGINT);
+  kill(pid_c2, SIGINT);
+  iron_usleep(10000);
+  kill(pid, SIGKILL);
+  kill(pid_c1, SIGKILL);
+  kill(pid_c2, SIGKILL);
+  iron_usleep(10000);
   udpc_process_status s1 = get_process_status(pid);
   udpc_process_status s_c1 = get_process_status(pid_c1);
   logd("exit statuses: %i %i %i\n", s1, s_c1, s_c2);
@@ -226,6 +235,7 @@ bool test_udpc_share(){
   dealloc(file_content);
   dealloc(file_content2);
   ASSERT(s_c2 == UDPC_PROCESS_EXITED);
+  iron_usleep(30000); // wait for ports to reopen.
   return TEST_SUCCESS;
 }
 
@@ -277,14 +287,21 @@ bool test_udpc_seq(){
   udpc_seq_read(&seq2, buffer, sizeof(buffer), &seq_num2);
   logd("Buffer: %i: %s", seq_num2, buffer); 
   udpc_close(con2);
-  
-  kill(pid, SIGSTOP);
+
+  // Interrupt first then kill in case it did not work.
+  kill(pid, SIGINT);
+  iron_usleep(10000);
+  kill(pid, SIGINT);
+  iron_usleep(10000);
+  kill(pid, SIGKILL);
+  pthread_join(tid, NULL);
   return TEST_SUCCESS;
 }
 
 int main(){
-  //TEST(test_dirscan);
-  //TEST(test_udpc_share);
+  TEST(test_dirscan);
   TEST(test_udpc_seq);
+  TEST(test_udpc_share);
+
   return 0;
 }
