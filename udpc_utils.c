@@ -1,7 +1,10 @@
 #include <stdio.h>
 #include <string.h>
-#include <iron/mem.h>
+#include <stdint.h>
+#include <stdlib.h>
 
+#include <iron/mem.h>
+#include <iron/types.h>
 void udpc_pack(const void * data, size_t data_len, void ** buffer, size_t * buffer_size){
   *buffer = ralloc(*buffer, *buffer_size + data_len);
   memcpy(*buffer + *buffer_size, data, data_len);
@@ -31,7 +34,7 @@ int udpc_unpack_int(void ** buffer){
   return value;
 }
 
-u8 udpc_unpack_int(void ** buffer){
+u8 udpc_unpack_u8(void ** buffer){
   u8 value = 0;
   udpc_unpack(&value, sizeof(value), buffer);
   return value;

@@ -12,6 +12,7 @@
 
 #include "udpc.h"
 #include "udpc_utils.h"
+#include "udpc_seq.h"
 #include "udpc_dir_scan.h"
 
 #include "udpc_send_file.h"

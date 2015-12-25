@@ -49,8 +49,10 @@ int udpc_receive_transmission(udpc_connection * con, udpc_connection_stats * sta
 						   size_t chunk_id, size_t chunk_size, void * userdata),
 			      void * userdata);
 
-int udpc_send_transmission(udpc_connection * con, udpc_connection_stats * stats, u64 service_id,
-			   size_t total_size, size_t chunk_size,
-			   int (* send_chunk)(const transmission_data * tid, const void * chunk,
-					      size_t chunk_id, size_t chunk_size, void * userdata),
-			   void * userdata);
+int udpc_send_transmission
+(udpc_connection * con, udpc_connection_stats * stats, u64 service_id,
+ size_t total_size, size_t chunk_size,
+ int (* send_chunk)(const transmission_data * tid,
+		    void * chunk, size_t chunk_id,
+		    size_t chunk_size, void * userdata),
+ void * userdata);

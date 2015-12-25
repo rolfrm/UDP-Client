@@ -1,15 +1,16 @@
-// requires 
-
+// requires udpc_seq.h
 typedef struct {
   unsigned char md5[16]; //16 = MD5_DIGEST_LENGTH
 }udpc_md5;
 
 typedef u64 t_us;
+
 typedef enum{
   UDPC_DIRSCAN_FILE,
   UDPC_DIRSCAN_DIR,
   UDPC_DIRSCAN_DELETED
 }udpc_dirscan_type;
+
 typedef struct{
   char ** files;
   udpc_md5 * md5s;
@@ -53,9 +54,9 @@ void udpc_dirscan_clear_diff(dirscan_diff * diff);
 
 
 // server/client
-void udpc_dirscan_serve(udpc_connection * con, dirscan last_dirscan, size_t buffer_size, int delay_us, void * read);
+void udpc_dirscan_serve(udpc_connection * con, udpc_connection_stats * stats, dirscan last_dirscan);
 // returns -1 on error.
-int udpc_dirscan_client(udpc_connection * con, dirscan * dscan);
+int udpc_dirscan_client(udpc_connection * con, udpc_connection_stats * stats, dirscan * dscan);
 
 // Ensures that the directory for the file path fp exists.
 void ensure_directory(const char * fp);

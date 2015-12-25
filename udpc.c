@@ -6,6 +6,7 @@
 
 #include <iron/mem.h>
 #include <iron/log.h>
+#include <iron/types.h>
 #include "udpc.h"
 #include "udpc_utils.h"
 #include "service_descriptor.h"
