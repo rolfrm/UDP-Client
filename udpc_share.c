@@ -99,21 +99,22 @@ int main(int argc, char ** argv){
     udpc_connection * con = udpc_connect(other_service);
     // find speed/packagesize
     int test_delay = delay;
+    double rtt = 100;
     for(int i = 0; i < 10; i++){
       logd("%i Testing connection: %i\n", i, test_delay);
       int missed = 0, missed_seqs = 0;
       double mean_rtt, peak_rtt;
-      udpc_speed_client(con, test_delay, bufsize, 30, &missed, &missed_seqs, &mean_rtt, &peak_rtt);
+      udpc_speed_client(con, test_delay, bufsize, 100, &missed, &missed_seqs, &mean_rtt, &peak_rtt);
       logd("Connection Check:\ndelay: %i\nMissed: %i\nMean RTT: %f s\nPeak RTT:%f s\n", test_delay, missed, mean_rtt, peak_rtt);
       
-      if(missed == 0){
+      if(mean_rtt < rtt){
 	delay = test_delay;
 	test_delay = (test_delay * 2) / 3 ;
       }
       else{
 	test_delay = (3 * test_delay) / 2;
       }
-      
+      rtt = mean_rtt;
     }
 
     dirscan local_dir = scan_directories(dir);

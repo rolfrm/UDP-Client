@@ -205,7 +205,7 @@ bool test_udpc_share(){
 
   logd("Waiting for process %p\n", timestamp());
   logd("STATUS C2: %i\n", get_process_status(pid_c2));
-  udpc_wait_for_process(pid_c2, 3000000);
+  udpc_wait_for_process(pid_c2, 30000000);
   logd("end %p\n", timestamp());
   udpc_process_status s_c2 = get_process_status(pid_c2);
   // Interrupt first then kill in case it did not work.

@@ -242,89 +242,146 @@ dirscan dirscan_from_buffer(void * buffer){
 }
 
 void udpc_dirscan_serve(udpc_connection * con, dirscan last_dirscan,size_t buffer_size, int delay_us, void * read){
-  if(read == NULL){
-    char buf2[1000];
-    int r = udpc_read(con, buf2, sizeof(buf2));
-    if(r == -1)
-      return;
-    read = buf2;
-    char * code = udpc_unpack_string(&read);
-    if(strcmp(code, udpc_dirscan_service_name) != 0){
-      return;
-    }
-
-  }else{
-    char * code = udpc_unpack_string(&read);
-    ASSERT(strcmp(code, udpc_dirscan_service_name) == 0);
-  }
+  char readbuffer[2000];
+  int r = udpc_read(con, readbuffer, sizeof(readbuffer));
+  if(r < 8)
+    return;
+  void * read2 = readbuffer;
+  char * code = udpc_unpack_string(&read2);
+  if(strcmp(code, udpc_dirscan_service_name) != 0)
+    return;
+  u64 id = udpc_unpack_size_t(&read2);
   
   size_t send_buf_size = 0;
   void * send_buf = dirscan_to_buffer(last_dirscan, &send_buf_size);
-  void * bufptr = send_buf;
-  int seq = 0;
-  buffer_size -= sizeof(seq);
-  void * buffer = NULL;
-  size_t cnt = 0;
-    
-  while(send_buf_size > 0){
-    size_t tosend = MIN(send_buf_size, buffer_size);
-    // pack seq into buffer
-    udpc_pack_int(seq, &buffer, &cnt);
-    // pack data into buffer
-    udpc_pack(bufptr, tosend, &buffer, &cnt);
-    
-    udpc_write(con, buffer, cnt);
-    cnt = 0;
-    bufptr += tosend;
-    send_buf_size -= tosend;
-    iron_usleep(delay_us);
-    seq++;
+  while(true){
+    int s = udpc_read(con, &readbuffer, sizeof(readbuffer));
+    if(s < 8) break;
+    void * ptr = readbuffer;
+    u64 _id = udpc_unpack_size_t(&ptr);
+    if(_id != id) return;
+    u64 cmd = udpc_unpack_size_t(&ptr);
+    if(cmd == 0){
+      void * snd_pack = NULL;
+      size_t snd_cnt = 0;
+      udpc_pack_size_t(id, &snd_pack, & snd_cnt);
+      udpc_pack_size_t(send_buf_size, &snd_pack, & snd_cnt);
+      udpc_pack_size_t(send_buf_size / (buffer_size - 16), &snd_pack, & snd_cnt);
+      udpc_write(con, snd_pack, snd_cnt);
+      dealloc(snd_pack);
+    }else if(cmd == 1){
+      void * snd_pack = NULL;
+
+      for(int i = 0; i < send_buf_size / buffer_size; i++){
+	size_t snd_cnt = 0;
+	udpc_pack_size_t(id, &snd_pack, & snd_cnt);
+	udpc_pack_size_t(i, &snd_pack, & snd_cnt);
+	udpc_pack(send_buf + i * buffer_size, &send+pack, &snd_cnt);	
+	udpc_write(con, snd_pack, snd_cnt);
+	iron_usleep(delay_us);
+      }
+      dealloc(snd_pack);
+    }else if(cmd == 2){
+      
+    }
   }
   if(buffer != NULL)
     dealloc(buffer);
   dealloc(send_buf);
-  udpc_write(con, "",1);
 }
 
+typedef struct{
+  size_t total_size;
+  size_t chunk_size;
+}transmission_data;
+
 int udpc_dirscan_client(udpc_connection * con, dirscan * dscan){
-  udpc_write(con, udpc_dirscan_service_name, strlen(udpc_dirscan_service_name) + 1);
+  u64 service_id = get_rand_u64();
+  { // send ids.
+    void * ptr = NULL;
+    size_t cnt = 0;
+    udpc_pack_string(udpc_dirscan_service_name, &ptr, &cnt);
+    udpc_pack_size_t(service_id, &ptr, &cnt);    
+    udpc_write(con, ptr, cnt);
+    dealloc(ptr);
+  }
+
   void * buffer = NULL;
   size_t size = 0;
-
-  udpc_set_timeout(con, 1000000);
-  int current = -1;
+  
+  int handle_chunk(const transmission_data * td, const void * chunk, size_t chunk_id, size_t chunk_size, void * userdata){
+    if(buffer == NULL){
+      buffer = alloc0(td->total_size);
+      size = td->total_size;
+    }
+    memcpy(buffer + chunk_id * td->chunk_size, chunk, chunk_size);
+    return 0;
+  }
+  int status = udpc_receive_transmission(con, service_id, handle_chunk);
+  logd("Transmission status: %i\n", status);
+  return status;
+  
+  size_t total_len;
+  size_t pkg_size;
+  while(true){// Send me the transmission details
+    udpc_pack_size_t(service_id, &buffer, &size);
+    udpc_pack_size_t(0, &buffer, &size);
+    udpc_write(con, buffer, size);
+    char rdbuf[100];
+    int r = udpc_read(con, rdbuf, sizeof(rdbuf));
+    if(r == -1) continue;
+    if(r < 8) return -1;
+    void * ptr = rdbuf;
+    u64 other_service = udpc_unpack_size_t(&ptr);
+    if(other_service != service_id){
+      return -1;
+    }
+    total_len = udpc_unpack_size_t(&ptr);
+    pkg_size = udpc_unpack_size_t(&ptr);
+  }
+  size_t chunks_cnt = total_len / pkg_size;
+  bool chunks_rcv[chunks_cnt];
+  memset(chunks_rcv, 0, chunks_cnt);
+  char * read_buffer = alloc0(total_len);
+  size = 0;
+  udpc_pack_size_t(service_id, &buffer, &size);
+  udpc_pack_size_t(1, &buffer, &size);
+  udpc_write(con, buffer, size);
+  udpc_set_timeout(con, 300000);
+ read_chunks:
   while(true){
     char readbuffer[2000];
     int r = udpc_read(con, &readbuffer, sizeof(readbuffer));
-    logd("Read: %i\n", r);
-    if(r < 0){
-      logd("something went wrong: %i!\n", r);
-      if(buffer != NULL)
-	dealloc(buffer);
-      return -1;
-    }
-    if(r == 1){
-      logd("Found end!\n");
-      break;
-    }
+    if(r == -1) break;
+    if(r < 8) return -1;
     void * ptr = readbuffer;
-    int seq = udpc_unpack_int(&ptr);
-    logd("Seq: %i %i\n", current, seq);
-    if(seq != (current + 1)){
-      logd("package skip happens!\n");
-      if(buffer != NULL)
-	dealloc(buffer);
-      return -1;
-    }
-    
-    current = seq;
-    
-    udpc_pack(ptr, r - sizeof(int), &buffer, &size);
+    u64 other_service = udpc_unpack_size_t(&ptr);
+    if(other_service != service_id) return -1;
+    u64 chunk_id = udpc_unpack_size_t(&ptr);
+    chunks_rcv[chunk_id] = 1;
+    size_t rr = r - (ptr - readbuffer);
+    memcpy(read_buffer + chunk_id * pkg_size, readbuffer, rr);
+    if(chunk_id == chunks_cnt -1)
+      break;
   }
-  if(current == -1){
-    return -1;
+  int missed[100];
+  int j = 0;
+  for(int i = 0; i < chunks_cnt; i++){
+    missed[j++] = i;
+    if(j >= 100) break;
   }
-  *dscan = dirscan_from_buffer(buffer);
+  
+  if(j > 0){
+    size = 0;
+    udpc_pack_size_t(2, &buffer, &size);
+    udpc_pack_size_t(j, &buffer, &size);
+    udpc_pack_pack(missed, j * sizeof(int), &buffer, &size);
+    udpc_write(con, buffer, size);
+    goto read_chunks;
+  }
+  
+  *dscan = dirscan_from_buffer(read_buffer);
+  dealloc(read_buffer);
   dealloc(buffer);
   return 0;
 }
