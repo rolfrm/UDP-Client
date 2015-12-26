@@ -185,7 +185,7 @@ int udpc_receive_transmission(udpc_connection * con, udpc_connection_stats * sta
       read = udpc_conv_read(&conv, buffer, sizeof(buffer));
     if(read == -1)
       read = udpc_conv_read(&conv, buffer, sizeof(buffer));
-    logd("RX: %i\n", read);
+    //logd("RX: %i\n", read);
     if(read == -1) break; // probably last packet is sent.
     if(read < 0) return read;
     if(read < (int)sizeof(u8)) ERROR("Invalid read\n");
@@ -220,7 +220,7 @@ int udpc_receive_transmission(udpc_connection * con, udpc_connection_stats * sta
       missing_chunk_seq[j++] = i;
     }
   }
-  logd("Missing packets: %i\n", j);
+  //logd("Missing packets: %i\n", j);
   if(j > 0){
     void * buffer = NULL;
     size_t buffer_size = 0;
@@ -235,7 +235,7 @@ int udpc_receive_transmission(udpc_connection * con, udpc_connection_stats * sta
     //if(read == -1)
       //read = udpc_peek(conv.con, peekbuf, sizeof(peekbuf));
     if(read == -1){
-      logd("SENDING AGAIN\n");
+      //logd("SENDING AGAIN\n");
       goto sendpkg;
     }
     goto read_seqs;

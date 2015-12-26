@@ -366,9 +366,9 @@ bool test_transmission(){
 }
 
 int main(){
-  //TEST(test_dirscan);
-  //TEST(test_udpc_seq);
-  //TEST(test_udpc_share);
+  TEST(test_dirscan);
+  TEST(test_udpc_seq);
+  TEST(test_udpc_share);
   TEST(test_transmission);
   return 0;
 }
