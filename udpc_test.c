@@ -178,9 +178,9 @@ bool test_udpc_share(){
   const char * arg0[] = {"server", NULL};
   const char *arg1[] = {"share", "test@0.0.0.0:a", "test share", NULL};
   const char * arg2[]= {"share","test@0.0.0.0:a","test share2","test@0.0.0.0:a", NULL};
-  char test_code[1000];
+  char test_code[5000];
   memset(test_code, 'a', sizeof(test_code));
-  test_code[999] = 0;
+  test_code[sizeof(test_code) - 1] = 0;
   
   int pid = run_process("./server",arg0);  
 
@@ -230,6 +230,7 @@ bool test_udpc_share(){
   char * file_content2 = read_file_to_string("test share2/hello2.txt");
   
   ASSERT(file_content != NULL && file_content2 != NULL);
+  logd("l1: %i, l2: %i\n", strlen(test_code), strlen(file_content));
   ASSERT(strcmp(test_code, file_content) == 0);
   ASSERT(strcmp(test_code, file_content2) == 0);
   dealloc(file_content);

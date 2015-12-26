@@ -74,7 +74,7 @@ int main(int argc, char ** argv){
 	char * st = udpc_unpack_string(&rcv_str);
 	if(strcmp(st, udpc_file_serve_service_name) == 0){
 	  logd("File share\n");
-	  udpc_file_serve(c2, NULL, dir);
+	  udpc_file_serve(c2, &stats, dir);
 	  logd("File share END\n");
 	}else if(strcmp(st, udpc_speed_test_service_name) == 0){
 	  logd("Speed \n");
@@ -161,10 +161,10 @@ int main(int argc, char ** argv){
 	  logd("FIle: %s\n", filepathbuffer);
 	  if( difft >= 0){
 	    logd("Send to local\n");
-	    udpc_file_client(con, delay, 1400, ext_dir.files[i2], filepathbuffer);
+	    udpc_file_client(con, &stats, ext_dir.files[i2], filepathbuffer);
 	  }else if (difft < 0){
 	    logd("Send to remote\n");
-	    udpc_file_client2(con, delay, 1400, ext_dir.files[i2], filepathbuffer);
+	    udpc_file_client2(con, &stats, ext_dir.files[i2], filepathbuffer);
 	  }
 	  
 	}

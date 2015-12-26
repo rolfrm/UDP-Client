@@ -15,7 +15,7 @@ typedef struct{
   int rtt_mean_us;
   // The number of packets that can be sent before connection is flodded.
   //int max_pkgs_per_sec;
-  // The optimal MTU size. Max is 16KB, normal is 1.5KB. Depends on if connection supports jumbo frames.
+  // The optimal MTU size. Max is 16KB, normal is 1.5KB. Depends on whether connection supports jumbo frames or mot.
   int opt_mtu_size;
   // delay
   int delay_us;

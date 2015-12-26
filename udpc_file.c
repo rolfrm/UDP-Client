@@ -11,6 +11,7 @@
 
 #include "udpc.h"
 #include "udpc_utils.h"
+#include "udpc_seq.h"
 #include "service_descriptor.h"
 
 
@@ -40,13 +41,14 @@ void handle_sigint(int signum){
 
 int main(int argc, char ** argv){
   signal(SIGINT, handle_sigint);
+  udpc_connection_stats stats = get_stats();
   if(argc == 2){
     udpc_service * con = udpc_login(argv[1]);
     while(!should_close){
       udpc_connection * c2 = udpc_listen(con);      
       if(c2 == NULL)
 	continue;
-      udpc_file_serve(c2, NULL, (char *) ".");
+      udpc_file_serve(c2, &stats, (char *) ".");
     }
     udpc_logout(con);
   }else if(argc > 3){
@@ -62,7 +64,7 @@ int main(int argc, char ** argv){
     logd("Delay: %i, buffer size: %i file: '%s' '%s'\n", delay, bufsize, in_file, out_file);
     udpc_connection * con = udpc_connect(argv[1]);
     if(con != NULL){
-      udpc_file_client(con, delay, bufsize, in_file, out_file);
+      udpc_file_client(con, &stats, in_file, out_file);
       udpc_close(con);
     }
   }else{
