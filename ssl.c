@@ -8,7 +8,7 @@
 #include <iron/utils.h>
 #include "ssl.h"
 
-//#define simulate_pk_loss int rnd = rand() % 2; if(rnd == 0)return;
+//#define simulate_pk_loss {int rnd = rand() % 2; if(rnd == 0)return;}
 #define simulate_pk_loss ;
 
 struct _ssl_server{
