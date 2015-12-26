@@ -149,14 +149,16 @@ int udpc_receive_transmission(udpc_connection * con, udpc_connection_stats * sta
   {
     char buffer[1500];
     int peek = udpc_peek(conv.con, buffer, sizeof(buffer));
-
+    if(peek == -1)
+      peek = udpc_peek(conv.con, buffer, sizeof(buffer));
     if(peek == -1)
       goto transmission_start;
+
   }
   transmission_data data;
   int peek2 = udpc_conv_read(&conv, &data, sizeof(data));
-
   if(peek2 < 0) return -1;
+  ASSERT(peek2 == sizeof(data));
   buffer_size = 0;
   u64 num_chunks = data.total_size / data.chunk_size
     + ((data.total_size % data.chunk_size) == 0 ? 0 : 1);
@@ -180,6 +182,7 @@ int udpc_receive_transmission(udpc_connection * con, udpc_connection_stats * sta
       read = udpc_conv_read(&conv, buffer, sizeof(buffer));
     if(read == -1)
       read = udpc_conv_read(&conv, buffer, sizeof(buffer));
+    logd("RX: %i\n", read);
     if(read == -1) break; // probably last packet is sent.
     if(read < 0) return read;
     if(read < (int)sizeof(u8)) ERROR("Invalid read\n");
@@ -202,7 +205,7 @@ int udpc_receive_transmission(udpc_connection * con, udpc_connection_stats * sta
       break;
       
     default:
-      ERROR("This should not happen\n");   
+      ERROR("This should not happen: Cmd = %i\n", cmd);   
     }
   }
  end_seq:;
@@ -246,6 +249,9 @@ int udpc_send_transmission(udpc_connection * con, udpc_connection_stats * stats,
   while(true){
     char buffer[1600];
     int r = udpc_conv_read(&conv, buffer, sizeof(buffer));
+    if(r == -1)
+      r = udpc_conv_read(&conv, buffer, sizeof(buffer));
+    logd("TX: %i\n", r);
     if(r == -1) return -1;
     if(r == -2) return 0; // might actually be ok.
     ASSERT(r != 0);
@@ -281,10 +287,12 @@ int udpc_send_transmission(udpc_connection * con, udpc_connection_stats * stats,
 	  int chunk_nr = missing_chunk_seq[i];
 	  size_t offset = chunk_nr * chunk_size;
 	  size_t tosend = MIN(chunk_size, total_size - offset);
-	  char buffer[chunk_size];
-	  int ok = send_chunk(&data, buffer, chunk_nr, tosend, userdata);
+	  char buffer[tosend + 1 + sizeof(tosend)];
+	  buffer[0] = cmd;
+	  memcpy(buffer + 1, &chunk_nr, sizeof(tosend));
+	  int ok = send_chunk(&data, buffer + 1 + sizeof(tosend), chunk_nr, tosend, userdata);
 	  ASSERT(ok == 0);
-	  udpc_conv_write(&conv, buffer, tosend);
+	  udpc_conv_write(&conv, buffer, sizeof(buffer));
 	  iron_usleep(stats->delay_us);
 	}
       }
