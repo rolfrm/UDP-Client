@@ -5,10 +5,14 @@
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
+#include <stdint.h>
+#include <iron/log.h>
+#include <iron/types.h>
+
 #include "udpc.h"
 #include "udpc_utils.h"
 #include "service_descriptor.h"
-#include <iron/log.h>
+
 
 #include <stdarg.h>
 #include <stdio.h>

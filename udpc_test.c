@@ -297,10 +297,76 @@ bool test_udpc_seq(){
   return TEST_SUCCESS;
 }
 
+bool test_transmission(){
+  udpc_connection_stats stats = get_stats();
+  const char * srv_arg[] = {"server", NULL};
+  int srv_pid = run_process("./server", srv_arg);
+  iron_usleep(10000);
+  udpc_service * s1 = udpc_login("test@0.0.0.0:a");
+  ASSERT(s1 != NULL);
+  u64 service_id = 12345;
+  int sent = 0;
+  int received = 0;
+  bool ok = true;
+  void * connection_handle(void * info){
+    UNUSED(info);
+    udpc_connection * c2 = udpc_listen(s1);
+
+    int handle_chunk(const transmission_data * tid, const void * _chunk,
+		     size_t chunk_id, size_t chunk_size, void * userdata){
+      received += 1;
+      UNUSED(userdata); UNUSED(tid);
+      const int * chunk = _chunk;
+      int chunk_cnt = chunk_size / sizeof(int);
+      for(int i = 0; i < chunk_cnt; i++){
+	ok &= (chunk[i] == (int)((chunk_id * (tid->chunk_size/4)) + i));
+
+      }
+      return 0;
+    }
+    int status = udpc_receive_transmission(c2, &stats, service_id,
+					   handle_chunk, NULL);
+    udpc_close(c2);
+    ASSERT(status == 0);
+    return NULL;
+  }
+  pthread_t tid;
+  pthread_create( &tid, NULL, connection_handle, NULL);
+  iron_usleep(10000);
+  udpc_connection * con = udpc_connect("test@0.0.0.0:a");
+  
+  int handle_chunk(const transmission_data * tid, void * _chunk,
+		   size_t chunk_id, size_t chunk_size, void * userdata){
+    UNUSED(tid); UNUSED(userdata);
+    int * chunk = _chunk;
+    for(size_t i = 0; i < chunk_size /4; i++){
+      chunk[i] = chunk_id * (tid->chunk_size/4) + (int)i;
+    }
+    sent += 1;
+    return 0;
+  }
+  udpc_send_transmission( con, &stats, service_id, 134561,
+			  1400, handle_chunk, NULL);
+  udpc_close(con);
+  kill(srv_pid, SIGINT);
+  iron_usleep(10000); 
+  kill(srv_pid, SIGINT);
+  iron_usleep(10000);
+  kill(srv_pid, SIGKILL);
+  pthread_join(tid, NULL);
+  logd("OK? %s\n", ok ? "OK" : "NO");
+  logd("TX/RX: %i/%i\n", sent, received);
+  ASSERT(ok);
+  ASSERT(sent > 0);
+  ASSERT(sent == received);
+
+  return TEST_SUCCESS;
+}
+
 int main(){
   TEST(test_dirscan);
   TEST(test_udpc_seq);
   TEST(test_udpc_share);
-
+  TEST(test_transmission);
   return 0;
 }
