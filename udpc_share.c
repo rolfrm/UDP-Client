@@ -8,13 +8,16 @@
 #include <unistd.h> //chdir
 #include <time.h> //difftime
 
-#include "udpc.h"
-#include "udpc_utils.h"
+
 #include <stdint.h>
 #include <iron/types.h>
 #include <iron/log.h>
 #include <iron/utils.h>
 #include <iron/time.h>
+
+#include "udpc.h"
+#include "udpc_seq.h"
+#include "udpc_utils.h"
 #include "udpc_send_file.h"
 #include "udpc_stream_check.h"
 #include "udpc_dir_scan.h"
@@ -54,11 +57,13 @@ int main(int argc, char ** argv){
     dirscan scan_result = {0};
     char * servicename = argv[1];
     udpc_service * con = udpc_login(servicename);
+
     while(!should_close){
       udpc_connection * c2 = udpc_listen(con);   
       if(c2 == NULL)
 	continue;
       udpc_set_timeout(c2, 10000000);
+      udpc_connection_stats stats = get_stats();
       while(true){
 	char buf[1024];
 	int r = udpc_peek(c2, buf, sizeof(buf));
@@ -78,7 +83,7 @@ int main(int argc, char ** argv){
 	}else if(strcmp(st, udpc_dirscan_service_name) == 0){
 	  logd("Sending dir..\n");
 	  udpc_dirscan_update(dir, &scan_result,false);
-	  udpc_dirscan_serve(c2, scan_result, 1000, 1400, NULL);
+	  udpc_dirscan_serve(c2, &stats, scan_result);
 	  logd("Sending dir END\n");
 	}else{
 	  loge("Unknown service '%s'\n", st);
@@ -122,7 +127,8 @@ int main(int argc, char ** argv){
     memset(local_found,0, sizeof(local_found));
   do_dirscan:;
     dirscan ext_dir = {0};
-    int ok = udpc_dirscan_client(con, &ext_dir);
+    udpc_connection_stats stats = get_stats();
+    int ok = udpc_dirscan_client(con, &stats, &ext_dir);
     if(ok < 0) goto do_dirscan;
 
     logd ("got dirscan\n");

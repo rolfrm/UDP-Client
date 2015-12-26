@@ -8,7 +8,7 @@
 #include <iron/log.h>
 #include <iron/time.h>
 #include <iron/mem.h>
-
+#include <iron/utils.h>
 #include "udpc.h"
 #include "udpc_utils.h"
 #include "udpc_seq.h"
@@ -50,7 +50,7 @@ udpc_seq udpc_setup_seq_peer(udpc_connection * con){
   ASSERT(get_seq_work_id() == datatosend[0]);
   u64 other_seqid = datatosend[1];
   ASSERT(udpc_read(con, datatosend, sizeof(datatosend)) == sizeof(u64) * 2);
--  datatosend[0] = other_seqid;
+  datatosend[0] = other_seqid;
   datatosend[1] = seq_id;
   udpc_write(con, datatosend, sizeof(datatosend));
   return (udpc_seq){con, seq_id, 0, other_seqid, 0, timestamp()};
@@ -90,12 +90,13 @@ void udpc_conv_load(udpc_conv * conv, udpc_connection * con, u64 seqid){
   conv->seqid = seqid;
 }
 
-int udpc_conv_write(udpc_conv * conv, void * data, size_t data_site){
+int udpc_conv_write(udpc_conv * conv, void * data, size_t size){
   char nbuffer[size + sizeof(u64)];
   u64 * n = (u64 *) nbuffer;
   n[0] = conv->seqid;
-  memcpy(n + 1, buffer, size);
+  memcpy(n + 1, data, size);
   udpc_write(conv->con, n, sizeof(nbuffer));
+  return 0;
 }
 
 int udpc_conv_read(udpc_conv * conv, void * buffer, size_t buffer_size){
@@ -117,6 +118,9 @@ int udpc_conv_read(udpc_conv * conv, void * buffer, size_t buffer_size){
 udpc_connection_stats get_stats(){
   udpc_connection_stats stats;
   stats.opt_mtu_size = 1400;
+  stats.delay_us = 50;
+  stats.rtt_peak_us = 50;
+  stats.rtt_mean_us = 50;
   return stats;
 }
 
@@ -149,7 +153,7 @@ int udpc_receive_transmission(udpc_connection * con, udpc_connection_stats * sta
       goto transmission_start;
   }
   transmission_data data;
-  int peek2 = udpc_conv_read(conv, &data, sizeof(data));
+  int peek2 = udpc_conv_read(&conv, &data, sizeof(data));
   if(peek2 < 0) return -1;
   buffer_size = 0;
   u64 num_chunks = data.total_size / data.chunk_size
@@ -170,7 +174,7 @@ int udpc_receive_transmission(udpc_connection * con, udpc_connection_stats * sta
     int read = udpc_conv_read(&conv, buffer, sizeof(buffer));
     if(read == -1) break; // probably last packet is sent.
     if(read < 0) return read;
-    if(read < sizeof(u8)) ERROR("Invalid read\n");
+    if(read < (int)sizeof(u8)) ERROR("Invalid read\n");
     void * ptr = buffer;
     udpc_transmission_command cmd = (udpc_transmission_command) udpc_unpack_u8(&ptr);
     switch(cmd){
@@ -181,7 +185,7 @@ int udpc_receive_transmission(udpc_connection * con, udpc_connection_stats * sta
     case UDPC_TRANSMISSION_SEQ:
       {
 	size_t seq_nr = udpc_unpack_size_t(&ptr);
-	handle_chunk(tid, ptr, seq_nr, read - sizeof(u8) - sizeof(u64), userdata);
+	handle_chunk(&data, ptr, seq_nr, read - sizeof(u8) - sizeof(u64), userdata);
 	received_seqs[seq_nr] = true;
 	if(seq_nr == num_chunks - 1)
 	  goto end_seq;
@@ -191,7 +195,7 @@ int udpc_receive_transmission(udpc_connection * con, udpc_connection_stats * sta
       ERROR("This should not happen\n");   
     }
   }
- end_seq:
+ end_seq:;
   
   u64 j = 0;
   int missing_chunk_seq[300];
@@ -246,11 +250,11 @@ int udpc_send_transmission(udpc_connection * con, udpc_connection_stats * stats,
       }
     case UDPC_TRANSMISSION_GET_ALL:
       
-      for(size_t chunk_nr = 0; offset < chunk_cnt; chunk_nr++){
+      for(size_t chunk_nr = 0; chunk_nr < chunk_cnt; chunk_nr++){
 	size_t offset = chunk_nr * chunk_size;
 	size_t tosend = MIN(chunk_size, total_size - offset);
 	char buffer[chunk_size];
-	int ok = send_chunk(&data, buffer, sizeof(buffer), chunk_nr, chunk_size, userdata);
+	int ok = send_chunk(&data, buffer, chunk_nr, tosend, userdata);
 	ASSERT(ok == 0);
 	iron_usleep(stats->delay_us);
       }
@@ -271,7 +275,7 @@ int udpc_send_transmission(udpc_connection * con, udpc_connection_stats * stats,
 	  size_t offset = chunk_nr * chunk_size;
 	  size_t tosend = MIN(chunk_size, total_size - offset);
 	  char buffer[chunk_size];
-	  int ok = send_chunk(&data, buffer, sizeof(buffer), chunk_nr, chunk_size, userdata);
+	  int ok = send_chunk(&data, buffer, chunk_nr, tosend, userdata);
 	  ASSERT(ok == 0);
 	  iron_usleep(stats->delay_us);
 	}
@@ -284,4 +288,5 @@ int udpc_send_transmission(udpc_connection * con, udpc_connection_stats * stats,
     }
   }
  end:;
+  return 0;
 }

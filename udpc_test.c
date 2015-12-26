@@ -17,6 +17,7 @@
 #include <iron/utils.h>
 #include <iron/test.h>
 #include "udpc.h"
+#include "udpc_seq.h"
 #include "udpc_utils.h"
 #include "udpc_dir_scan.h"
 #include "udpc_stream_check.h"
@@ -238,7 +239,6 @@ bool test_udpc_share(){
   return TEST_SUCCESS;
 }
 
-#include "udpc_seq.h"
 #include <pthread.h>
 bool test_udpc_seq(){
   const char * arg0[] = {"server", NULL};
