@@ -22,6 +22,44 @@
 #include "udpc_stream_check.h"
 #include "udpc_dir_scan.h"
 
+#include <execinfo.h>
+#include <errno.h>
+
+static void full_write(int fd, const char *buf, size_t len)
+{
+        while (len > 0) {
+                ssize_t ret = write(fd, buf, len);
+
+                if ((ret == -1) && (errno != EINTR))
+                        break;
+
+                buf += (size_t) ret;
+                len -= (size_t) ret;
+        }
+}
+
+void print_backtrace(void)
+{
+        static const char start[] = "BACKTRACE ------------\n";
+        static const char end[] = "----------------------\n";
+
+        void *bt[1024];
+        int bt_size;
+        char **bt_syms;
+        int i;
+
+        bt_size = backtrace(bt, 1024);
+        bt_syms = backtrace_symbols(bt, bt_size);
+        full_write(STDERR_FILENO, start, strlen(start));
+        for (i = 1; i < bt_size; i++) {
+                size_t len = strlen(bt_syms[i]);
+                full_write(STDERR_FILENO, bt_syms[i], len);
+                full_write(STDERR_FILENO, "\n", 1);
+        }
+        full_write(STDERR_FILENO, end, strlen(end));
+    free(bt_syms);
+}
+
 void _error(const char * file, int line, const char * msg, ...){
   char buffer[1000];  
   va_list arglist;
@@ -30,6 +68,7 @@ void _error(const char * file, int line, const char * msg, ...){
   va_end(arglist);
   loge("%s\n", buffer);
   loge("Got error at %s line %i\n", file,line);
+  print_backtrace();
   raise(SIGSTOP);
   exit(255);
 }
@@ -66,10 +105,15 @@ int main(int argc, char ** argv){
       udpc_connection_stats stats = get_stats();
       while(true){
 	char buf[1024];
+	udpc_set_timeout(c2, 10000000);
 	int r = udpc_peek(c2, buf, sizeof(buf));
-	if(r == -1)
+	
+	if(r == -1){
+	  logd("Communication lost..\n");
 	  break;
-	logd("Buffer: %s\n", buf);
+	}
+	
+	logd("Buffer: %i %s\n", r, buf);
 	void * rcv_str = buf;
 	char * st = udpc_unpack_string(&rcv_str);
 	if(strcmp(st, udpc_file_serve_service_name) == 0){
@@ -81,16 +125,16 @@ int main(int argc, char ** argv){
 	  udpc_speed_serve(c2, NULL);
 	  logd("Speed END \n");
 	}else if(strcmp(st, udpc_dirscan_service_name) == 0){
-	  logd("Sending dir..\n");
+	  logd("SERVE DIR..\n");
 	  udpc_dirscan_update(dir, &scan_result,false);
 	  udpc_dirscan_serve(c2, &stats, scan_result);
-	  logd("Sending dir END\n");
+	  logd("SERVE DIR DONE\n");
 	}else{
 	  loge("Unknown service '%s'\n", st);
 	  break;
 	}
       }
-      logd("END!\n");
+      logd("END!!\n");
       udpc_close(c2);
     }
     udpc_logout(con);
@@ -99,11 +143,11 @@ int main(int argc, char ** argv){
 
     UNUSED(servicename);
     char * other_service = argv[3];
-    int delay = 200;
-    int bufsize = 1400;
+    //int delay = 200;
+    //int bufsize = 1400;
     udpc_connection * con = udpc_connect(other_service);
     // find speed/packagesize
-    int test_delay = delay;
+    /*int test_delay = delay;
     double rtt = 100;
     for(int i = 0; i < 10; i++){
       logd("%i Testing connection: %i\n", i, test_delay);
@@ -120,7 +164,7 @@ int main(int argc, char ** argv){
 	test_delay = (3 * test_delay) / 2;
       }
       rtt = mean_rtt;
-    }
+      }*/
 
     dirscan local_dir = scan_directories(dir);
     bool local_found[local_dir.cnt];
@@ -132,17 +176,25 @@ int main(int argc, char ** argv){
     if(ok < 0) goto do_dirscan;
 
     logd ("got dirscan\n");
+    for(size_t i = 0; i < ext_dir.cnt;i++){
+      logd("EXT: %s\n", ext_dir.files[i]);
+    }
+    for(size_t i = 0; i < local_dir.cnt;i++){
+      logd("Local: %s\n", local_dir.files[i]);
+    }
     dirscan_diff diff = udpc_dirscan_diff(local_dir, ext_dir);
+    logd("Diff cnt: %i\n", diff.cnt);
     for(size_t i = 0; i < diff.cnt; i++){
       size_t i1 = diff.index1[i];
       size_t i2 = diff.index2[i];
       dirscan_state state = diff.states[i];
-      double difft = 1;
+      logd("%i %i %i\n", i1, i2, state);
+      double difft = i2 == ext_dir.cnt ? -1 : 1;
       switch(state){
       case DIRSCAN_GONE:
 	{
 	  char * f = ext_dir.files[i1];
-	  logd("Gone: %s\n");
+	  logd("Gone: %s\n", f);
 	  char filepathbuffer[1000];
 	  sprintf(filepathbuffer, "%s/%s",dir, f);
 
@@ -153,18 +205,23 @@ int main(int argc, char ** argv){
 	difft = difftime(ext_dir.last_change[i2], local_dir.last_change[i1]);
       case DIRSCAN_NEW:
 	{
-	  delay = 10;
-	  char * f = ext_dir.files[i2];
-	  logd("changed/new: %s\n");
+	  //delay = 10;
+	  char * f = NULL;
+	  if(i2 != ext_dir.cnt)
+	    f = ext_dir.files[i2];
+	  else if(i1 != local_dir.cnt)
+	    f = local_dir.files[i1];
+	  else ASSERT(false);
+	  logd("changed/new: %s\n", f);
 	  char filepathbuffer[1000];
 	  sprintf(filepathbuffer, "%s/%s",dir, f);
 	  logd("FIle: %s\n", filepathbuffer);
 	  if( difft >= 0){
 	    logd("Send to local\n");
-	    udpc_file_client(con, &stats, ext_dir.files[i2], filepathbuffer);
+	    udpc_file_client(con, &stats, f, filepathbuffer);
 	  }else if (difft < 0){
 	    logd("Send to remote\n");
-	    udpc_file_client2(con, &stats, ext_dir.files[i2], filepathbuffer);
+	    udpc_file_client2(con, &stats, f, filepathbuffer);
 	  }
 	  
 	}

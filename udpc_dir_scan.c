@@ -148,16 +148,16 @@ dirscan_diff udpc_dirscan_diff(dirscan d1, dirscan d2){
   }
   for(size_t i =0; i < d1.cnt; i++){
     if(found_1[i] == 0){
-      list_push(diff.states, diff.cnt, DIRSCAN_GONE);
+      list_push(diff.states, diff.cnt, DIRSCAN_NEW);
       list_push(diff.index1, diff.cnt, i);
-      list_push(diff.index2, diff.cnt, 0);
+      list_push(diff.index2, diff.cnt, d2.cnt);
       diff.cnt +=1;
     }
   }
   for(size_t j =0; j < d2.cnt; j++){
     if(found_2[j] == 0){
       list_push(diff.states, diff.cnt, DIRSCAN_NEW);
-      list_push(diff.index1, diff.cnt, 0);
+      list_push(diff.index1, diff.cnt, d1.cnt);
       list_push(diff.index2, diff.cnt, j);
       diff.cnt +=1;
     }
@@ -259,14 +259,16 @@ void udpc_dirscan_serve(udpc_connection * con, udpc_connection_stats * stats, di
   int handle_chunk(const transmission_data * tid, void * chunk,
 		   size_t chunk_id, size_t chunk_size, void * userdata){
     UNUSED(tid); UNUSED(userdata);
-    logd("Sending chunk %i\n", chunk_id);
+    //logd("Sending chunk %i\n", chunk_id);
     u64 offset = chunk_id * chunk_size;
     u64 size = MIN(send_buf_size - offset, chunk_size);
     memcpy(chunk, send_buf + offset, size);
     return 0;
   }
-  udpc_send_transmission( con, stats, id, send_buf_size,
+  int send_status = udpc_send_transmission( con, stats, id, send_buf_size,
 			  chunk_size, handle_chunk, NULL);
+  //logd("Done with transmission.. %i\n", send_status);
+  UNUSED(send_status);
 }
 
 int udpc_dirscan_client(udpc_connection * con, udpc_connection_stats * stats, dirscan * dscan){
@@ -293,7 +295,7 @@ int udpc_dirscan_client(udpc_connection * con, udpc_connection_stats * stats, di
   }
   int status = udpc_receive_transmission(con, stats, service_id,
 					 handle_chunk, NULL);
-  logd("Transmission status: %i\n", status);
+  //logd("Transmission status: %i\n", status);
   *dscan = dirscan_from_buffer(buffer);
   dealloc(buffer);
   return status;

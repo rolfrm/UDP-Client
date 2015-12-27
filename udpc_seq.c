@@ -28,9 +28,13 @@ udpc_seq udpc_setup_seq(udpc_connection * con){
  
   u64 seq_id = get_rand_u64();
   u64 datatosend[] ={ get_seq_work_id(), seq_id};
+ start:
   udpc_write(con, datatosend, sizeof(datatosend));
   char buffer[1024];
   int r = udpc_peek(con, buffer, sizeof(buffer));
+  for(int i = 0; i < 3 && r == -1; i++)
+    r = udpc_peek(con, buffer, sizeof(buffer));
+  if(r == -1) goto start;
   ASSERT(r == sizeof(u64) * 2);
   void * buf = buffer;
   u64 nseq = udpc_unpack_size_t(&buf);
@@ -137,21 +141,20 @@ int udpc_receive_transmission(udpc_connection * con, udpc_connection_stats * sta
 			      int (* handle_chunk)(const transmission_data * tid, const void * chunk,
 						   size_t chunk_id, size_t chunk_size, void * userdata),
 			      void * userdata){
-  udpc_set_timeout(con, stats->rtt_peak_us * 4);
+  udpc_set_timeout(con, 1000000 + stats->rtt_peak_us * 10);
   udpc_conv conv;
- transmission_start:;
+
   udpc_conv_load(&conv, con, service_id);
   void * buffer = NULL;
   size_t buffer_size = 0;
  
   udpc_pack_u8(UDPC_TRANSMISSION_GET_STATS, &buffer, &buffer_size);
- 
+ transmission_start:; 
   udpc_conv_write(&conv, buffer, buffer_size);
   {
     char buffer[1500];
     int peek = udpc_peek(conv.con, buffer, sizeof(buffer));
-    if(peek == -1)
-      peek = udpc_peek(conv.con, buffer, sizeof(buffer));
+
     if(peek == -1)
       goto transmission_start;
 
@@ -159,6 +162,7 @@ int udpc_receive_transmission(udpc_connection * con, udpc_connection_stats * sta
 
   transmission_data data;
   int peek2 = udpc_conv_read(&conv, &data, sizeof(data));
+  //logd("PEEK %i\n", peek2); 
   if(peek2 < 0) goto transmission_start;
   ASSERT(peek2 == sizeof(data));
   buffer_size = 0;
@@ -181,10 +185,6 @@ int udpc_receive_transmission(udpc_connection * con, udpc_connection_stats * sta
   while(true){
     char buffer[1600];
     int read = udpc_conv_read(&conv, buffer, sizeof(buffer));
-    if(read == -1)
-      read = udpc_conv_read(&conv, buffer, sizeof(buffer));
-    if(read == -1)
-      read = udpc_conv_read(&conv, buffer, sizeof(buffer));
     //logd("RX: %i\n", read);
     if(read == -1) break; // probably last packet is sent.
     if(read < 0) return read;
@@ -232,10 +232,7 @@ int udpc_receive_transmission(udpc_connection * con, udpc_connection_stats * sta
     udpc_conv_write(&conv, buffer, buffer_size);
     char peekbuf[1500];
     int read = udpc_peek(conv.con, peekbuf, sizeof(peekbuf));
-    //if(read == -1)
-      //read = udpc_peek(conv.con, peekbuf, sizeof(peekbuf));
     if(read == -1){
-      //logd("SENDING AGAIN\n");
       goto sendpkg;
     }
     goto read_seqs;
@@ -255,7 +252,7 @@ int udpc_send_transmission(udpc_connection * con, udpc_connection_stats * stats,
 			   int (* send_chunk)(const transmission_data * tid, void * chunk,
 					      size_t chunk_id, size_t chunk_size, void * userdata),
 			   void * userdata){
-  udpc_set_timeout(con, stats->rtt_peak_us * 4);
+  udpc_set_timeout(con, 1000000);
   udpc_conv conv;
   udpc_conv_load(&conv, con, service_id);
   transmission_data data = { total_size, chunk_size};
@@ -267,12 +264,18 @@ int udpc_send_transmission(udpc_connection * con, udpc_connection_stats * stats,
       r = udpc_conv_read(&conv, buffer, sizeof(buffer));
     //logd("TX: %i\n", r);
     if(r == -1) return -1;
-    if(r == -2) return 0; // might actually be ok.
+    if(r == -2) {
+      udpc_peek(conv.con, buffer, sizeof(buffer));
+      //logd("new conv started.. '%s'\n", buffer);
+      return 0; // might actually be ok.
+    }
     ASSERT(r != 0);
     void * ptr = buffer;
     udpc_transmission_command cmd = (udpc_transmission_command) udpc_unpack_u8(&ptr);
+    //logd("CMD: %i\n", cmd);
     switch(cmd){
     case UDPC_TRANSMISSION_GET_STATS:
+
       udpc_conv_write(&conv, &data, sizeof(data));
       break;
     case UDPC_TRANSMISSION_GET_ALL:
