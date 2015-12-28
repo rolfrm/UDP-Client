@@ -99,100 +99,109 @@ int main(int argc, char ** argv){
       udpc_close(c2);
     }
     udpc_logout(con);
-  }else if(argc == 4){
+  }else if(argc >= 4){
     char * servicename = argv[1];
-
+    bool persist = false;
+    for(int i = 4; i < argc; i++){
+      if(strcmp(argv[i], "--persist") == 0){
+	persist = true;
+      }
+    }
     UNUSED(servicename);
     char * other_service = argv[3];
-    //int delay = 200;
-    //int bufsize = 1400;
     udpc_connection * con = udpc_connect(other_service);
-    // find speed/packagesize
-    /*int test_delay = delay;
-    double rtt = 100;
-    for(int i = 0; i < 10; i++){
-      logd("%i Testing connection: %i\n", i, test_delay);
-      int missed = 0, missed_seqs = 0;
-      double mean_rtt, peak_rtt;
-      udpc_speed_client(con, test_delay, bufsize, 100, &missed, &missed_seqs, &mean_rtt, &peak_rtt);
-      logd("Connection Check:\ndelay: %i\nMissed: %i\nMean RTT: %f s\nPeak RTT:%f s\n", test_delay, missed, mean_rtt, peak_rtt);
+    while(true){
+
+      // find speed/packagesize
+      /*int test_delay = delay;
+	double rtt = 100;
+	for(int i = 0; i < 10; i++){
+	logd("%i Testing connection: %i\n", i, test_delay);
+	int missed = 0, missed_seqs = 0;
+	double mean_rtt, peak_rtt;
+	udpc_speed_client(con, test_delay, bufsize, 100, &missed, &missed_seqs, &mean_rtt, &peak_rtt);
+	logd("Connection Check:\ndelay: %i\nMissed: %i\nMean RTT: %f s\nPeak RTT:%f s\n", test_delay, missed, mean_rtt, peak_rtt);
       
-      if(mean_rtt < rtt){
+	if(mean_rtt < rtt){
 	delay = test_delay;
 	test_delay = (test_delay * 2) / 3 ;
-      }
-      else{
+	}
+	else{
 	test_delay = (3 * test_delay) / 2;
-      }
-      rtt = mean_rtt;
-      }*/
-
-    dirscan local_dir = scan_directories(dir);
-    bool local_found[local_dir.cnt];
-    memset(local_found,0, sizeof(local_found));
-  do_dirscan:;
-    dirscan ext_dir = {0};
-    udpc_connection_stats stats = get_stats();
-    int ok = udpc_dirscan_client(con, &stats, &ext_dir);
-    if(ok < 0) goto do_dirscan;
-
-    logd ("got dirscan\n");
-    for(size_t i = 0; i < ext_dir.cnt;i++){
-      logd("EXT: %s\n", ext_dir.files[i]);
-    }
-    for(size_t i = 0; i < local_dir.cnt;i++){
-      logd("Local: %s\n", local_dir.files[i]);
-    }
-    dirscan_diff diff = udpc_dirscan_diff(local_dir, ext_dir);
-    logd("Diff cnt: %i\n", diff.cnt);
-    for(size_t i = 0; i < diff.cnt; i++){
-      size_t i1 = diff.index1[i];
-      size_t i2 = diff.index2[i];
-      dirscan_state state = diff.states[i];
-      logd("%i %i %i\n", i1, i2, state);
-      double difft = i2 == ext_dir.cnt ? -1 : 1;
-      switch(state){
-      case DIRSCAN_GONE:
-	{
-	  char * f = ext_dir.files[i1];
-	  logd("Gone: %s\n", f);
-	  char filepathbuffer[1000];
-	  sprintf(filepathbuffer, "%s/%s",dir, f);
-
-	  remove(filepathbuffer);
 	}
-	break;
-      case DIRSCAN_DIFF_MD5:
-	difft = difftime(ext_dir.last_change[i2], local_dir.last_change[i1]);
-      case DIRSCAN_NEW:
-	{
-	  //delay = 10;
-	  char * f = NULL;
-	  if(i2 != ext_dir.cnt)
-	    f = ext_dir.files[i2];
-	  else if(i1 != local_dir.cnt)
-	    f = local_dir.files[i1];
-	  else ASSERT(false);
-	  logd("changed/new: %s\n", f);
-	  char filepathbuffer[1000];
-	  sprintf(filepathbuffer, "%s/%s",dir, f);
-	  logd("FIle: %s\n", filepathbuffer);
-	  if( difft >= 0){
-	    logd("Send to local\n");
-	    udpc_file_client(con, &stats, f, filepathbuffer);
-	  }else if (difft < 0){
-	    logd("Send to remote\n");
-	    udpc_file_client2(con, &stats, f, filepathbuffer);
+	rtt = mean_rtt;
+	}*/
+
+      dirscan local_dir = scan_directories(dir);
+      bool local_found[local_dir.cnt];
+      memset(local_found,0, sizeof(local_found));
+    do_dirscan:;
+      dirscan ext_dir = {0};
+      udpc_connection_stats stats = get_stats();
+      int ok = udpc_dirscan_client(con, &stats, &ext_dir);
+      if(ok < 0) goto do_dirscan;
+
+      logd ("got dirscan\n");
+      for(size_t i = 0; i < ext_dir.cnt;i++){
+	logd("EXT: %s\n", ext_dir.files[i]);
+      }
+      for(size_t i = 0; i < local_dir.cnt;i++){
+	logd("Local: %s\n", local_dir.files[i]);
+      }
+      dirscan_diff diff = udpc_dirscan_diff(local_dir, ext_dir);
+      logd("Diff cnt: %i\n", diff.cnt);
+      for(size_t i = 0; i < diff.cnt; i++){
+	size_t i1 = diff.index1[i];
+	size_t i2 = diff.index2[i];
+	dirscan_state state = diff.states[i];
+	logd("%i %i %i\n", i1, i2, state);
+	double difft = i2 == ext_dir.cnt ? -1 : 1;
+	switch(state){
+	case DIRSCAN_GONE:
+	  {
+	    char * f = ext_dir.files[i1];
+	    logd("Gone: %s\n", f);
+	    char filepathbuffer[1000];
+	    sprintf(filepathbuffer, "%s/%s",dir, f);
+
+	    remove(filepathbuffer);
 	  }
+	  break;
+	case DIRSCAN_DIFF_MD5:
+	  difft = difftime(ext_dir.last_change[i2], local_dir.last_change[i1]);
+	case DIRSCAN_NEW:
+	  {
+	    //delay = 10;
+	    char * f = NULL;
+	    if(i2 != ext_dir.cnt)
+	      f = ext_dir.files[i2];
+	    else if(i1 != local_dir.cnt)
+	      f = local_dir.files[i1];
+	    else ASSERT(false);
+	    logd("changed/new: %s\n", f);
+	    char filepathbuffer[1000];
+	    sprintf(filepathbuffer, "%s/%s",dir, f);
+	    logd("FIle: %s\n", filepathbuffer);
+	    if( difft >= 0){
+	      logd("Send to local\n");
+	      udpc_file_client(con, &stats, f, filepathbuffer);
+	    }else if (difft < 0){
+	      logd("Send to remote\n");
+	      udpc_file_client2(con, &stats, f, filepathbuffer);
+	    }
 	  
+	  }
+	  break;
 	}
+      }
+      if(!persist || should_close){
 	break;
+      }else{
+	iron_usleep(1000000);
       }
     }
 
-    
-    udpc_write(con, "asd", sizeof("asd"));
-
+    udpc_write(con, "end", sizeof("end"));
     udpc_close(con);
     
   }else{

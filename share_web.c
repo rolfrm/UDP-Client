@@ -11,6 +11,7 @@
 #include <iron/mem.h>
 #include <iron/linmath.h>
 #include <iron/time.h>
+#include <iron/process.h>
 
 #include <microhttpd.h>
 #include "udpc.h"
@@ -23,6 +24,7 @@ typedef struct{
   char * name;
   char * service;
   char * path;
+  iron_process share_proc;
 }connection;
 
 typedef struct{
@@ -52,9 +54,10 @@ static bool add_connection(web_context * ctx, const char * name,
     return false;
   }
   *conns = realloc(*conns, sizeof(connection) * (presize + 1));
-  (*conns)[presize] = (connection){ fmtstr("%s", name), fmtstr("%s", service), fmtstr("%s",path)};
+  (*conns)[presize] = (connection){ fmtstr("%s", name), fmtstr("%s", service), fmtstr("%s",path), (iron_process){0}};
   *size += 1;
-  //const char * args[] = {"share", service, path};
+  const char * args[] = {"share", service, path};
+  ASSERT(0 == iron_process_run("./share", args, &conns[presize]->share_proc));
   return true;	   
 }
 
