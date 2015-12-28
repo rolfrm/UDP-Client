@@ -16,6 +16,7 @@
 #include <iron/fileio.h>
 #include <iron/utils.h>
 #include <iron/test.h>
+#include <iron/process.h>
 #include "udpc.h"
 #include "udpc_seq.h"
 #include "udpc_utils.h"
@@ -30,6 +31,7 @@ void _error(const char * file, int line, const char * msg, ...){
   va_end(arglist);
   loge("%s\n", buffer);
   loge("Got error at %s line %i\n", file,line);
+  iron_log_stacktrace();
   raise(SIGINT);
   exit(255);
 }
@@ -131,47 +133,9 @@ bool test_dirscan(){
   ASSERT(used_pointers == 0);
   return TEST_SUCCESS;
 }
-#include <sys/prctl.h>
-static int run_process(const char * program, const char ** args){
-  int pid = fork();
-  if(pid == 0){
-    prctl(PR_SET_PDEATHSIG, SIGHUP);
-    int exitstatus = execv(program, (char * const *) args);
-    exit(exitstatus == -1 ? 253 : 252);
-  }else if(pid < 0)
-    return -1;
-  return pid;
-}
-
-typedef enum{
-  UDPC_PROCESS_EXITED = 1,
-  UDPC_PROCESS_FAULTED = 2,
-  UDPC_PROCESS_RUNNING = 3
-}udpc_process_status;
 
 #include <sys/wait.h>
 #include <signal.h>
-static udpc_process_status get_process_status(int pid){
-  int status;
-  waitpid(pid, &status, WUNTRACED | WNOHANG);
-  int exists = kill(pid, 0);
-  if(exists != -1)
-    return UDPC_PROCESS_RUNNING;
-  int exit_status = WEXITSTATUS(status);
-  return exit_status == 0 ? UDPC_PROCESS_EXITED : UDPC_PROCESS_FAULTED;
-}
-
-static udpc_process_status udpc_wait_for_process(int pid, u64 timeout_us){
-  udpc_process_status status = get_process_status(pid);
-  u64 start_time = timestamp();
-  logd("Wait.. %i\n", status);
-  while(UDPC_PROCESS_RUNNING == (status = get_process_status(pid))
-	&& (timestamp() - start_time) < timeout_us){
-    iron_usleep(40000);
-  }
-  logd("process took %f s to complete\n", ((double)timestamp() - start_time) / 1000000.0);
-  return status;
-}
 
 
 bool test_udpc_share(){
@@ -181,8 +145,9 @@ bool test_udpc_share(){
   char test_code[5000];
   memset(test_code, 'a', sizeof(test_code));
   test_code[sizeof(test_code) - 1] = 0;
+  iron_process server_proc, share_1_proc, share_2_proc;
   
-  int pid = run_process("./server",arg0);  
+  ASSERT(0 == iron_process_run("./server",arg0, &server_proc));  
 
   // setup dirs
   remove("test share/hello.txt");
@@ -201,31 +166,30 @@ bool test_udpc_share(){
   write_string_to_file(test_code, "test share2/hello3.txt");
   iron_usleep(100000);
 
-  int pid_c1 = run_process("./share",arg1);
+  ASSERT(0 == iron_process_run("./share", arg1, &share_1_proc));
   iron_usleep(100000);
-  int pid_c2 = run_process("./share",arg2);
-  ASSERT(pid != -1);
+  ASSERT(0 == iron_process_run("./share", arg2, &share_2_proc));
 
   logd("Waiting for process %p\n", timestamp());
-  logd("STATUS C2: %i\n", get_process_status(pid_c2));
-  udpc_wait_for_process(pid_c2, 30000000);
+  logd("STATUS C2: %i\n", iron_process_get_status(share_2_proc));
+  iron_process_wait(share_2_proc, 30000000);
   logd("end %p\n", timestamp());
-  udpc_process_status s_c2 = get_process_status(pid_c2);
+  iron_process_status s_c2 = iron_process_get_status(share_2_proc);
   // Interrupt first then kill in case it did not work.
-  kill(pid, SIGINT);
-  kill(pid_c1, SIGINT);
-  kill(pid_c2, SIGINT);
+  kill(server_proc.pid, SIGINT);
+  kill(share_1_proc.pid, SIGINT);
+  kill(share_2_proc.pid, SIGINT);
   iron_usleep(10000);
-  kill(pid, SIGINT);
-  kill(pid_c1, SIGINT);
-  kill(pid_c2, SIGINT);
+  kill(server_proc.pid, SIGINT);
+  kill(share_1_proc.pid, SIGINT);
+  kill(share_2_proc.pid, SIGINT);
   iron_usleep(10000);
-  kill(pid, SIGKILL);
-  kill(pid_c1, SIGKILL);
-  kill(pid_c2, SIGKILL);
+  kill(server_proc.pid, SIGKILL);
+  kill(share_1_proc.pid, SIGKILL);
+  kill(share_2_proc.pid, SIGKILL);
   iron_usleep(10000);
-  udpc_process_status s1 = get_process_status(pid);
-  udpc_process_status s_c1 = get_process_status(pid_c1);
+  iron_process_status s1 = iron_process_get_status(server_proc);
+  iron_process_status s_c1 = iron_process_get_status(share_1_proc);
   logd("exit statuses: %i %i %i\n", s1, s_c1, s_c2);
   sync();
   char * file_content = read_file_to_string("test share2/hello.txt");
@@ -237,7 +201,7 @@ bool test_udpc_share(){
   ASSERT(strcmp(test_code, file_content2) == 0);
   dealloc(file_content);
   dealloc(file_content2);
-  ASSERT(s_c2 == UDPC_PROCESS_EXITED);
+  ASSERT(s_c2 == IRON_PROCESS_EXITED);
   iron_usleep(30000); // wait for ports to reopen.
   return TEST_SUCCESS;
 }
@@ -245,7 +209,8 @@ bool test_udpc_share(){
 #include <pthread.h>
 bool test_udpc_seq(){
   const char * arg0[] = {"server", NULL};
-  int pid = run_process("./server", arg0);
+  iron_process server_proc;
+  ASSERT(iron_process_run("./server", arg0, &server_proc) == 0);
 
   iron_usleep(10000);
   udpc_service * s1 = udpc_login("test@0.0.0.0:a");
@@ -300,11 +265,11 @@ bool test_udpc_seq(){
   udpc_close(con2);
 
   // Interrupt first then kill in case it did not work.
-  kill(pid, SIGINT);
+  kill(server_proc.pid, SIGINT);
   iron_usleep(10000);
-  kill(pid, SIGINT);
+  kill(server_proc.pid, SIGINT);
   iron_usleep(10000);
-  kill(pid, SIGKILL);
+  kill(server_proc.pid, SIGKILL);
   pthread_join(tid, NULL);
   return TEST_SUCCESS;
 }
@@ -312,7 +277,8 @@ bool test_udpc_seq(){
 bool test_transmission(){
   udpc_connection_stats stats = get_stats();
   const char * srv_arg[] = {"server", NULL};
-  int srv_pid = run_process("./server", srv_arg);
+  iron_process server_proc;
+  ASSERT(iron_process_run("./server", srv_arg, &server_proc) == 0);
   iron_usleep(10000);
   udpc_service * s1 = udpc_login("test@0.0.0.0:a");
   ASSERT(s1 != NULL);
@@ -361,26 +327,26 @@ bool test_transmission(){
   udpc_send_transmission( con, &stats, service_id, 134561,
 			  1400, handle_chunk, NULL);
   udpc_close(con);
-  kill(srv_pid, SIGINT);
+  kill(server_proc.pid, SIGINT);
   iron_usleep(10000); 
-  kill(srv_pid, SIGINT);
+  kill(server_proc.pid, SIGINT);
   iron_usleep(10000);
-  kill(srv_pid, SIGKILL);
+  kill(server_proc.pid, SIGKILL);
   pthread_join(tid, NULL);
   logd("OK? %s\n", ok ? "OK" : "NO");
   logd("TX/RX: %i/%i\n", sent, received);
   ASSERT(ok);
   ASSERT(sent > 0);
   ASSERT(received > 0);
-  ASSERT(sent > received);
+  ASSERT(sent >= received);
 
   return TEST_SUCCESS;
 }
 
 int main(){
   TEST(test_dirscan);
-  //TEST(test_udpc_seq);
-  //TEST(test_transmission);
+  TEST(test_udpc_seq);
+  TEST(test_transmission);
   TEST(test_udpc_share);
   
   return 0;

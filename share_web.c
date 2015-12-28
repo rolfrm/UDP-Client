@@ -15,6 +15,7 @@
 #include <microhttpd.h>
 #include "udpc.h"
 #include "udpc_utils.h"
+#include "udpc_seq.h"
 #include "udpc_dir_scan.h"
 #include "service_descriptor.h"
 
@@ -53,6 +54,7 @@ static bool add_connection(web_context * ctx, const char * name,
   *conns = realloc(*conns, sizeof(connection) * (presize + 1));
   (*conns)[presize] = (connection){ fmtstr("%s", name), fmtstr("%s", service), fmtstr("%s",path)};
   *size += 1;
+  //const char * args[] = {"share", service, path};
   return true;	   
 }
 
@@ -91,19 +93,31 @@ void _error(const char * file, int line, const char * msg, ...){
   va_end(arglist);
   loge("%s\n", buffer);
   loge("Got error at %s line %i\n", file,line);
+  iron_log_stacktrace();
   raise(SIGSTOP);
   exit(255);
 }
 
 void update_dirfile(const char * dir, const char * name, const char * user){
-  dirscan scan;
-  char * target_dir;
+  dirscan scan = {0};
+  ensure_directory("shares/");
   {
-    char * current_dir = get_current_dir_name();
-    chdir(dir);
-    target_dir = get_current_dir_name();
-    scan = scan_directories(".");
-    chdir(current_dir);
+    char * dir_filename = fmtstr("shares/%s.dir", name);
+    size_t size0;
+    void * buf = read_file_to_buffer(dir_filename, &size0);
+    if(buf != NULL){
+      logd("Size: %i\n", size0);
+      scan = dirscan_from_buffer(buf);
+      dealloc(buf);
+    }
+    logd("SCAN: %i\n", scan.cnt);
+    udpc_dirscan_update(dir, &scan, false);
+    logd("SCAN2: %i\n", scan.cnt);
+    size_t size = 0;
+    buf = dirscan_to_buffer(scan,&size);
+    
+    write_buffer_to_file(buf, size, dir_filename);
+    dealloc(buf);
   }
   
   {
@@ -118,7 +132,6 @@ void update_dirfile(const char * dir, const char * name, const char * user){
     fclose(f);
     dealloc(shareinfo_filename);
   }
-  ensure_directory("shares/");
   
   char * bin_filename = fmtstr("shares/%s.bin", name);
   size_t s = 0;
@@ -130,7 +143,7 @@ void update_dirfile(const char * dir, const char * name, const char * user){
   
   char * filename = fmtstr("shares/%s.json", name);
   FILE * jsonfile = fopen(filename, "w");
-  fprintf(jsonfile, "{\"dir\": \"%s\", \"files\": [\n", target_dir);
+  fprintf(jsonfile, "{\"dir\": \"%s\", \"files\": [\n", dir);
   for(size_t i = 0; i < scan.cnt; i++){
     fprintf(jsonfile, "{ \"path\": \"%s\", \"md5\":\"", scan.files[i]);
     udpc_fprintf_md5(jsonfile, scan.md5s[i]);
@@ -175,7 +188,9 @@ int web_main(void * _ed, struct MHD_Connection * con, const char * url,
     fprintf(outfile, "[");
     for(size_t i = 0; i < dir.cnt; i++){
       logd("looking in: %s\n", dir.files[i]);
-      void * rdbuffer = read_file_to_string(dir.files[i]);
+      char fnamebuffer2[100];
+      sprintf(fnamebuffer2, "shareinfo/%s", dir.files[i]);
+      void * rdbuffer = read_file_to_string(fnamebuffer2);
       ASSERT(rdbuffer != NULL);
       void *ptr = rdbuffer;
       char * dirname = udpc_unpack_string(&ptr);
@@ -289,7 +304,10 @@ void load_available_con(web_context * ctx){
   dirscan dir = scan_directories("shareinfo");
   for(size_t i = 0; i < dir.cnt; i++){
     char * f = dir.files[i];
-    void * buffer = read_file_to_string(f);
+    logd("File: %s\n", f);
+    char fname[100];
+    sprintf(fname, "shareinfo/%s", f);
+    void * buffer = read_file_to_string(fname);
     void * bufptr = buffer;
     char * dir = udpc_unpack_string(&bufptr);
     char * name = udpc_unpack_string(&bufptr);
