@@ -21,6 +21,7 @@
 #include "udpc_stream_check.h"
 #include "udpc_dir_scan.h"
 #include "udpc_share_log.h"
+
 void _error(const char * file, int line, const char * msg, ...){
   char buffer[1000];  
   va_list arglist;
@@ -46,26 +47,7 @@ void ensure_directory(const char * path);
 
 int main(int argc, char ** argv){
 
-  share_log_reader * reader = share_log_open_reader("Share log.log");
-  share_log_item items[10];
-  int offset = 0;
-  while(true){
-    int read_items = share_log_reader_read(reader, items, array_count(items));
-    logd("OK %i\n", read_items);
-    if(read_items == 0)
-      break;
-    logd("Read %i items\n", read_items);
-    for(int i = 0; i < read_items; i++){
-      logd("Item %i: ", offset++);
-      share_log_item_print(items[i]);
-      logd("\n");
-    }
-    share_log_clear_items(items, read_items);
-  }
-  
-  share_log_close_reader(&reader);
-  
-  return 0;
+
   share_log_set_file("Share log.log");
   signal(SIGINT, handle_sigint);
 

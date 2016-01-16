@@ -36,10 +36,8 @@ int main(int argc, char ** argv){
   int offset = 0;
   while(true){
     int read_items = share_log_reader_read(reader, items, array_count(items));
-    logd("OK %i\n", read_items);
     if(read_items == 0)
       break;
-    logd("Read %i items\n", read_items);
     for(int i = 0; i < read_items; i++){
       logd("Item %i: ", offset++);
       share_log_item_print(items[i]);
