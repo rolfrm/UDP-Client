@@ -78,22 +78,22 @@ int main(int argc, char ** argv){
 	  break;
 	}
 	
-	logd("Buffer: %i %s\n", r, buf);
+	//logd("Buffer: %i %s\n", r, buf);
 	void * rcv_str = buf;
 	char * st = udpc_unpack_string(&rcv_str);
 	if(strcmp(st, udpc_file_serve_service_name) == 0){
 	  logd("File share\n");
 	  udpc_file_serve(c2, &stats, dir);
-	  logd("File share END\n");
+	  //logd("File share END\n");
 	}else if(strcmp(st, udpc_speed_test_service_name) == 0){
 	  logd("Speed \n");
 	  udpc_speed_serve(c2, NULL);
-	  logd("Speed END \n");
+	  //logd("Speed END \n");
 	}else if(strcmp(st, udpc_dirscan_service_name) == 0){
 	  logd("SERVE DIR..\n");
 	  udpc_dirscan_update(dir, &scan_result,false);
 	  udpc_dirscan_serve(c2, &stats, scan_result);
-	  logd("SERVE DIR DONE\n");
+	  //logd("SERVE DIR DONE\n");
 	}else{
 	  loge("Unknown service '%s'\n", st);
 	  break;
@@ -114,6 +114,7 @@ int main(int argc, char ** argv){
     UNUSED(servicename);
     char * other_service = argv[3];
     udpc_connection * con = udpc_connect(other_service);
+    dirscan local_dir = {0};
     while(true){
 
       // find speed/packagesize
@@ -136,7 +137,7 @@ int main(int argc, char ** argv){
 	rtt = mean_rtt;
 	}*/
 
-      dirscan local_dir = scan_directories(dir);
+      udpc_dirscan_update(dir, &local_dir, false); 
       bool local_found[local_dir.cnt];
       memset(local_found,0, sizeof(local_found));
     do_dirscan:;
@@ -145,25 +146,25 @@ int main(int argc, char ** argv){
      int ok = udpc_dirscan_client(con, &stats, &ext_dir);
       if(ok < 0) goto do_dirscan;
 
-      logd ("got dirscan\n");
+      /*logd ("got dirscan\n");
       for(size_t i = 0; i < ext_dir.cnt;i++){
 	logd("EXT: %s\n", ext_dir.files[i]);
       }
       for(size_t i = 0; i < local_dir.cnt;i++){
 	logd("Local: %s\n", local_dir.files[i]);
-      }
+	}*/
       dirscan_diff diff = udpc_dirscan_diff(local_dir, ext_dir);
-      logd("Diff cnt: %i\n", diff.cnt);
+      //logd("Diff cnt: %i\n", diff.cnt);
       for(size_t i = 0; i < diff.cnt; i++){
 	size_t i1 = diff.index1[i];
 	size_t i2 = diff.index2[i];
 	dirscan_state state = diff.states[i];
-	logd("%i %i %i\n", i1, i2, state);
+	//logd("%i %i %i\n", i1, i2, state);
 	double difft = i2 == ext_dir.cnt ? -1 : 1;
 	switch(state){
 	case DIRSCAN_GONE:
 	  {
-	    char * f = ext_dir.files[i1];
+	    char * f = local_dir.files[i1];
 	    logd("Gone: %s\n", f);
 	    char filepathbuffer[1000];
 	    sprintf(filepathbuffer, "%s/%s",dir, f);
@@ -182,7 +183,7 @@ int main(int argc, char ** argv){
 	    else if(i1 != local_dir.cnt)
 	      f = local_dir.files[i1];
 	    else ASSERT(false);
-	    logd("changed/new: %s\n", f);
+	    //logd("changed/new: %s\n", f);
 	    char filepathbuffer[1000];
 	    sprintf(filepathbuffer, "%s/%s",dir, f);
 	    logd("FIle: %s\n", filepathbuffer);

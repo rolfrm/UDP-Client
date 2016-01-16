@@ -4,7 +4,9 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdint.h>
+#include <unistd.h>
 #include <time.h>
+#include <sys/file.h>
 #include <iron/types.h>
 #include <iron/log.h>
 #include <iron/time.h>
@@ -56,7 +58,7 @@ static void _send_file(udpc_connection * c2, udpc_connection_stats * stats, char
   fclose(file);
   share_log_end_send_file();
 }
-
+static mode_t default_mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
 void _receive_file(udpc_connection * c2, udpc_connection_stats * stats, char * filepath, u64 transmission_id){
   ensure_directory(filepath);
   FILE * file = fopen(filepath, "w");
@@ -97,11 +99,16 @@ void udpc_file_serve(udpc_connection * c2, udpc_connection_stats * stats, char *
   sprintf(filepathbuffer, "%s/%s",dir, filepath);
   //logd("udpc_file_serve %s\n", filepath);
   udpc_write(c2, "OK", sizeof("OK"));
+  int fd = open(filepathbuffer, O_RDWR  | O_CREAT, default_mode);
+  logd("FILE SERVE LOCK fd: %i\n", fd);
+  flock(fd, LOCK_EX);
   if(rcv == 1){
     _receive_file(c2, stats, filepathbuffer, transmission_id);
   }else{
     _send_file(c2, stats, filepathbuffer, transmission_id);
   }
+  flock(fd, LOCK_UN);
+  close(fd);
 }
 
 typedef enum{
@@ -133,10 +140,16 @@ snd_cmd:;
   }
 
   dealloc(outbuffer);
+  int fd = open(local_file_path, O_RDWR | O_CREAT, default_mode);
+  logd("CLIENT TX/RX fd: %i\n", fd);
+  flock(fd, LOCK_EX);
+  
   if(tx_or_rx == UDPC_RX)
     _receive_file(con, stats, local_file_path, transmission_id);
   else
     _send_file(con, stats, local_file_path, transmission_id);
+  flock(fd, LOCK_UN);
+  close(fd);
 }
 void udpc_file_client(udpc_connection * con, udpc_connection_stats * stats, char * remote_file_path, char * local_file_path){
   _udpc_file_client(con, stats, remote_file_path, local_file_path, UDPC_RX);
