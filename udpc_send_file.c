@@ -16,6 +16,7 @@
 #include "udpc_dir_scan.h"
 
 #include "udpc_send_file.h"
+#include "udpc_share_log.h"
 
 const char * udpc_file_serve_service_name = "UDPC_FILE_SERVE";
 typedef struct{
@@ -33,6 +34,8 @@ static void _send_file(udpc_connection * c2, udpc_connection_stats * stats, char
 
   fseek(file,0,SEEK_END);
   size_t size = ftell(file);
+  size_t sent = 0;
+  share_log_start_send_file(filepath);
   
   int handle_chunk(const transmission_data * tid, void * _chunk,
 		   size_t chunk_id, size_t chunk_size, void * userdata){
@@ -40,6 +43,9 @@ static void _send_file(udpc_connection * c2, udpc_connection_stats * stats, char
     size_t offset =  chunk_id * tid->chunk_size;
     fseek(file, offset, SEEK_SET);
     fread(_chunk, chunk_size, 1, file);
+    sent += chunk_size;
+    if(chunk_id % 1000 == 0)
+      share_log_progress(sent, size);
     return 0;
   }
   //logd("Sending file: %s size: %i  %i\n", filepath, size, transmission_id);  
@@ -48,10 +54,10 @@ static void _send_file(udpc_connection * c2, udpc_connection_stats * stats, char
   UNUSED(send_status);
   //logd("send status2: %i\n", send_status);
   fclose(file);
+  share_log_end_send_file();
 }
 
 void _receive_file(udpc_connection * c2, udpc_connection_stats * stats, char * filepath, u64 transmission_id){
-  //logd("Receiving file: %s\n", filepath);
   ensure_directory(filepath);
   FILE * file = fopen(filepath, "w");
   ASSERT(file != NULL);

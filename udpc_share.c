@@ -13,14 +13,14 @@
 #include <iron/log.h>
 #include <iron/utils.h>
 #include <iron/time.h>
-
+#include <iron/fileio.h>
 #include "udpc.h"
 #include "udpc_seq.h"
 #include "udpc_utils.h"
 #include "udpc_send_file.h"
 #include "udpc_stream_check.h"
 #include "udpc_dir_scan.h"
-
+#include "udpc_share_log.h"
 void _error(const char * file, int line, const char * msg, ...){
   char buffer[1000];  
   va_list arglist;
@@ -45,6 +45,19 @@ void handle_sigint(int signum){
 void ensure_directory(const char * path);
 
 int main(int argc, char ** argv){
+
+  /*share_log_reader * reader = share_log_open_reader("Share log.log");
+  share_log_item items[10];
+  int read_items = share_log_reader_read(reader, items, array_count(items));
+  logd("Read %i items\n", read_items);
+  for(int i = 0; i < read_items; i++){
+    logd("Item %i: ", i);
+    share_log_item_print(items[i]);
+    logd("\n");
+  }
+  share_log_close_reader(&reader);
+  return 0;*/
+  share_log_set_file("Share log.log");
   signal(SIGINT, handle_sigint);
 
   char * dir = argv[2];
@@ -138,7 +151,7 @@ int main(int argc, char ** argv){
     do_dirscan:;
       dirscan ext_dir = {0};
       udpc_connection_stats stats = get_stats();
-      int ok = udpc_dirscan_client(con, &stats, &ext_dir);
+     int ok = udpc_dirscan_client(con, &stats, &ext_dir);
       if(ok < 0) goto do_dirscan;
 
       logd ("got dirscan\n");
