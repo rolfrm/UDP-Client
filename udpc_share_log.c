@@ -70,8 +70,9 @@ share_log_reader * share_log_open_reader(const char * path){
   if(file == NULL) return NULL;
   share_log_reader * reader = alloc(sizeof(share_log_reader));
   reader->file = file;
-  reader->read_buffer = alloc(10000);
   reader->read_buffer_size = 10000;
+  reader->read_buffer = alloc(reader->read_buffer_size);
+
   return reader;
 }
 
@@ -90,23 +91,22 @@ bool string_startswith(const char * target, const char * test){
 int share_log_reader_read(share_log_reader * reader, share_log_item * out_items, int max_items){
   int read_items = 0;
   while(max_items > 0){
-    
     char * str = NULL;
     size_t p = ftell(reader->file);
-    if(0 > getline(&reader->read_buffer, &reader->read_buffer_size, reader->file)){
+    int line_len = 0;
+    if(0 > (line_len = getline(&reader->read_buffer, &reader->read_buffer_size, reader->file))){
       fseek(reader->file, p, SEEK_SET);
       goto panic;
     }
-
+    if(line_len <= 1)
+      continue;
 
     str = reader->read_buffer;
-    logd("str: %s\n", str);
     ASSERT(str != NULL);
     bool isrcv = false, issnd = false;
     share_log_item item;
 
     int read = sscanf(str, "%"PRId64" ", &item.timestamp);
-    logd("Read: %i\n", read);
     if(read <= 0)
       goto panic;
     str = strchr(str, ' ');
@@ -145,6 +145,7 @@ int share_log_reader_read(share_log_reader * reader, share_log_item * out_items,
     max_items--;
     continue;
   panic:
+    fseek(reader->file, p, SEEK_SET);
     break;
   }
   return read_items;
@@ -168,4 +169,13 @@ void share_log_item_print(share_log_item item){
   default:
     ERROR("Invalid share log type %i", item.type);
   }
+}
+
+void share_log_clear_items(share_log_item * items, int cnt){
+  for(int i = 0; i < cnt; i++){
+    if(items[i].type == SHARE_LOG_START_RECEIVE || items[i].type == SHARE_LOG_START_SEND)
+      dealloc(items[i].file_name);
+    items[i].file_name = NULL;
+  }
+  memset(items, 0, cnt * sizeof(items[0]));
 }

@@ -37,6 +37,8 @@ file: $(TARGET) udpc_file.o
 share: $(TARGET) udpc_share.o
 	$(CC) $(LDFLAGS) udpc_share.o $(LIBS) -ludpc -Wl,-rpath,. -o share
 
+share_log_reader: $(TARGET) udpc_share_log_reader.o
+	$(CC) $(LDFLAGS) udpc_share_log_reader.o $(LIBS) -ludpc -Wl,-rpath,. -o share_log_reader	
 test: $(TARGET) udpc_test.o
 	$(CC) $(LDFLAGS) udpc_test.o $(LIBS) -ludpc -Wl,-rpath,. -o test
 

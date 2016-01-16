@@ -35,9 +35,13 @@ typedef struct{
   };
 }share_log_item;
 
+// Open the log reader
 share_log_reader * share_log_open_reader(const char * path);
+// Close the log reader and release the resources.
 void share_log_close_reader(share_log_reader ** reader);
+// Read a number of items.
 int share_log_reader_read(share_log_reader * reader, share_log_item * out_items, int max_reads);
+void share_log_clear_items(share_log_item * items, int cnt);
 
 // pretty print
 void share_log_item_print(share_log_item item);
