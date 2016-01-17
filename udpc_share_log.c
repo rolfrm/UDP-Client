@@ -6,6 +6,7 @@
 #include <iron/time.h>
 #include <iron/mem.h>
 #include <iron/log.h>
+#include <iron/fileio.h>
 #include <inttypes.h>
 #include "udpc_share_log.h"
 
@@ -26,8 +27,10 @@ static char log_file_path[255] = {0};
 void share_log_set_file(const char * path){
   if(path == NULL)
     log_file_path[0] = 0;
-  else
+  else{
     sprintf(log_file_path, "%s", path);
+    iron_touch(log_file_path);
+  }
 }
 
 static char write_buffer[10000];

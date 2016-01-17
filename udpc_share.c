@@ -46,10 +46,41 @@ void handle_sigint(int signum){
 
 void ensure_directory(const char * path);
 
+void handle_arg(int argc, char ** argv, const char * pattern, int args, void * handler, void * userdata){
+  int index = -1;
+  for(int i = 0; i < argc; i++){
+    if(strcmp(argv[i], pattern) == 0){
+      index = i;
+      break;
+    }
+  }
+  int rest_args = argc - index - 1;
+  ASSERT(rest_args >= args);
+  void (* f)(void * userdata, ...) = handler;
+  char ** arg_offset = argv + index + 1;
+  switch(args){
+  case 0: f(userdata);return;
+  case 1: f(userdata, arg_offset[0]);return;
+  case 2: f(userdata, arg_offset[0], arg_offset[1]);return;
+  default: ERROR("Not supported number of command line args for %s: %i", pattern, args);
+  }
+}
+
+void handle_data_log(void * userdata, char * log_file){
+  UNUSED(userdata);
+  share_log_set_file(log_file);  
+}
+
 int main(int argc, char ** argv){
 
+  bool persist = false;
+  void handle_persist(void * userdata){
+    UNUSED(userdata);
+    persist = true;
+  }
+  handle_arg(argc, argv, "--data-log", 1, handle_data_log, NULL);
+  handle_arg(argc, argv, "--persist", 0, handle_persist, NULL);
 
-  share_log_set_file("Share log.log");
   signal(SIGINT, handle_sigint);
 
   char * dir = argv[2];
@@ -106,12 +137,6 @@ int main(int argc, char ** argv){
     udpc_logout(con);
   }else if(argc >= 4){
     char * servicename = argv[1];
-    bool persist = false;
-    for(int i = 4; i < argc; i++){
-      if(strcmp(argv[i], "--persist") == 0){
-	persist = true;
-      }
-    }
     UNUSED(servicename);
     char * other_service = argv[3];
     udpc_connection * con = udpc_connect(other_service);
