@@ -46,7 +46,8 @@ void handle_sigint(int signum){
 
 void ensure_directory(const char * path);
 
-void handle_arg(int argc, char ** argv, const char * pattern, int args, void * handler, void * userdata){
+void handle_arg(int argc, char ** argv, const char * pattern, int args, void * handler, void * userdata)
+{
   int index = -1;
   for(int i = 0; i < argc; i++){
     if(strcmp(argv[i], pattern) == 0){
@@ -72,7 +73,6 @@ void handle_data_log(void * userdata, char * log_file){
 }
 
 int main(int argc, char ** argv){
-
   bool persist = false;
   void handle_persist(void * userdata){
     UNUSED(userdata);
@@ -91,6 +91,7 @@ int main(int argc, char ** argv){
 
   if(argc == 3){
     dirscan scan_result = {0};
+    udpc_dirscan_update(dir, &scan_result,false);
     char * servicename = argv[1];
     udpc_service * con = udpc_login(servicename);
 
@@ -122,7 +123,7 @@ int main(int argc, char ** argv){
 	  udpc_speed_serve(c2, NULL);
 	  //logd("Speed END \n");
 	}else if(strcmp(st, udpc_dirscan_service_name) == 0){
-	  logd("SERVE DIR..\n");
+	  logd("%u SERVE DIR..\n", timestamp());
 	  udpc_dirscan_update(dir, &scan_result,false);
 	  udpc_dirscan_serve(c2, &stats, scan_result);
 	  //logd("SERVE DIR DONE\n");
@@ -171,7 +172,7 @@ int main(int argc, char ** argv){
       udpc_connection_stats stats = get_stats();
      int ok = udpc_dirscan_client(con, &stats, &ext_dir);
       if(ok < 0) goto do_dirscan;
-
+      
       /*logd ("got dirscan\n");
       for(size_t i = 0; i < ext_dir.cnt;i++){
 	logd("EXT: %s\n", ext_dir.files[i]);
