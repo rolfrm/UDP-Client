@@ -167,11 +167,12 @@ int udpc_receive_transmission(udpc_connection * con, udpc_connection_stats * sta
   ASSERT(peek2 == sizeof(data));
   buffer_size = 0;
   u64 num_chunks = data.total_size / data.chunk_size
-    + ((data.total_size % data.chunk_size) == 0 ? 0 : 1);
+    + (((data.total_size % data.chunk_size ) == 0 || data.total_size == 0) ? 0 : 1);
   bool received_seqs[num_chunks];
   memset(received_seqs, 0, sizeof(received_seqs));
   //logd("STATS: total size:%i chunk_size:%i num_chunks:%i\n", data.total_size, data.chunk_size, num_chunks);
-
+  if(num_chunks == 0)
+    goto end_seq;
  get_all:
   udpc_pack_u8(UDPC_TRANSMISSION_GET_ALL, &buffer, &buffer_size);
   udpc_conv_write(&conv, buffer, buffer_size);
@@ -256,7 +257,7 @@ int udpc_send_transmission(udpc_connection * con, udpc_connection_stats * stats,
   udpc_conv conv;
   udpc_conv_load(&conv, con, service_id);
   transmission_data data = { total_size, chunk_size};
-  size_t chunk_cnt = total_size / chunk_size + (total_size % chunk_size == 0 ? 0 : 1);
+  size_t chunk_cnt = total_size / chunk_size + (total_size % chunk_size == 0 || total_size == 0 ? 0 : 1);
   while(true){
     char buffer[1600];
     int r = udpc_conv_read(&conv, buffer, sizeof(buffer));

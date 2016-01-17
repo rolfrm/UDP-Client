@@ -39,6 +39,7 @@ bool should_close = false;
 
 void handle_sigint(int signum){
   logd("Caught sigint %i\n", signum);
+  iron_log_stacktrace();
   should_close = true;
   signal(SIGINT, NULL); // next time just quit.
 }
