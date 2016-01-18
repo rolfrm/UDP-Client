@@ -145,7 +145,49 @@ log_item share_log_item_to_item(share_log_item item, log_item last){
 
 typedef struct{
   log_item items[10];
+  char ** running_share_names;
+  int * running_share_pids;
+  share_log_reader ** running_share_readers;
+  size_t running_share_cnt;
 }manager_ctx;
+
+static void add_log(manager_ctx * ctx, char * msg, log_item_type type){
+  log_item item;
+  item.type = type;
+  item.command = msg;
+  push_log_item(ctx->items, array_count(ctx->items), item);
+}
+
+void add_running_share(manager_ctx * ctx, char * service, char * dir, char * name){
+  UNUSED(dir);
+  if(name == NULL){
+    for(int j = 0; j < 100; j++){
+      name = fmtstr("share%i", j);
+      bool ok = true;
+      for(size_t i = 0; i < ctx->running_share_cnt; i++){
+	if(strcmp(name, ctx->running_share_names[i]) == 0){
+	  ok = false;
+	  break;
+	}
+      }
+      if(ok)
+	break;
+      dealloc(service);
+      dealloc(name);
+    }
+  }else{
+    for(size_t i = 0; i < ctx->running_share_cnt; i++){
+      if(strcmp(name, ctx->running_share_names[i]) == 0){
+	add_log(ctx, fmtstr("name '%s' already exists", name), MANAGER_RESPONSE);
+	return;
+	break;
+      }
+    }
+  }
+  add_log(ctx, fmtstr("Adding share '%s'", name), MANAGER_RESPONSE);
+  dealloc(service);
+  
+}
 
 void handle_command(manager_ctx * ctx, char * command){
   UNUSED(ctx);
@@ -154,9 +196,20 @@ void handle_command(manager_ctx * ctx, char * command){
   newitem.type = MANAGER_COMMAND;
   newitem.command = command;
 
-
   if(string_startswith(command, "add ")){
+    char arg1[100], arg2[100], arg3[100];
+    int result = sscanf(command, "add %s %s %s", arg1, arg2, arg3);
+    if(result == 2 || result == 3){
+      if(result == 2){
+	add_running_share(ctx, fmtstr("%s", arg1), fmtstr("%s", arg2), NULL);
+      }else{
+	add_running_share(ctx,fmtstr("%s", arg1), fmtstr("%s", arg2), fmtstr("%s", arg3));
+      }
 
+    }else{
+      newitem.command = fmtstr("unsupported number of args.");
+      free(command);
+    }
   }else if(string_startswith(command, "remove")){
       
   }else if(string_startswith(command, "help")){
@@ -173,6 +226,25 @@ int main(int argc, char ** argv){
   ASSERT(argc == 2);
   char * share_name = argv[1];
   logd("Share: %s\n", share_name);
+  {
+    static struct termios oldt, newt;
+    
+    /*tcgetattr gets the parameters of the current terminal
+      STDIN_FILENO will tell tcgetattr that it should write the settings
+      of stdin to oldt*/
+    tcgetattr( STDIN_FILENO, &oldt);
+    /*now the settings will be copied*/
+    newt = oldt;
+    
+    /*ICANON normally takes care that one line at a time will be processed
+      that means it will return if it sees a "\n" or an EOF or an EOL*/
+    newt.c_lflag &= ~(ICANON | ECHO);          
+    
+    /*Those new settings will be set to STDIN
+      TCSANOW tells tcsetattr to change attributes immediately. */
+    tcsetattr( STDIN_FILENO, TCSANOW, &newt);
+  }
+  
   char buff[100] = {0};
   char * buffer = buff;
   manager_ctx ctx = {0};
@@ -234,7 +306,6 @@ int main(int argc, char ** argv){
     printf("%s", buff);
     fflush(stdout);
     sleep(1);
-    
     for(char * ptr = buff; ptr <= buffer; ptr++){
       if(*ptr == '\r' || *ptr =='\n'){
 	buffer = buff;
