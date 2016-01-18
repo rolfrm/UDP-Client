@@ -15,6 +15,7 @@
 #include <iron/time.h>
 #include <iron/fileio.h>
 #include <iron/mem.h>
+#include <iron/array.h>
 #include <termios.h>
 #include <signal.h>
 #include <pthread.h>
@@ -172,8 +173,9 @@ void add_running_share(manager_ctx * ctx, char * service, char * dir, char * nam
       }
       if(ok)
 	break;
-      dealloc(service);
+      //dealloc(service);
       dealloc(name);
+      name = NULL;
     }
   }else{
     for(size_t i = 0; i < ctx->running_share_cnt; i++){
@@ -186,7 +188,8 @@ void add_running_share(manager_ctx * ctx, char * service, char * dir, char * nam
   }
   add_log(ctx, fmtstr("Adding share '%s'", name), MANAGER_RESPONSE);
   dealloc(service);
-  
+  list_push(ctx->running_share_names, ctx->running_share_cnt, name);
+  ctx->running_share_cnt += 1;
 }
 
 void handle_command(manager_ctx * ctx, char * command){
@@ -210,10 +213,14 @@ void handle_command(manager_ctx * ctx, char * command){
       newitem.command = fmtstr("unsupported number of args.");
       free(command);
     }
-  }else if(string_startswith(command, "remove")){
+  }else if(string_startswith(command, "remove ")){
       
-  }else if(string_startswith(command, "help")){
-	
+  }else if(string_startswith(command, "help ")){
+
+  }else if(string_startswith(command, "list")){
+    for(size_t i = 0; i < ctx->running_share_cnt; i++){
+      add_log(ctx, fmtstr("   %s", ctx->running_share_names[i]), MANAGER_RESPONSE);
+    }
   }else{
     newitem.command = fmtstr("Unknown command '%s'", command);
     free(command);
