@@ -173,43 +173,14 @@ int main(int argc, char ** argv){
   ASSERT(argc == 2);
   char * share_name = argv[1];
   logd("Share: %s\n", share_name);
-   static struct termios oldt, newt;
-
-    /*tcgetattr gets the parameters of the current terminal
-    STDIN_FILENO will tell tcgetattr that it should write the settings
-    of stdin to oldt*/
-    tcgetattr( STDIN_FILENO, &oldt);
-    /*now the settings will be copied*/
-    newt = oldt;
-
-    /*ICANON normally takes care that one line at a time will be processed
-    that means it will return if it sees a "\n" or an EOF or an EOL*/
-    newt.c_lflag &= ~(ICANON | ECHO);          
-
-    /*Those new settings will be set to STDIN
-    TCSANOW tells tcsetattr to change attributes immediately. */
-    tcsetattr( STDIN_FILENO, TCSANOW, &newt);
-
   char buff[100] = {0};
   char * buffer = buff;
   manager_ctx ctx = {0};
 
   pthread_t tid;
   pthread_t maintrd = pthread_self();
-
-
   share_log_reader * reader = share_log_open_reader(argv[1]);
-  
-  
   void * read_keys(void * userdata){
-    sigset_t set;
-
-    /* Block SIGQUIT and SIGUSR1; other threads created by main()
-       will inherit a copy of the signal mask. */
-    
-    sigemptyset(&set);
-    sigaddset(&set, SIGINT);
-    //pthread_sigmask(SIG_BLOCK, &set, NULL);
     UNUSED(userdata);
     while(true){
       char ch = getchar();
