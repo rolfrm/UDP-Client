@@ -2,7 +2,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdlib.h>
-
+#include <stdbool.h>
 #include <iron/mem.h>
 #include <iron/types.h>
 void udpc_pack(const void * data, size_t data_len, void ** buffer, size_t * buffer_size){

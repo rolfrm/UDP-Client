@@ -75,15 +75,16 @@ void push_log_item(log_item * items, size_t item_cnt, log_item new_item){
       size_t j = item_cnt - i - 1;
       if(items[j].type == MANAGER_DOWNLOAD_STATUS || items[j].type == MANAGER_UPLOAD_STATUS){
 	if(strcmp(items[j].file_progress.file, new_item.file_progress.file) == 0){
-	  //if(items[j].file_progress.done_percentage < new_item.file_progress.done_percentage){
-	    items[j].file_progress.done_percentage = new_item.file_progress.done_percentage;
-	    return;
-	    //}
-	    //break;
+	  items[j].file_progress.done_percentage = new_item.file_progress.done_percentage;
+	  return;
 	}
       }
     }
   }
+  if(items[0].type != MANAGER_NONE){
+    free(items[0].command);
+  }
+  
   for(size_t i = 1; i < item_cnt; i++)
     items[i - 1] = items[i];
   items[item_cnt - 1] = new_item;
@@ -142,6 +143,32 @@ log_item share_log_item_to_item(share_log_item item, log_item last){
   return last;
 }
 
+typedef struct{
+  log_item items[10];
+}manager_ctx;
+
+void handle_command(manager_ctx * ctx, char * command){
+  UNUSED(ctx);
+  UNUSED(command);
+  log_item newitem;
+  newitem.type = MANAGER_COMMAND;
+  newitem.command = command;
+
+
+  if(string_startswith(command, "add ")){
+
+  }else if(string_startswith(command, "remove")){
+      
+  }else if(string_startswith(command, "help")){
+	
+  }else{
+    newitem.command = fmtstr("Unknown command '%s'", command);
+    free(command);
+  }
+  push_log_item(ctx->items, array_count(ctx->items), newitem);      
+      
+}
+
 int main(int argc, char ** argv){
   ASSERT(argc == 2);
   char * share_name = argv[1];
@@ -163,10 +190,9 @@ int main(int argc, char ** argv){
     TCSANOW tells tcsetattr to change attributes immediately. */
     tcsetattr( STDIN_FILENO, TCSANOW, &newt);
 
-    //system ("/bin/stty raw");
   char buff[100] = {0};
   char * buffer = buff;
-  log_item items[10] = {0};
+  manager_ctx ctx = {0};
 
   pthread_t tid;
   pthread_t maintrd = pthread_self();
@@ -207,57 +233,43 @@ int main(int argc, char ** argv){
   pthread_create( &tid, NULL, read_keys, buffer);
   signal(SIGUSR1,handle_alarm);
   printf(" \033[7l\r");
-  //sleep(100);
-  for(size_t i = 0; i < array_count(items)+2; i++)
+  
+  for(size_t i = 0; i < array_count(ctx.items)+2; i++)
     printf("\n");
-
-  for(int i = 0; i < 100; i++){
+  while(true){
     share_log_item items2[10];
     int read_items;
     log_item last_item = {0};
     while(0 != (read_items = share_log_reader_read(reader, items2, array_count(items2)))){
-      logd("Read itms: %i\n", read_items);
       for(int i = 0; i <read_items; i++){
 	last_item = share_log_item_to_item(items2[i], last_item);
-	push_log_item(items, array_count(items), last_item);
+	push_log_item(ctx.items, array_count(ctx.items), last_item);
       }
     }
-    //log_item newitem;
-    //newitem.type = MANAGER_DOWNLOAD_STATUS;
-    //newitem.file_progress.file = (char *) "test";
-    //newitem.file_progress.done_percentage = i;
-    //push_log_item(items, array_count(items), newitem);
+
+    printf("\033[%iA", array_count(ctx.items));
     printf("\033[J");
-    printf("\033[%iA", array_count(items));
-    iron_usleep(100000);
-    for(size_t j = 0; j < array_count(items); j++){
-      printf("\033[2k");
-      print_item(items[j]);
+    for(size_t j = 0; j < array_count(ctx.items); j++){
+      printf("\033[2k\r");
+
+      printf(" \033[30D\r");
+      print_item(ctx.items[j]);
       printf("\n");
-      iron_usleep(100000);
     }
-    iron_usleep(100000);
 
     printf("\r\033[2k");
     fflush(stdout);
-    if(i%2 == 0)
-      printf(">>>", i);
-    else
-      printf(">>>", i);
-    for(int i = 0; i < 3; i++)
-      printf("          ");
-    printf(" \033[30D");
-    iron_usleep(100000);
+    printf(">>>");
     printf("%s", buff);
-    iron_usleep(100000);
-    //printf("\033[%iC",strlen(buff) + 3);
-    //fflush(stdout);
-    //printf("\033[k");
     fflush(stdout);
     sleep(1);
+    
     for(char * ptr = buff; ptr <= buffer; ptr++){
       if(*ptr == '\r' || *ptr =='\n'){
 	buffer = buff;
+	*ptr = 0;
+	char * s = fmtstr("%s", buff);
+	handle_command(&ctx, s);
 	memset(buff, 0, sizeof(buff));
 	break;
       }

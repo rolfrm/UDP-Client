@@ -87,10 +87,6 @@ void share_log_close_reader(share_log_reader ** reader){
   *reader = NULL;
 }
 
-bool string_startswith(const char * target, const char * test){
-  return strncmp(target, test, strlen(test)) == 0;
-}
-
 int share_log_reader_read(share_log_reader * reader, share_log_item * out_items, int max_items){
   int read_items = 0;
   while(max_items > 0){
