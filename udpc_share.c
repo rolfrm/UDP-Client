@@ -31,8 +31,8 @@ void _error(const char * file, int line, const char * msg, ...){
   loge("%s\n", buffer);
   loge("Got error at %s line %i\n", file,line);
   iron_log_stacktrace();
-  raise(SIGSTOP);
-  exit(255);
+  //raise(SIGSTOP);
+  exit(10);
 }
 
 bool should_close = false;

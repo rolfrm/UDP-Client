@@ -148,7 +148,7 @@ log_item share_log_item_to_item(share_log_item item, log_item last){
 typedef struct{
   log_item items[10];
   char ** running_share_names;
-  iron_process * running_share_pids;
+  iron_process * running_share_processes;
   share_log_reader ** running_share_readers;
   size_t running_share_cnt;
 }manager_ctx;
@@ -188,9 +188,33 @@ void add_running_share(manager_ctx * ctx, char * service, char * dir, char * nam
     }
   }
   add_log(ctx, fmtstr("Adding share '%s'", name), MANAGER_RESPONSE);
+  iron_process new_proc;
+  char data_log_name[strlen(name) + 10];
+  sprintf(data_log_name, "%s.log", name);
+  
+  const char *args[] = {"unused@0.0.0.0:test", dir, service, "--persist", "--data-log", data_log_name, NULL};
+  int status = iron_process_run("./share", (const char **) args, &new_proc);
+  if(status < 0){
+    dealloc(service);
+    add_log(ctx, fmtstr("Unable to start service"), MANAGER_RESPONSE);
+    return;
+  }
+  add_log(ctx, fmtstr("started service.. "), MANAGER_RESPONSE);
+  iron_sleep(0.2);
+  for(int i = 0; i < 10; i++) printf("\n");
+  iron_process_status proc_status = iron_process_get_status(new_proc);
+  if(proc_status != IRON_PROCESS_RUNNING){
+    dealloc(service);
+    add_log(ctx, fmtstr("Unable to start service"), MANAGER_RESPONSE);
+    return;
+  }
+  share_log_reader * reader = share_log_open_reader(data_log_name);
   dealloc(service);
   list_push(ctx->running_share_names, ctx->running_share_cnt, name);
+  list_push(ctx->running_share_processes, ctx->running_share_cnt, new_proc);
+  list_push(ctx->running_share_readers, ctx->running_share_cnt, reader);
   ctx->running_share_cnt += 1;
+
 }
 
 void remove_running_share(manager_ctx * ctx, char * name){
@@ -206,10 +230,11 @@ void remove_running_share(manager_ctx * ctx, char * name){
   size_t offset = id - ctx->running_share_names;
   add_log(ctx, fmtstr("found share '%s' at %i", *id, offset), MANAGER_RESPONSE);
   dealloc(*id);
+  iron_process_interupt(ctx->running_share_processes[offset]);
   list_remove2(ctx->running_share_names, ctx->running_share_cnt, offset);
+  list_remove2(ctx->running_share_readers, ctx->running_share_cnt, offset);
+  list_remove2(ctx->running_share_processes, ctx->running_share_cnt, offset);
   ctx->running_share_cnt -= 1;
-
-  
 }
 
 void handle_command(manager_ctx * ctx, char * command){
@@ -255,10 +280,8 @@ void handle_command(manager_ctx * ctx, char * command){
 }
 
 int main(int argc, char ** argv){
-  ASSERT(argc == 2);
-  char * share_name = argv[1];
-  logd("Share: %s\n", share_name);
   {
+    UNUSED(argc);UNUSED(argv);
     static struct termios oldt, newt;
     
     /*tcgetattr gets the parameters of the current terminal
@@ -283,7 +306,7 @@ int main(int argc, char ** argv){
 
   pthread_t tid;
   pthread_t maintrd = pthread_self();
-  share_log_reader * reader = share_log_open_reader(argv[1]);
+  
   void * read_keys(void * userdata){
     UNUSED(userdata);
     while(true){
@@ -312,15 +335,16 @@ int main(int argc, char ** argv){
   for(size_t i = 0; i < array_count(ctx.items)+2; i++)
     printf("\n");
   while(true){
-    share_log_item items2[10];
+    /*share_log_item items2[10];
     int read_items;
     log_item last_item = {0};
     while(0 != (read_items = share_log_reader_read(reader, items2, array_count(items2)))){
       for(int i = 0; i <read_items; i++){
+	// bug here: it might be needed to read further back beyoud i = 0;
 	last_item = share_log_item_to_item(items2[i], last_item);
 	push_log_item(ctx.items, array_count(ctx.items), last_item);
       }
-    }
+      }*/
 
     printf("\033[%iA", array_count(ctx.items));
     printf("\033[J");
