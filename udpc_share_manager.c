@@ -16,6 +16,7 @@
 #include <iron/fileio.h>
 #include <iron/mem.h>
 #include <iron/array.h>
+#include <iron/process.h>
 #include <termios.h>
 #include <signal.h>
 #include <pthread.h>
@@ -147,7 +148,7 @@ log_item share_log_item_to_item(share_log_item item, log_item last){
 typedef struct{
   log_item items[10];
   char ** running_share_names;
-  int * running_share_pids;
+  iron_process * running_share_pids;
   share_log_reader ** running_share_readers;
   size_t running_share_cnt;
 }manager_ctx;
@@ -192,13 +193,32 @@ void add_running_share(manager_ctx * ctx, char * service, char * dir, char * nam
   ctx->running_share_cnt += 1;
 }
 
+void remove_running_share(manager_ctx * ctx, char * name){
+  bool found_item(char ** name2, manager_ctx * ctx2){
+    UNUSED(ctx2);
+    return strcmp(*name2, name) == 0;
+  }
+  char ** id = find1(ctx->running_share_names, ctx->running_share_cnt, found_item, ctx);
+  if(id == NULL){
+    add_log(ctx, fmtstr("Unable to find service '%s'", name), MANAGER_RESPONSE);
+    return;
+  }
+  size_t offset = id - ctx->running_share_names;
+  add_log(ctx, fmtstr("found share '%s' at %i", *id, offset), MANAGER_RESPONSE);
+  dealloc(*id);
+  list_remove2(ctx->running_share_names, ctx->running_share_cnt, offset);
+  ctx->running_share_cnt -= 1;
+
+  
+}
+
 void handle_command(manager_ctx * ctx, char * command){
   UNUSED(ctx);
   UNUSED(command);
   log_item newitem;
   newitem.type = MANAGER_COMMAND;
   newitem.command = command;
-
+  push_log_item(ctx->items, array_count(ctx->items), newitem);
   if(string_startswith(command, "add ")){
     char arg1[100], arg2[100], arg3[100];
     int result = sscanf(command, "add %s %s %s", arg1, arg2, arg3);
@@ -210,11 +230,17 @@ void handle_command(manager_ctx * ctx, char * command){
       }
 
     }else{
-      newitem.command = fmtstr("unsupported number of args.");
-      free(command);
+      add_log(ctx, fmtstr("unsupported number of args."),  MANAGER_RESPONSE);
+      
     }
   }else if(string_startswith(command, "remove ")){
-      
+    char arg1[100];
+    int r = sscanf(command, "remove %s", arg1);
+    if(r != 1){
+      add_log(ctx, fmtstr("Invalid number of arguments for remove"), MANAGER_RESPONSE);
+    }else{
+      remove_running_share(ctx, fmtstr("%s", arg1));
+    }			   
   }else if(string_startswith(command, "help ")){
 
   }else if(string_startswith(command, "list")){
@@ -222,10 +248,9 @@ void handle_command(manager_ctx * ctx, char * command){
       add_log(ctx, fmtstr("   %s", ctx->running_share_names[i]), MANAGER_RESPONSE);
     }
   }else{
-    newitem.command = fmtstr("Unknown command '%s'", command);
-    free(command);
+    add_log(ctx, fmtstr("Unknown command '%s'", command), MANAGER_RESPONSE);
   }
-  push_log_item(ctx->items, array_count(ctx->items), newitem);      
+
       
 }
 
