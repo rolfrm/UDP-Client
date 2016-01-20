@@ -150,6 +150,7 @@ typedef struct{
   char ** running_share_names;
   iron_process * running_share_processes;
   share_log_reader ** running_share_readers;
+  log_item * running_share_last_item;
   size_t running_share_cnt;
 }manager_ctx;
 
@@ -161,7 +162,7 @@ static void add_log(manager_ctx * ctx, char * msg, log_item_type type){
 }
 
 void add_running_share(manager_ctx * ctx, char * service, char * dir, char * name){
-  UNUSED(dir);
+
   if(name == NULL){
     for(int j = 0; j < 100; j++){
       name = fmtstr("share%i", j);
@@ -187,12 +188,12 @@ void add_running_share(manager_ctx * ctx, char * service, char * dir, char * nam
       }
     }
   }
-  add_log(ctx, fmtstr("Adding share '%s'", name), MANAGER_RESPONSE);
+  add_log(ctx, fmtstr("Adding share '%s' from '%s' dir:", name, service, dir), MANAGER_RESPONSE);
   iron_process new_proc;
   char data_log_name[strlen(name) + 10];
   sprintf(data_log_name, "%s.log", name);
   
-  const char *args[] = {"unused@0.0.0.0:test", dir, service, "--persist", "--data-log", data_log_name, NULL};
+  const char *args[] = {"share", "unused@0.0.0.0:test", dir, service, "--persist", "--data-log", data_log_name, NULL};
   int status = iron_process_run("./share", (const char **) args, &new_proc);
   if(status < 0){
     dealloc(service);
@@ -213,6 +214,8 @@ void add_running_share(manager_ctx * ctx, char * service, char * dir, char * nam
   list_push(ctx->running_share_names, ctx->running_share_cnt, name);
   list_push(ctx->running_share_processes, ctx->running_share_cnt, new_proc);
   list_push(ctx->running_share_readers, ctx->running_share_cnt, reader);
+  log_item item = {0};
+  list_push(ctx->running_share_last_item, ctx->running_share_cnt, item);
   ctx->running_share_cnt += 1;
 
 }
@@ -234,6 +237,7 @@ void remove_running_share(manager_ctx * ctx, char * name){
   list_remove2(ctx->running_share_names, ctx->running_share_cnt, offset);
   list_remove2(ctx->running_share_readers, ctx->running_share_cnt, offset);
   list_remove2(ctx->running_share_processes, ctx->running_share_cnt, offset);
+  list_remove2(ctx->running_share_last_item, ctx->running_share_cnt, offset);
   ctx->running_share_cnt -= 1;
 }
 
@@ -249,6 +253,8 @@ void handle_command(manager_ctx * ctx, char * command){
     int result = sscanf(command, "add %s %s %s", arg1, arg2, arg3);
     if(result == 2 || result == 3){
       if(result == 2){
+	logd("arg1: '%s', arg2: '%s'\n", arg1, arg2);
+	sleep(2);
 	add_running_share(ctx, fmtstr("%s", arg1), fmtstr("%s", arg2), NULL);
       }else{
 	add_running_share(ctx,fmtstr("%s", arg1), fmtstr("%s", arg2), fmtstr("%s", arg3));
@@ -335,17 +341,19 @@ int main(int argc, char ** argv){
   for(size_t i = 0; i < array_count(ctx.items)+2; i++)
     printf("\n");
   while(true){
-    /*share_log_item items2[10];
+    share_log_item items2[10];
     int read_items;
-    log_item last_item = {0};
-    while(0 != (read_items = share_log_reader_read(reader, items2, array_count(items2)))){
-      for(int i = 0; i <read_items; i++){
-	// bug here: it might be needed to read further back beyoud i = 0;
-	last_item = share_log_item_to_item(items2[i], last_item);
-	push_log_item(ctx.items, array_count(ctx.items), last_item);
+    for(size_t i = 0; i < ctx.running_share_cnt; i++){
+      share_log_reader * reader = ctx.running_share_readers[i];
+      while(0 != (read_items = share_log_reader_read(reader, items2, array_count(items2)))){
+	for(int j = 0; j <read_items; j++){
+	  // bug here: it might be needed to read further back beyoud i = 0;
+	  ctx.running_share_last_item[i] = share_log_item_to_item(items2[j],
+								   ctx.running_share_last_item[i]);
+	  push_log_item(ctx.items, array_count(ctx.items), ctx.running_share_last_item[i]);
+	}
       }
-      }*/
-
+    }
     printf("\033[%iA", array_count(ctx.items));
     printf("\033[J");
     for(size_t j = 0; j < array_count(ctx.items); j++){

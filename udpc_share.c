@@ -87,7 +87,9 @@ int main(int argc, char ** argv){
   ensure_directory(dir);
   struct stat dirst;
   stat(dir, &dirst);
-  ASSERT(S_ISDIR(dirst.st_mode));
+  if(!S_ISDIR(dirst.st_mode)){
+    ERROR("Directory '%s' does not exist!", dir);
+  }
 
   if(argc == 3){
     dirscan scan_result = {0};
