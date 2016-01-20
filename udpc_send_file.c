@@ -63,18 +63,24 @@ void _receive_file(udpc_connection * c2, udpc_connection_stats * stats, char * f
   ensure_directory(filepath);
   FILE * file = fopen(filepath, "w");
   ASSERT(file != NULL);
+  share_log_start_receive_file(filepath);
   int handle_chunk(const transmission_data * tid, const void * _chunk,
 		     size_t chunk_id, size_t chunk_size, void * userdata){
     UNUSED(userdata); UNUSED(tid);
     size_t offset = chunk_id * tid->chunk_size;
     fseek(file, offset, SEEK_SET);
     fwrite(_chunk, chunk_size, 1, file);
+    if(chunk_id % 1000 == 0)
+      share_log_progress(chunk_id * chunk_size, tid->total_size);
     return 0;
   }
   int status = udpc_receive_transmission(c2, stats, transmission_id,
 					 handle_chunk, NULL);
-  fclose(file);
   UNUSED(status);
+  
+  fclose(file);
+  share_log_end_receive_file();
+
 }
 
 void udpc_file_serve(udpc_connection * c2, udpc_connection_stats * stats, char * dir){

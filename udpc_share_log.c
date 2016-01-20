@@ -11,6 +11,7 @@
 #include "udpc_share_log.h"
 
 static void write_to_log(const char * path, const char * message){
+
   FILE * f = fopen(path, "a");
   u64 timestampvalue = timestamp();
   char write_buffer[20];
@@ -28,6 +29,7 @@ void share_log_set_file(const char * path){
   if(path == NULL)
     log_file_path[0] = 0;
   else{
+
     sprintf(log_file_path, "%s", path);
     iron_touch(log_file_path);
   }

@@ -55,6 +55,8 @@ void handle_arg(int argc, char ** argv, const char * pattern, int args, void * h
       break;
     }
   }
+  if(index == -1)
+    return;
   int rest_args = argc - index - 1;
   ASSERT(rest_args >= args);
   void (* f)(void * userdata, ...) = handler;
@@ -69,6 +71,7 @@ void handle_arg(int argc, char ** argv, const char * pattern, int args, void * h
 
 void handle_data_log(void * userdata, char * log_file){
   UNUSED(userdata);
+  logd("Setting log file to %s\n", log_file);
   share_log_set_file(log_file);  
 }
 

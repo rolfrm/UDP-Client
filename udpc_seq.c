@@ -101,7 +101,7 @@ int udpc_conv_write(udpc_conv * conv, void * data, size_t size){
   n[0] = conv->seqid;
   memcpy(n + 1, data, size);
   udpc_write(conv->con, n, sizeof(nbuffer));
-  logd("Conv write %i\n", sizeof(nbuffer) );
+  //logd("Conv write %i\n", sizeof(nbuffer) );
   return 0;
 }
 
@@ -114,7 +114,7 @@ int udpc_conv_read(udpc_conv * conv, void * buffer, size_t buffer_size){
   u64 * n = (u64 *) nbuffer;
   if(n[0] != conv->seqid)
     return -2;
-  logd("Conv read: %i\n", r);
+  //logd("Conv read: %i\n", r);
   memcpy(buffer, nbuffer + sizeof(u64), r - sizeof(u64));
   udpc_read(conv->con, nbuffer, sizeof(nbuffer));
   conv->last_msg_time = timestamp();
@@ -155,9 +155,9 @@ int udpc_receive_transmission(udpc_connection * con, udpc_connection_stats * sta
   udpc_conv_write(&conv, buffer, buffer_size);
   {
     char buffer[1500];
-    logd("%u peek:\n", timestamp());
+    //logd("%u peek:\n", timestamp());
     int peek = udpc_peek(conv.con, buffer, sizeof(buffer));
-    logd("%u peekr: %i\n", timestamp(), peek );
+    //logd("%u peekr: %i\n", timestamp(), peek );
     if(peek == -1)
       goto transmission_start;
 
@@ -189,7 +189,7 @@ int udpc_receive_transmission(udpc_connection * con, udpc_connection_stats * sta
   while(true){
     char buffer[1600] = {0};
     int read = udpc_conv_read(&conv, buffer, sizeof(buffer));
-    logd("RX: %i\n", read);
+    //logd("RX: %i\n", read);
     if(read == -1) break; // probably last packet is sent.
     if(read < 0) return read;
     if(read < (int)sizeof(u8)) ERROR("Invalid read\n");
@@ -277,7 +277,7 @@ int udpc_send_transmission(udpc_connection * con, udpc_connection_stats * stats,
     //logd("CMD: %i\n", cmd);
     switch(cmd){
     case UDPC_TRANSMISSION_GET_STATS:
-      logd("%u STATS:\n", timestamp());
+      //logd("%u STATS:\n", timestamp());
       udpc_conv_write(&conv, &data, sizeof(data));
       break;
     case UDPC_TRANSMISSION_GET_ALL:
@@ -290,7 +290,7 @@ int udpc_send_transmission(udpc_connection * con, udpc_connection_stats * stats,
 	memcpy(buffer + 1, &chunk_nr, sizeof(tosend));
 	int ok = send_chunk(&data, buffer + 1 + sizeof(tosend), chunk_nr, tosend, userdata);
 	ASSERT(ok == 0);
-	logd("GET ALL: %i\n", sizeof(buffer));
+	//logd("GET ALL: %i\n", sizeof(buffer));
 	udpc_conv_write(&conv, buffer, sizeof(buffer));
 	iron_usleep(stats->delay_us);
       }
@@ -301,7 +301,7 @@ int udpc_send_transmission(udpc_connection * con, udpc_connection_stats * stats,
       break;
     case UDPC_TRANSMISSION_SEQ:
       {
-	logd("Seq:\n");
+	//logd("Seq:\n");
 	u64 cnt = udpc_unpack_size_t(&ptr);
 	int missing_chunk_seq[cnt];
 	udpc_unpack(missing_chunk_seq, cnt * sizeof(int), &ptr);
@@ -320,7 +320,7 @@ int udpc_send_transmission(udpc_connection * con, udpc_connection_stats * stats,
       }
       break;
     case UDPC_TRANSMISSION_END:
-      logd("END\n");
+      //logd("END\n");
       goto end;
     default:
       ERROR("invalid cmd\n");

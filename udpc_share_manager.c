@@ -108,12 +108,12 @@ void print_item(log_item item){
   case MANAGER_DOWNLOAD_STATUS:
     if(item.response == NULL)
       return;
-    printf("Download: %s %i\%", item.file_progress.file, item.file_progress.done_percentage);
+    printf("Download: %s %i%%", item.file_progress.file, item.file_progress.done_percentage);
     return;
   case MANAGER_UPLOAD_STATUS:
     if(item.response == NULL)
       return;
-    printf("Upload: %s %i\%", item.file_progress.file, item.file_progress.done_percentage);
+    printf("Upload: %s %i%%", item.file_progress.file, item.file_progress.done_percentage);
     return;
   }
 }
@@ -139,6 +139,9 @@ log_item share_log_item_to_item(share_log_item item, log_item last){
     }
     
     return itm;
+  case SHARE_LOG_END:
+    itm = last;
+    last.file_progress.done_percentage = 100;
   default:
     break;
   }
