@@ -146,6 +146,7 @@ log_item share_log_item_to_item(share_log_item item, log_item last){
   case SHARE_LOG_END:
     itm = last;
     last.file_progress.done_percentage = 100;
+    break;
   case SHARE_LOG_DELETE:
     itm.type = MANAGER_DELETE;
     itm.file = fmtstr("%s", item.file_name);

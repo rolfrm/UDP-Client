@@ -181,6 +181,7 @@ void share_log_item_print(share_log_item item){
     break;
   case SHARE_LOG_DELETE:
     logd("DELETE %s", item.file_name);
+    break;
   default:
     ERROR("Invalid share log type %i", item.type);
   }
