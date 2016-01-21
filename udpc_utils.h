@@ -8,5 +8,7 @@ int udpc_unpack_int(void ** buffer);
 u8 udpc_unpack_u8(void ** buffer);
 size_t udpc_unpack_size_t(void ** buffer);
 char * udpc_unpack_string(void ** buffer);
+// Safe version of unpack_string.
+char * udpc_unpack_string2(void ** buffer, size_t * maxsize);
 u64 get_rand_u64();
 

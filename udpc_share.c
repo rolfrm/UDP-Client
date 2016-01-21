@@ -21,6 +21,7 @@
 #include "udpc_stream_check.h"
 #include "udpc_dir_scan.h"
 #include "udpc_share_log.h"
+#include "udpc_share_delete.h"
 
 void _error(const char * file, int line, const char * msg, ...){
   char buffer[1000];  
@@ -132,6 +133,8 @@ int main(int argc, char ** argv){
 	  udpc_dirscan_update(dir, &scan_result,false);
 	  udpc_dirscan_serve(c2, &stats, scan_result);
 	  //logd("SERVE DIR DONE\n");
+	}else if(udpc_delete_serve(c2, dir)){
+
 	}else{
 	  loge("Unknown service '%s'\n", st);
 	  break;
@@ -191,19 +194,25 @@ int main(int argc, char ** argv){
 	size_t i1 = diff.index1[i];
 	size_t i2 = diff.index2[i];
 	dirscan_state state = diff.states[i];
-	//logd("%i %i %i\n", i1, i2, state);
 	double difft = i2 == ext_dir.cnt ? -1 : 1;
 	switch(state){
 	case DIRSCAN_GONE:
 	  {
 	    char * f = local_dir.files[i1];
-	    logd("Gone: %s\n", f);
+	    logd("Gone remote: %s\n", f);
 	    char filepathbuffer[1000];
 	    sprintf(filepathbuffer, "%s/%s",dir, f);
 	    remove(filepathbuffer);
 	    share_log_file_deleted(filepathbuffer);
 	  }
 	  break;
+	case DIRSCAN_GONE_PREV:
+	  {
+	    char * f = ext_dir.files[i2];
+	    logd("Gone local: %s\n", f);
+	    udpc_delete_client(con, ext_dir.files[i2]);
+	    break;
+	  }
 	case DIRSCAN_DIFF_MD5:
 	  difft = difftime(ext_dir.last_change[i2], local_dir.last_change[i1]);
 	case DIRSCAN_NEW:

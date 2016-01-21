@@ -129,7 +129,7 @@ dirscan_diff udpc_dirscan_diff(dirscan d1, dirscan d2){
 	found_2[j] = 1;
 	bool changed = false;
 	if(d1.type[i] == UDPC_DIRSCAN_DELETED && d2.type[j] == UDPC_DIRSCAN_FILE){
-	  list_push(diff.states, diff.cnt, DIRSCAN_NEW);
+	  list_push(diff.states, diff.cnt, DIRSCAN_GONE_PREV);
 	  changed = true;
 	}else if(d1.type[i] == UDPC_DIRSCAN_FILE && d2.type[j] == UDPC_DIRSCAN_DELETED){
 	  list_push(diff.states, diff.cnt, DIRSCAN_GONE);

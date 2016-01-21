@@ -59,6 +59,18 @@ char * udpc_unpack_string(void ** buffer){
   return dataptr;
 }
 
+char * udpc_unpack_string2(void ** buffer, size_t * maxsize){
+  void * eos = memchr(*buffer, 0, *maxsize);
+  if(eos == NULL)
+    return NULL;
+  eos += 1; // skip the 0
+  char * result = *buffer;
+  size_t offset = ((char *)eos) - result;
+  *maxsize -= offset;
+  *buffer = eos;
+  return result;
+}
+
 u64 get_rand_u64(){
   u64 rnd;
   u32 x1 = rand();
