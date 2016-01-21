@@ -7,6 +7,8 @@ void share_log_end_send_file();
 void share_log_start_receive_file(const char * file);
 void share_log_end_receive_file();
 void share_log_progress(i64 bytes_handled, i64 total_bytes);
+void share_log_file_deleted(const char * file);
+
 
 // LOG READING
 struct _share_log_reader;
@@ -15,7 +17,8 @@ typedef enum {
   SHARE_LOG_PROGRESS = 0,
   SHARE_LOG_START_RECEIVE = 1,
   SHARE_LOG_START_SEND = 2,
-  SHARE_LOG_END = 3
+  SHARE_LOG_END = 3,
+  SHARE_LOG_DELETE
 }share_log_item_type;
 
 typedef struct{

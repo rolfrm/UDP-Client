@@ -41,7 +41,8 @@ typedef enum {
   MANAGER_COMMAND,
   MANAGER_RESPONSE,
   MANAGER_DOWNLOAD_STATUS,
-  MANAGER_UPLOAD_STATUS
+  MANAGER_UPLOAD_STATUS,
+  MANAGER_DELETE
 }log_item_type;
 
 typedef struct {
@@ -49,6 +50,7 @@ typedef struct {
   union{
     char * command;
     char * response;
+    char * file;
     struct{
       char * file;
       int done_percentage;
@@ -66,7 +68,6 @@ void handle_alarm(int signum){
 
 void handle_int(int signum){
   UNUSED(signum);
-  
 }
 
 void push_log_item(log_item * items, size_t item_cnt, log_item new_item){
@@ -115,6 +116,9 @@ void print_item(log_item item){
       return;
     printf("Upload: %s %i%%", item.file_progress.file, item.file_progress.done_percentage);
     return;
+  case MANAGER_DELETE:
+    printf("Delete: %s", item.file);
+    return;
   }
 }
 
@@ -142,6 +146,10 @@ log_item share_log_item_to_item(share_log_item item, log_item last){
   case SHARE_LOG_END:
     itm = last;
     last.file_progress.done_percentage = 100;
+  case SHARE_LOG_DELETE:
+    itm.type = MANAGER_DELETE;
+    itm.file = fmtstr("%s", item.file_name);
+    last = itm;
   default:
     break;
   }
@@ -187,7 +195,6 @@ void add_running_share(manager_ctx * ctx, char * service, char * dir, char * nam
       if(strcmp(name, ctx->running_share_names[i]) == 0){
 	add_log(ctx, fmtstr("name '%s' already exists", name), MANAGER_RESPONSE);
 	return;
-	break;
       }
     }
   }

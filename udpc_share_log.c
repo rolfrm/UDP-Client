@@ -64,6 +64,12 @@ void share_log_progress(i64 bytes_handled, i64 total_bytes){
   write_to_log(log_file_path, write_buffer);
 }
 
+void share_log_file_deleted(const char * file){
+  if(log_file_path[0] == 0) return;
+  sprintf(write_buffer, "DELETE %s", file);
+  write_to_log(log_file_path, write_buffer);
+}
+
 struct _share_log_reader {
   FILE * file;
   char * read_buffer;
@@ -137,6 +143,12 @@ int share_log_reader_read(share_log_reader * reader, share_log_item * out_items,
     }else if(string_startswith(str, "PROGRESS")){
       item.type = SHARE_LOG_PROGRESS;
       ASSERT(0 <= sscanf(str, "PROGRESS %" PRId64 " / %" PRId64 "", &item.progress.bytes_handled, &item.progress.total_bytes));
+    }else if(string_startswith(str, "DELETE ")){
+      str += strlen("DELETE ");
+      item.type = SHARE_LOG_DELETE;
+      size_t s = strlen(str);
+      item.file_name = iron_clone(str, s);
+      item.file_name[s - 1] = 0;
     }else{
       goto panic;
     }
@@ -167,6 +179,8 @@ void share_log_item_print(share_log_item item){
       logd("RECEIVE ");
     logd("'%s'",item.file_name);
     break;
+  case SHARE_LOG_DELETE:
+    logd("DELETE %s", item.file_name);
   default:
     ERROR("Invalid share log type %i", item.type);
   }

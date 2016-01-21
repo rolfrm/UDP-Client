@@ -200,8 +200,8 @@ int main(int argc, char ** argv){
 	    logd("Gone: %s\n", f);
 	    char filepathbuffer[1000];
 	    sprintf(filepathbuffer, "%s/%s",dir, f);
-
 	    remove(filepathbuffer);
+	    share_log_file_deleted(filepathbuffer);
 	  }
 	  break;
 	case DIRSCAN_DIFF_MD5:
