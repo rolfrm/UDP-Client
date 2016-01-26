@@ -157,16 +157,17 @@ int udpc_receive_transmission(udpc_connection * con, udpc_connection_stats * sta
     char buffer[1500];
     //logd("%u peek:\n", timestamp());
     int peek = udpc_peek(conv.con, buffer, sizeof(buffer));
-    //logd("%u peekr: %i\n", timestamp(), peek );
+    logd("%u peekr: %i\n", timestamp(), peek );
     if(peek == -1)
       goto transmission_start;
 
   }
-
+  logd("PAST START\n");
   transmission_data data;
   int peek2 = udpc_conv_read(&conv, &data, sizeof(data));
-  //logd("PEEK %i\n", peek2); 
-  if(peek2 < 0) goto transmission_start;
+  logd("PEEK %i\n", peek2); 
+  if(peek2 == -1) goto transmission_start;
+  if(peek2 == -2) return -1;
   ASSERT(peek2 == sizeof(data));
   buffer_size = 0;
   u64 num_chunks = data.total_size / data.chunk_size
@@ -189,7 +190,7 @@ int udpc_receive_transmission(udpc_connection * con, udpc_connection_stats * sta
   while(true){
     char buffer[1600] = {0};
     int read = udpc_conv_read(&conv, buffer, sizeof(buffer));
-    //logd("RX: %i\n", read);
+    logd("RX: %i\n", read);
     if(read == -1) break; // probably last packet is sent.
     if(read < 0) return read;
     if(read < (int)sizeof(u8)) ERROR("Invalid read\n");

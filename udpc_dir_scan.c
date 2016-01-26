@@ -293,8 +293,12 @@ int udpc_dirscan_client(udpc_connection * con, udpc_connection_stats * stats, di
     memcpy(buffer + chunk_id * tid->chunk_size, chunk, chunk_size);
     return 0;
   }
+  logd("Receive..\n");
   int status = udpc_receive_transmission(con, stats, service_id,
 					 handle_chunk, NULL);
+  logd("Done receive..\n");
+  if(status < 0)
+    return status;
   //logd("Transmission status: %i\n", status);
   *dscan = dirscan_from_buffer(buffer);
   dealloc(buffer);
