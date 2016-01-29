@@ -295,6 +295,8 @@ int udpc_dirscan_client(udpc_connection * con, udpc_connection_stats * stats, di
   }
   int status = udpc_receive_transmission(con, stats, service_id,
 					 handle_chunk, NULL);
+  if(status < 0)
+    return status;
   //logd("Transmission status: %i\n", status);
   *dscan = dirscan_from_buffer(buffer);
   dealloc(buffer);
