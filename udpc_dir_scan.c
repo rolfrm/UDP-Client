@@ -255,11 +255,12 @@ void udpc_dirscan_serve(udpc_connection * con, udpc_connection_stats * stats, di
   
   size_t send_buf_size = 0;
   void * send_buf = dirscan_to_buffer(last_dirscan, &send_buf_size);
+  logd("Sending %i\n", send_buf_size);
   u64 chunk_size = 1400;
   int handle_chunk(const transmission_data * tid, void * chunk,
 		   size_t chunk_id, size_t chunk_size, void * userdata){
     UNUSED(tid); UNUSED(userdata);
-    //logd("Sending chunk %i\n", chunk_id);
+    logd("Sending chunk %i\n", chunk_id);
     u64 offset = chunk_id * chunk_size;
     u64 size = MIN(send_buf_size - offset, chunk_size);
     memcpy(chunk, send_buf + offset, size);

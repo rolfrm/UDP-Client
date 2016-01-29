@@ -70,6 +70,7 @@ void udpc_delete_client(udpc_connection * con, char * file_to_delete){
   int read = udpc_peek(con, buffer2, buffer_size);
   if(read == -1)
     goto start;
+  udpc_read(con, buffer2, buffer_size);
   delete_item item2;
   bool parsable = deserialize_delete_item(buffer2, buffer_size, &item2);
   ASSERT(parsable);

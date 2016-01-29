@@ -165,8 +165,8 @@ int udpc_receive_transmission(udpc_connection * con, udpc_connection_stats * sta
 
   transmission_data data;
   int peek2 = udpc_conv_read(&conv, &data, sizeof(data));
-  //logd("PEEK %i\n", peek2); 
-  if(peek2 < 0) goto transmission_start;
+  if(peek2 == -1) goto transmission_start;
+  if(peek2 == -2) return -1;
   ASSERT(peek2 == sizeof(data));
   buffer_size = 0;
   u64 num_chunks = data.total_size / data.chunk_size
