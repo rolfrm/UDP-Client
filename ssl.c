@@ -213,10 +213,10 @@ ssl_server * ssl_setup_server(int fd){
     SSL_CTX_set_cipher_list(ctx, "HIGH:!aNULL:!MD5:!RC4");
     SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_OFF);
     
-    if (!SSL_CTX_use_certificate_file(ctx, "certs/server-cert.pem", SSL_FILETYPE_PEM))
+    if (!SSL_CTX_use_certificate_file(ctx, "certs/client-cert.pem", SSL_FILETYPE_PEM))
       printf("\nERROR: no certificate found!");
     
-    if (!SSL_CTX_use_PrivateKey_file(ctx, "certs/server-key.pem", SSL_FILETYPE_PEM))
+    if (!SSL_CTX_use_PrivateKey_file(ctx, "certs/client-key.pem", SSL_FILETYPE_PEM))
       printf("\nERROR: no private key found!");
     
     if (!SSL_CTX_check_private_key (ctx))
@@ -250,14 +250,17 @@ static int handle_ssl_error2(SSL * ssl, int ret, int * accepted_errors,
 #define doerr(kind)case kind: ERROR(#kind); break;
   switch(err){
     doerr(SSL_ERROR_SSL);
-  case(SSL_ERROR_SYSCALL):
-    ERROR("SSL_ERROR_SYSCALL error id: %i %i", ERR_get_error(), ret); 
+  case SSL_ERROR_SYSCALL:{
+    //logd("SSL_ERROR_SYSCALL error id: %i %i", ERR_get_error(), ret);
+    // -fallthrough
     //doerr(SSL_ERROR_WANT_ASYNC);
     doerr(SSL_ERROR_WANT_CONNECT);
     doerr(SSL_ERROR_WANT_ACCEPT);
     doerr(SSL_ERROR_WANT_READ);
     doerr(SSL_ERROR_WANT_WRITE);
     doerr(SSL_ERROR_ZERO_RETURN);
+  }
+    break;
   case SSL_ERROR_NONE:
     break;
   }

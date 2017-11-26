@@ -149,6 +149,10 @@ int main(int argc, char ** argv){
     UNUSED(servicename);
     char * other_service = argv[3];
     udpc_connection * con = udpc_connect(other_service);
+    if(con == NULL){
+      ERROR("Could not connect to '%s'\n", other_service);
+      return 1;
+    }
     dirscan local_dir = {0};
     while(true){
 
@@ -215,6 +219,8 @@ int main(int argc, char ** argv){
 	  }
 	case DIRSCAN_DIFF_MD5:
 	  difft = difftime(ext_dir.last_change[i2], local_dir.last_change[i1]);
+	  // -fallthrough
+	  __attribute__((fallthrough));
 	case DIRSCAN_NEW:
 	  {
 	    //delay = 10;

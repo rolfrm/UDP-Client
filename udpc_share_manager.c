@@ -253,8 +253,6 @@ void remove_running_share(manager_ctx * ctx, char * name){
 }
 
 void handle_command(manager_ctx * ctx, char * command){
-  UNUSED(ctx);
-  UNUSED(command);
   log_item newitem;
   newitem.type = MANAGER_COMMAND;
   newitem.command = command;

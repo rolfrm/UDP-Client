@@ -147,9 +147,12 @@ udpc_connection * udpc_listen(udpc_service * con){
 }
 
 udpc_connection * udpc_connect(const char * service){
+  ASSERT(service != NULL);
   service_descriptor sitem;
-  if(false == udpc_get_service_descriptor(service, &sitem))
+  if(false == udpc_get_service_descriptor(service, &sitem)){
+    logd("no service detected: '%s'\n", service);
     return NULL;
+  }
   
   struct sockaddr_storage server_addr = udp_get_addr(sitem.host, udpc_server_port);
   struct sockaddr_storage local_addr = udp_get_addr("0.0.0.0", 0);

@@ -2,6 +2,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdbool.h>
+#include <stdarg.h>
 #include <iron/log.h>
 #include "udp.h"
 

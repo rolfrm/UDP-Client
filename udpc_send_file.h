@@ -1,4 +1,4 @@
-const char * udpc_file_serve_service_name;
+extern const char * udpc_file_serve_service_name;
 // read/write file depending on client request.
 void udpc_file_serve(udpc_connection *  con, udpc_connection_stats * stats, char * dir);
 

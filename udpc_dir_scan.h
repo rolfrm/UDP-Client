@@ -20,7 +20,7 @@ typedef struct{
   size_t cnt;
 }dirscan;
 
-const char * udpc_dirscan_service_name;
+extern const char * udpc_dirscan_service_name;
 
 // md5
 udpc_md5 udpc_file_md5(const char * path);

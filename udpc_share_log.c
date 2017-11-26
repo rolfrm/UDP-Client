@@ -173,7 +173,7 @@ void share_log_item_print(share_log_item item){
   case SHARE_LOG_END:
     logd("END"); break;
   case SHARE_LOG_START_SEND:
-    logd("SEND ");
+    logd("SEND "); break;
   case SHARE_LOG_START_RECEIVE:
     if(item.type == SHARE_LOG_START_RECEIVE)
       logd("RECEIVE ");

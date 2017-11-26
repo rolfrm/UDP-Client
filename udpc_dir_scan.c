@@ -9,6 +9,7 @@
 #include <iron/array.h>
 #include <iron/mem.h>
 #include <iron/time.h>
+#define USE_VALGRIND
 #include <iron/utils.h>
 #include <openssl/md5.h>
 #include <ftw.h>
@@ -20,7 +21,9 @@
 
 const char * udpc_dirscan_service_name = "UDPC_DIRSCAN";
 
+
 void udpc_print_md5(udpc_md5 md5){
+
   for(int i = 0; i < MD5_DIGEST_LENGTH; i++){
     logd("%2X ",  md5.md5[i]);
   }
@@ -99,20 +102,7 @@ void dirscan_print(dirscan ds){
   }
 }
 
-void ensure_directory(const char * filepath){
-  char * file1 = strstr(filepath, "/");
-  if(file1 != NULL){
-    size_t cnt = file1 - filepath;
-    char buffer[cnt + 1];
-    memset(buffer, 0, cnt +1);
-    memcpy(buffer,filepath, cnt);
-    mkdir(buffer, 0777);
-    char *cdir = get_current_dir_name();
-    ASSERT(0 == chdir(buffer));
-    ensure_directory(file1 + 1);
-    ASSERT(0 == chdir(cdir));
-  }
-}
+void ensure_directory(const char * filepath);
 
 dirscan_diff udpc_dirscan_diff(dirscan d1, dirscan d2){
   int found_1[d1.cnt];
