@@ -40,7 +40,7 @@ static bool deserialize_delete_item(void * buffer, size_t size, delete_item * ou
 
 
 bool udpc_delete_serve(udpc_connection * con, char * basedir){
-  char buffer[1000];
+  char buffer[1000] = {0};
   int r = udpc_peek(con, buffer, sizeof(buffer));
   if(r < 0)
     return false;
@@ -50,7 +50,7 @@ bool udpc_delete_serve(udpc_connection * con, char * basedir){
   if(strcmp(item.header, udpc_delete_service_name) != 0)
     return false;
   udpc_read(con, buffer, sizeof(buffer));
-  char filepathbuffer[1000];
+  char filepathbuffer[1000] = {0};
   sprintf(filepathbuffer, "%s/%s",basedir, item.file_to_delete);
   logd("Deleting %s\n", filepathbuffer);
   remove(filepathbuffer);

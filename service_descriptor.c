@@ -19,10 +19,29 @@ bool udpc_get_service_descriptor(const char * service_string, service_descriptor
   if(colon_index == NULL)
     return false;
 
-  item.username = strndup(service_string, (size_t)(at_index - service_string));
-  at_index += 1;
-  item.host = strndup(at_index, colon_index - at_index);
-  item.service = strdup(colon_index + 1);
+  { // read user name.
+    int username_length = at_index - service_string;
+    char * username = alloc(username_length + 1);
+    
+    memcpy(username, service_string, username_length);
+    username[username_length] = 0;
+    
+    item.username = username;
+  }
+
+  { // read host name
+    at_index += 1;
+    int hostname_length = colon_index - at_index;
+    char * hostname =  alloc(hostname_length + 1);
+    hostname[hostname_length] = 0;
+    memcpy(hostname, at_index, hostname_length);
+
+    item.host = hostname;
+  }
+
+  char * reststr = colon_index + 1;
+  int restlen = strlen(reststr);
+  item.service = iron_clone(reststr, restlen +1);
   *out = item;
   return true;
 }

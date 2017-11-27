@@ -326,7 +326,7 @@ ssl_server_client * ssl_server_listen(ssl_server * serv){
   SSL_set_bio(ssl, bio, bio);
   SSL_set_options(ssl, SSL_OP_COOKIE_EXCHANGE);
 
-  struct sockaddr_storage client_addr;
+  struct sockaddr_storage client_addr = {0};
   while (DTLSv1_listen(ssl, &client_addr) <= 0){
     SSL_free(ssl);
     return NULL;

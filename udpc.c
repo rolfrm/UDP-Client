@@ -281,6 +281,7 @@ static void * connection_handle(void * _info) {
     ssl_server_close(pinfo);
     return NULL;
   }
+  buf[len] = 0;
   void * bufptr = buf;
   int status = udpc_unpack_int(&bufptr);
   if(status == udpc_login_msg){
