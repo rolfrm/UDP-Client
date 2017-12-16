@@ -34,6 +34,7 @@ dirscan scan_directories(const char * basedir);
 void udpc_dirscan_update(const char * basedir, dirscan * dir, bool include_directories);
 void dirscan_clean(dirscan * _dirscan);
 void dirscan_print(dirscan ds);
+void udpc_dirscan_print(dirscan scan);
 dirscan dirscan_from_buffer(void * buffer);
 void * dirscan_to_buffer(dirscan _dirscan, size_t * size);
 typedef enum{

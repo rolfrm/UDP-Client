@@ -24,3 +24,4 @@ int ssl_get_timeout(ssl_client * cli);
 void ssl_set_timeout(ssl_client * cli, int timeout_us);
 //inr ssl_get_mtu_size(ssl_client * cli);
 void ssl_server_set_timeout(ssl_server_con * con, int timeout_us);
+int ssl_server_get_timeout(ssl_server_con * con);

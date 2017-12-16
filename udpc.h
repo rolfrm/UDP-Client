@@ -30,6 +30,8 @@ int udpc_read(udpc_connection * client, void * buffer, size_t max_size);
 int udpc_peek(udpc_connection * client, void * buffer, size_t max_size);
 
 void udpc_set_timeout(udpc_connection * client, int us);
+int udpc_get_timeout(udpc_connection * client);
+
 
 // Closes the connection.
 void udpc_close(udpc_connection * con);

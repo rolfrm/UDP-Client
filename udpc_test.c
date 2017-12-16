@@ -43,6 +43,57 @@ void handle_sigint(int signum){
   signal(SIGINT, NULL); // next time just quit.
 }
 
+void sync(){
+  iron_process process;
+  int proc = iron_process_run("/bin/sync", NULL,  &process);
+  logd("PROC: %i\n", process.pid);
+  UNUSED(proc);
+  ASSERT( IRON_PROCESS_EXITED == iron_process_wait(process, 100000));
+}
+
+bool test_dirscan2(){
+  system("rm -r dir\\ test\\ 2/");
+  dirscan ds = {0};
+
+  mkdir("dir test 2", 0777);
+  mkdir("dir test 2/sub dir", 0777);
+  udpc_dirscan_update("dir test 2", &ds, false);
+  ASSERT(ds.cnt == 0);
+  char buffer_test[10] = {100};
+  write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 2/test1" );
+  buffer_test[0] += 10;
+  write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 2/test2" );
+  iron_usleep(30000);  
+  udpc_dirscan_update("dir test 2", &ds, false);
+  int idx = -1;
+  if(strcmp(ds.files[0], "test1") == 0)
+    idx = 0;
+  else if(strcmp(ds.files[1], "test1") == 0)
+    idx = 1;
+  ASSERT(idx != -1);
+  ASSERT(ds.type[idx] == UDPC_DIRSCAN_FILE);
+  for(size_t i = 0; i < 15; i++){
+    remove("dir test 2/test1");
+    sync();
+    udpc_dirscan_update("dir test 2", &ds, false);
+    ASSERT(ds.type[idx] == UDPC_DIRSCAN_DELETED);
+    
+    write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 2/test1" );
+    sync();
+
+    udpc_dirscan_update("dir test 2", &ds, false);
+    ASSERT(ds.type[idx] == UDPC_DIRSCAN_FILE);
+    
+    udpc_dirscan_update("dir test 2", &ds, false);
+  }
+  
+
+  
+  ASSERT(ds.cnt == 2);
+  
+  return TEST_SUCCESS;
+}
+
 bool test_dirscan(){
   int buffer_test[10000];
   for(size_t i = 0; i <array_count(buffer_test); i++){
@@ -51,7 +102,7 @@ bool test_dirscan(){
   allocator * _allocator = trace_allocator_make();
   allocator * old_allocator = iron_get_allocator();
   iron_set_allocator(_allocator);
-  
+  system("rm -r dir\\ test\\ 1/");
   dirscan ds = {0};
   //size_t max_diff_cnt = 0;
   //size_t max_file_cnt = 0;
@@ -93,8 +144,19 @@ bool test_dirscan(){
   buffer_test[0] += 10;
   write_buffer_to_file(buffer_test, sizeof(buffer_test), "dir test 1/test1" );
   udpc_dirscan_update("dir test 1", &copy, false);
+  
+  udpc_dirscan_update("dir test 1", &ds, false);
+  ASSERT(ds.type[idx] != UDPC_DIRSCAN_DELETED);
+  logd("NOT DELETED!\n");
+  remove("dir test 1/test1");
+  udpc_dirscan_update("dir test 1", &ds, false);
+  logd("DELETED!\n");
+  ASSERT(ds.type[idx] == UDPC_DIRSCAN_DELETED);
+
+  
   diff = udpc_dirscan_diff(ds, copy);
   ASSERT(diff.cnt == 1);
+  
   ASSERT(diff.states[0] == DIRSCAN_NEW);
   udpc_dirscan_clear_diff(&diff);
   
@@ -344,10 +406,11 @@ bool test_transmission(){
 }
 
 int main(){
-  TEST(test_dirscan);
-  TEST(test_udpc_seq);
-  TEST(test_transmission);
-  TEST(test_udpc_share);
+  //TEST(test_dirscan);
+  TEST(test_dirscan2);
+  //TEST(test_udpc_seq);
+  //TEST(test_transmission);
+  //TEST(test_udpc_share);
   
   return 0;
 }

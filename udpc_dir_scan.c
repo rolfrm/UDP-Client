@@ -19,7 +19,7 @@
 #include "udpc_seq.h"
 #include "udpc_dir_scan.h"
 
-const char * udpc_dirscan_service_name = "UDPC_DIRSCAN";
+const char * udpc_dirscan_service_name = "UDPC_DIRSCaN";
 
 
 void udpc_print_md5(udpc_md5 md5){
@@ -39,6 +39,7 @@ static size_t dirscan_get_item(dirscan * ds, const char * file){
   for(size_t i = 0; i < ds->cnt; i++)
     if(0 == strcmp(file, ds->files[i]))
       return i;
+  
   list_push(ds->files, ds->cnt, iron_clone(file, strlen(file) + 1));
   list_push(ds->md5s, ds->cnt, (udpc_md5){0});
   list_push(ds->last_change, ds->cnt, (time_t){0});
@@ -64,12 +65,15 @@ void udpc_dirscan_update(const char * basedir, dirscan * dir, bool include_direc
 
       char * stripped_filename = (char *) filename + len;
       size_t i = dirscan_get_item(dir, stripped_filename);
+      logd("%s %i %i\n", stripped_filename, i, init_cnt);
+      
       if(i < init_cnt)
 	found[i] = true;
       size_t old_s = dir->size[i];
       t_us old_t = dir->last_change[i];
       size_t s = st->st_size; 
-      t_us t = st->st_mtim.tv_sec * 1000000 + st->st_mtim.tv_nsec / 1000;
+      t_us t = st->st_ctim.tv_sec * 1000000 + st->st_ctim.tv_nsec / 1000;
+      dir->type[i] = isfile ? UDPC_DIRSCAN_FILE : UDPC_DIRSCAN_DIR;
       if(s != old_s || old_t != t){
 	if(isfile)
 	  dir->md5s[i] = udpc_file_md5(filename);
@@ -86,6 +90,7 @@ void udpc_dirscan_update(const char * basedir, dirscan * dir, bool include_direc
     if(false == found[i]){
       // missing files
       dir->type[i] = UDPC_DIRSCAN_DELETED;
+      dir->last_change[i] += 1;
     }
   }
 }
@@ -119,11 +124,17 @@ dirscan_diff udpc_dirscan_diff(dirscan d1, dirscan d2){
 	found_2[j] = 1;
 	bool changed = false;
 	if(d1.type[i] == UDPC_DIRSCAN_DELETED && d2.type[j] == UDPC_DIRSCAN_FILE){
-	  list_push(diff.states, diff.cnt, DIRSCAN_GONE_PREV);
+	  if(d2.last_change > d1.last_change){
+	    list_push(diff.states, diff.cnt, DIRSCAN_NEW);
+	  }else{
+	    list_push(diff.states, diff.cnt, DIRSCAN_GONE_PREV);
+	  }
 	  changed = true;
 	}else if(d1.type[i] == UDPC_DIRSCAN_FILE && d2.type[j] == UDPC_DIRSCAN_DELETED){
-	  list_push(diff.states, diff.cnt, DIRSCAN_GONE);
-	  changed = true;
+	  if(d1.last_change < d2.last_change){
+	    list_push(diff.states, diff.cnt, DIRSCAN_GONE);
+	    changed = true;
+	  }
 	}else if(udpc_md5_compare(d1.md5s[i], d2.md5s[j]) == false){
 	  list_push(diff.states, diff.cnt, DIRSCAN_DIFF_MD5);
 	  changed = true;
@@ -257,8 +268,8 @@ void udpc_dirscan_serve(udpc_connection * con, udpc_connection_stats * stats, di
   }
   int send_status = udpc_send_transmission( con, stats, id, send_buf_size,
 			  chunk_size, handle_chunk, NULL);
-  //logd("Done with transmission.. %i\n", send_status);
   UNUSED(send_status);
+  //ASSERT(send_status == 0);
 }
 
 int udpc_dirscan_client(udpc_connection * con, udpc_connection_stats * stats, dirscan * dscan){
@@ -280,15 +291,27 @@ int udpc_dirscan_client(udpc_connection * con, udpc_connection_stats * stats, di
     if(buffer == NULL){
       buffer = alloc0(tid->total_size);
     }
-    memcpy(buffer + chunk_id * tid->chunk_size, chunk, chunk_size);
+    size_t offset = chunk_id * tid->chunk_size;
+    size_t to_write = MIN(chunk_size, tid->total_size - offset);
+    memcpy(buffer + offset, chunk, to_write);
     return 0;
   }
   int status = udpc_receive_transmission(con, stats, service_id,
 					 handle_chunk, NULL);
   if(status < 0)
     return status;
-  //logd("Transmission status: %i\n", status);
   *dscan = dirscan_from_buffer(buffer);
   dealloc(buffer);
   return status;
+}
+
+void udpc_dirscan_print(dirscan scan){
+  for(size_t i = 0; i < scan.cnt;i++){
+    const char * status = "FILE";
+    if(scan.type[i] == UDPC_DIRSCAN_DIR)
+      status = "DIR";
+    else if(scan.type[i] == UDPC_DIRSCAN_DELETED)
+      status = "DELETED";
+    logd("%s: %s\n", status, scan.files[i]);
+  }
 }

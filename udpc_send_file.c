@@ -60,7 +60,22 @@ static void _send_file(udpc_connection * c2, udpc_connection_stats * stats, char
 }
 static mode_t default_mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
 void _receive_file(udpc_connection * c2, udpc_connection_stats * stats, char * filepath, u64 transmission_id){
-  ensure_directory(filepath);
+
+  { // take the dir of the path. 
+    char filepathbuf[strlen(filepath) + 1];
+    memcpy(filepathbuf, filepath, sizeof(filepathbuf));
+    bool anydir = false;
+    for(int i = strlen(filepath) - 1; i >= 1; i--){
+      if(filepath[i] == '/' && (i == 0 || filepath[i - 1] != '\\')){
+	filepathbuf[i] = 0;
+	anydir = true;
+	break;
+      }
+    }
+    if(anydir)
+      ensure_directory(filepathbuf);
+  }
+  
   FILE * file = fopen(filepath, "w");
   ASSERT(file != NULL);
   share_log_start_receive_file(filepath);
@@ -69,7 +84,8 @@ void _receive_file(udpc_connection * c2, udpc_connection_stats * stats, char * f
     UNUSED(userdata); UNUSED(tid);
     size_t offset = chunk_id * tid->chunk_size;
     fseek(file, offset, SEEK_SET);
-    fwrite(_chunk, chunk_size, 1, file);
+    size_t to_write = MIN(chunk_size, tid->total_size - offset);
+    fwrite(_chunk, to_write, 1, file);
     if(chunk_id % 1000 == 0)
       share_log_progress(chunk_id * chunk_size, tid->total_size);
     return 0;

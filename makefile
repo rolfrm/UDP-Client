@@ -6,7 +6,7 @@ LIB_OBJECTS =$(LIB_SOURCES:.c=.o)
 LDFLAGS= -L. $(OPT) -Wextra #-lmcheck #-ftlo #setrlimit on linux 
 LIBS= -ldl -lm -lssl -lcrypto -lpthread
 ALL= $(TARGET) server rpc speed file share test web dir_scanner share_log_reader share_manager
-CFLAGS = -I.. -std=c11 -c $(OPT) -Wall -Wextra -Werror=implicit-function-declaration -Wformat=0 -D_GNU_SOURCE -fdiagnostics-color -Wextra -Werror -Wwrite-strings -fbounds-check  #-DDEBUG
+CFLAGS = -I.. -std=c11 -c $(OPT) #-Wall -Wextra -Werror=implicit-function-declaration -Wformat=0 -D_GNU_SOURCE -fdiagnostics-color -Wextra -Werror -Wwrite-strings -fbounds-check  #-DDEBUG
 
 $(TARGET): $(LIB_OBJECTS)
 	$(CC) $(LDFLAGS) $(LIB_OBJECTS) $(LIBS) --shared -o $@
@@ -22,6 +22,9 @@ clean:
 
 -include $(LIB_OBJECTS:.o=.o.depends)
 
+libudpc_net: $(LIB_OBJECTS) udpc_net.o
+	$(CC) $(LDFLAGS) $(LIB_OBJECTS) udpc_net.o $(LIBS) -liron --shared -o libudpc_net.so 
+
 server: $(TARGET) main.o
 	$(CC) $(LDFLAGS) $(LIBS) main.o -ludpc -Wl,-rpath,. -o server
 
@@ -36,6 +39,10 @@ file: $(TARGET) udpc_file.o
 
 share: $(TARGET) udpc_share.o
 	$(CC) $(LDFLAGS) udpc_share.o $(LIBS) -ludpc -Wl,-rpath,. -o share
+
+share2: $(TARGET) udpc_share2.o
+	$(CC) $(LDFLAGS) udpc_share2.o $(LIBS) -ludpc -Wl,-rpath,. -o share2 -lgit2
+
 
 share_log_reader: $(TARGET) udpc_share_log_reader.o
 	$(CC) $(LDFLAGS) udpc_share_log_reader.o $(LIBS) -ludpc -Wl,-rpath,. -o share_log_reader	

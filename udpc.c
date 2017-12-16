@@ -207,33 +207,55 @@ udpc_connection * udpc_connect(const char * service){
 }
 
 void udpc_set_timeout(udpc_connection * client, int us){
-  if(client->cli != NULL){
+  if(client->cli != NULL)
     ssl_set_timeout(client->cli, us);
-  }else if(client->con != NULL){
+  else if(client->con != NULL)
     ssl_server_set_timeout(client->con, us);
-  }
+  else ERROR("Invalid operation");
+  
 }
+
+int udpc_get_timeout(udpc_connection * client){
+  if(client->cli != NULL)
+    return ssl_get_timeout(client->cli);
+  else if(client->con != NULL)
+    return ssl_server_get_timeout(client->con);
+  else ERROR("Invalid operation");
+  return -1;
+}
+
 
 void udpc_write(udpc_connection * client, const void * buffer, size_t length){
   if(client->cli != NULL)
     ssl_client_write(client->cli, buffer, length);
   else if(client->con != NULL)
     ssl_server_write(client->con, buffer, length);
+  else ERROR("Invalid operation");
 }
 
 int udpc_read(udpc_connection * client, void * buffer, size_t max_size){
+  static size_t trashbuffer;
+  ASSERT(buffer != NULL || max_size == 0);
+  if(buffer == NULL){
+    buffer = &trashbuffer;
+    max_size = sizeof(trashbuffer);
+  }
+  
   if(client->cli != NULL)
     return ssl_client_read(client->cli, buffer, max_size);
   else if(client->con != NULL)
     return ssl_server_read(client->con, buffer, max_size);
+  else ERROR("Invalid operation");
   return -1;
 }
 
 int udpc_peek(udpc_connection * client, void * buffer, size_t max_size){
+  
   if(client->cli != NULL)
     return ssl_client_peek(client->cli, buffer, max_size);
   else if(client->con != NULL)
     return ssl_server_peek(client->con, buffer, max_size);
+  else ERROR("Invalid operation");
   return -1;
 }
 
@@ -242,8 +264,11 @@ void udpc_close(udpc_connection * con){
     ssl_client_close(con->cli);
     udp_close(con->fd);
   }
-  if(con->scli != NULL)
+  else if(con->scli != NULL){
     ssl_server_close(con->scli);
+  }
+  else ERROR("Invalid operation");
+  
   free(con);
 }
 

@@ -14,6 +14,7 @@
 #include <iron/utils.h>
 #include <iron/time.h>
 #include <iron/fileio.h>
+#include <iron/process.h>
 #include "udpc.h"
 #include "udpc_seq.h"
 #include "udpc_utils.h"
@@ -76,6 +77,16 @@ void handle_data_log(void * userdata, char * log_file){
   share_log_set_file(log_file);  
 }
 
+dirscan dirscan_clone(dirscan ds){
+  size_t s = 0;
+  void * ds_buf = dirscan_to_buffer(ds, &s);
+  ASSERT(s > 0);
+
+  dirscan new = dirscan_from_buffer(ds_buf);
+  free(ds_buf);
+  return new;
+}
+
 int main(int argc, char ** argv){
   bool persist = false;
   void handle_persist(void * userdata){
@@ -97,10 +108,40 @@ int main(int argc, char ** argv){
 
   if(argc == 3){
     dirscan scan_result = {0};
-    udpc_dirscan_update(dir, &scan_result,false);
+    dirscan backbuf = {0};
+    iron_mutex m = iron_mutex_create();
+    //udpc_dirscan_update(dir, &scan_result,false);
     char * servicename = argv[1];
     udpc_service * con = udpc_login(servicename);
+    void * do_update(void * userdata){
+      UNUSED(userdata);
+      while(true){
+	logd("Update..\n");
+	iron_mutex_lock(m);
+	udpc_dirscan_update(dir, &backbuf, false);
+	dirscan_diff diff = udpc_dirscan_diff(scan_result, backbuf);
+	iron_mutex_unlock(m);
+	logd("dir diff: %i\n", diff.cnt);
+	if(diff.cnt > 0){
+	  for(size_t i = 0; i < diff.cnt; i++){
+	    logd(diff.states[i] == DIRSCAN_GONE ? "Deleted " : "changed ");
+	    logd("%i \n", diff.index1[i], diff.index2[i]);
 
+	  }
+	  SWAP(scan_result, backbuf);
+	  logd ("new dirscan:\n");
+	  
+	  for(size_t i = 0; i < scan_result.cnt;i++){
+	    logd("Local: %s\n", scan_result.files[i]);
+	  }
+	}
+	udpc_dirscan_clear_diff(&diff);
+	iron_usleep(1000000);
+      }
+      
+      return NULL;
+    }
+    iron_start_thread(do_update, NULL);
     while(!should_close){
       udpc_connection * c2 = udpc_listen(con);   
       if(c2 == NULL)
@@ -113,30 +154,27 @@ int main(int argc, char ** argv){
 	int r = udpc_peek(c2, buf, sizeof(buf));
 	
 	if(r == -1){
-	  logd("Communication lost..\n");
+	  ERROR("Communication lost..\n");
 	  break;
 	}
 	
-	//logd("Buffer: %i %s\n", r, buf);
 	void * rcv_str = buf;
 	char * st = udpc_unpack_string(&rcv_str);
 	if(strcmp(st, udpc_file_serve_service_name) == 0){
 	  logd("File share\n");
 	  udpc_file_serve(c2, &stats, dir);
-	  //logd("File share END\n");
 	}else if(strcmp(st, udpc_speed_test_service_name) == 0){
 	  logd("Speed \n");
 	  udpc_speed_serve(c2, NULL);
-	  //logd("Speed END \n");
 	}else if(strcmp(st, udpc_dirscan_service_name) == 0){
 	  logd("%u SERVE DIR..\n", timestamp());
-	  udpc_dirscan_update(dir, &scan_result,false);
+	  iron_mutex_lock(m);
 	  udpc_dirscan_serve(c2, &stats, scan_result);
-	  //logd("SERVE DIR DONE\n");
+	  iron_mutex_unlock(m);
 	}else if(udpc_delete_serve(c2, dir)){
 
 	}else{
-	  loge("Unknown service '%s'\n", st);
+	  ERROR("Unknown service '%s'\n", st);
 	  break;
 	}
       }
@@ -154,6 +192,42 @@ int main(int argc, char ** argv){
       return 1;
     }
     dirscan local_dir = {0};
+    dirscan backbuf = {0};
+    iron_mutex m = iron_mutex_create();
+    // this dirscan model does not work
+    // the client keeps pinging, so a bunch of packets
+    // queues up. dirscan needs to happen in an async
+    // way, so that we can pretend that no changes has
+    // happened until the MD5s has been calculated.
+
+    // one communication thread for each client
+
+    void run_update(){
+      logd("Update..\n");
+      iron_mutex_lock(m);
+      udpc_dirscan_update(dir, &backbuf, false);
+      
+      dirscan_diff diff = udpc_dirscan_diff(local_dir, backbuf);
+	
+      if(diff.cnt > 0){
+	SWAP(local_dir, backbuf);
+	dirscan_clean(&backbuf);
+	backbuf = dirscan_clone(local_dir);
+      }
+      iron_mutex_unlock(m);
+      udpc_dirscan_clear_diff(&diff);
+    }
+    
+    void * do_update(void * userdata){
+      UNUSED(userdata);
+      while(true){
+	run_update();
+	iron_usleep(1000000);
+      }
+      
+      return NULL;
+    }
+    UNUSED(do_update);
     while(true){
 
       // find speed/packagesize
@@ -176,24 +250,41 @@ int main(int argc, char ** argv){
 	rtt = mean_rtt;
 	}*/
 
-      udpc_dirscan_update(dir, &local_dir, false); 
       bool local_found[local_dir.cnt];
       memset(local_found,0, sizeof(local_found));
     do_dirscan:;
       dirscan ext_dir = {0};
       udpc_connection_stats stats = get_stats();
+      logd("Req dirscan...\n");
      int ok = udpc_dirscan_client(con, &stats, &ext_dir);
-      if(ok < 0) goto do_dirscan;
+     if(ok < 0) {
+       iron_usleep(100000);
+       int timeout = udpc_get_timeout(con);
+       logd("set timeout.. %i\n", timeout);
+       udpc_set_timeout(con, 0);
+
+       for(size_t i = 0; i < 5; i++)
+	 if(-1 == udpc_read(con, NULL, 0))
+	   break;
+       udpc_set_timeout(con, timeout);
+       goto do_dirscan;
+
+     }
+      run_update(NULL);
       
-      /*logd ("got dirscan\n");
+      logd ("EXT DIR\n");
+      udpc_dirscan_print(ext_dir);
+      logd("LOCAL DIR\n");
+      udpc_dirscan_print(local_dir);
       for(size_t i = 0; i < ext_dir.cnt;i++){
 	logd("EXT: %s\n", ext_dir.files[i]);
       }
       for(size_t i = 0; i < local_dir.cnt;i++){
 	logd("Local: %s\n", local_dir.files[i]);
-	}*/
+      }
+      iron_mutex_lock(m);
       dirscan_diff diff = udpc_dirscan_diff(local_dir, ext_dir);
-      //logd("Diff cnt: %i\n", diff.cnt);
+      iron_mutex_unlock(m);
       for(size_t i = 0; i < diff.cnt; i++){
 	size_t i1 = diff.index1[i];
 	size_t i2 = diff.index2[i];
@@ -208,6 +299,7 @@ int main(int argc, char ** argv){
 	    sprintf(filepathbuffer, "%s/%s",dir, f);
 	    remove(filepathbuffer);
 	    share_log_file_deleted(filepathbuffer);
+	    logd("Deleted remote\n");
 	  }
 	  break;
 	case DIRSCAN_GONE_PREV:
@@ -215,6 +307,7 @@ int main(int argc, char ** argv){
 	    char * f = ext_dir.files[i2];
 	    logd("Gone local: %s\n", f);
 	    udpc_delete_client(con, ext_dir.files[i2]);
+	    logd("Deleted local\n");
 	    break;
 	  }
 	case DIRSCAN_DIFF_MD5:
@@ -223,23 +316,23 @@ int main(int argc, char ** argv){
 	  __attribute__((fallthrough));
 	case DIRSCAN_NEW:
 	  {
-	    //delay = 10;
 	    char * f = NULL;
 	    if(i2 != ext_dir.cnt)
 	      f = ext_dir.files[i2];
 	    else if(i1 != local_dir.cnt)
 	      f = local_dir.files[i1];
 	    else ASSERT(false);
-	    //logd("changed/new: %s\n", f);
 	    char filepathbuffer[1000];
 	    sprintf(filepathbuffer, "%s/%s",dir, f);
 	    logd("FIle: %s\n", filepathbuffer);
 	    if( difft >= 0){
 	      logd("Send to local\n");
 	      udpc_file_client(con, &stats, f, filepathbuffer);
+	      logd("send to local Done\n");
 	    }else if (difft < 0){
 	      logd("Send to remote\n");
 	      udpc_file_client2(con, &stats, f, filepathbuffer);
+	      logd("send to remote Done\n");
 	    }
 	  
 	  }

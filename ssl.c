@@ -401,9 +401,16 @@ void ssl_server_set_timeout(ssl_server_con*  con, int timeout_us){
 
 int ssl_get_timeout(ssl_client * cli){
   struct timeval timeout;
-  BIO_ctrl(SSL_get_rbio(cli->ssl), BIO_CTRL_DGRAM_SET_RECV_TIMEOUT, 0, &timeout);
+  BIO_ctrl(SSL_get_rbio(cli->ssl), BIO_CTRL_DGRAM_GET_RECV_TIMEOUT, 0, &timeout);
   return timeout.tv_usec + timeout.tv_sec * 1000000;
 }
+
+int ssl_server_get_timeout(ssl_server_con * cli){
+  struct timeval timeout;
+  BIO_ctrl(SSL_get_rbio(cli->ssl), BIO_CTRL_DGRAM_GET_RECV_TIMEOUT, 0, &timeout);
+  return timeout.tv_usec + timeout.tv_sec * 1000000;
+}
+
 
 void ssl_client_write(ssl_client * cli, const void * buffer, size_t length){
   simulate_pk_loss;
