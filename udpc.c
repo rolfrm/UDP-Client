@@ -264,8 +264,8 @@ void udpc_close(udpc_connection * con){
     ssl_client_close(con->cli);
     udp_close(con->fd);
   }
-  else if(con->scli != NULL){
-    ssl_server_close(con->scli);
+  else if(con->con != NULL){
+    ssl_server_close(con->con);
   }
   else ERROR("Invalid operation");
   
