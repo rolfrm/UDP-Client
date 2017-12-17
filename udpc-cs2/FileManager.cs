@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reflection.Metadata.Ecma335;
 using System.Text;
 
 namespace udpc_cs2
@@ -66,6 +67,13 @@ namespace udpc_cs2
         public string Output;
         public int ExitCode;
         public string ErrorOutput;
+    }
+
+    public struct GitBranchDifference
+    {
+        public string CommonBase;
+        public string ATop;
+        public string BTop;
     }
 
     public class Git
@@ -132,6 +140,9 @@ namespace udpc_cs2
             }
         }
 
+
+        int commits = 0;
+
         public void CommitAll()
         {
             while (true)
@@ -144,9 +155,47 @@ namespace udpc_cs2
                 {
                     runProcess("git", "add", string.Format("\"{0}\"", item.Name));
                 }
-                runProcess("git", "commit", "-m", "\"x\"");
+                runProcess("git", "commit", "-m", string.Format("\"{0},{1}\"", DirPath, ++commits));
             }
         }
+
+        public string GetPatch(string baseCommit = null)
+        {
+            if (baseCommit != null)
+                runProcess("git", "bundle", "create", ".patch.bin", "master", $"^{baseCommit}");
+            else
+                runProcess("git", "bundle", "create", ".patch.bin", "master");
+
+            return Path.GetFullPath(Path.Combine(DirPath, ".patch.bin"));
+        }
+
+        public void ApplyPatch(string patchfile)
+        {
+            patchfile = $"\"{patchfile}\"";
+            runProcess("git", "fetch", patchfile, "master:patch");
+            runProcess("git", "merge", "patch");
+            runProcess("git", "branch", "-D", "patch");
+            runProcess("rm", patchfile);
+        }
+
+        static public string GetCommonBase(Git gitA, Git gitB)
+        {
+            var log2 = gitA.GetLog();
+            var log3 = gitB.GetLog();
+            string match = null;
+            var search = Math.Min(log2.Count, log3.Count);
+            for (int i = 0; i < search; i++)
+            {
+                var l1 = log2[log2.Count - 1 - i];
+                var l2 = log3[log3.Count - 1 - i];
+                if (l1 != l2) break;
+                match = log2[log2.Count - 1 - i];
+            }
+
+            return match;
+
+        }
+
 
         ProcStatus runProcess(string name, params string[] args)
         {
@@ -186,31 +235,5 @@ namespace udpc_cs2
             }
         }
 
-        public string GetPatch(string first, string baseCommit = null)
-        {
-            if (baseCommit != null)
-                runProcess("git", "bundle", "create", ".patch.bin", "master", $"^{baseCommit}");
-            else
-                runProcess("git", "bundle", "create", ".patch.bin", "master");
-
-
-
-            return Path.GetFullPath(Path.Combine(DirPath, ".patch.bin"));
-        }
-
-        public void ApplyPatch(string patchfile)
-        {
-            patchfile = $"\"{patchfile}\"";
-            runProcess("git", "fetch", patchfile, "master:patch");
-            runProcess("git", "merge", "patch");
-            runProcess("git", "branch", "-D", "patch");
-            runProcess("rm", patchfile);
-        }
     }
-
-    public class ProcessRunner
-    {
-
-    }
-
 }

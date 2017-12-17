@@ -23,31 +23,31 @@ namespace udpc_cs2
             File.WriteAllText("sync_1/test1", "Hello world");
             File.WriteAllText("sync_1/test2", "Hello world");
 
-            var git = new Git("sync_1");
-            git.Init();
-            var status = git.GetGitStatus();
-            git.CommitAll();
+            var git1 = new Git("sync_1");
+            git1.Init();
+            var status = git1.GetGitStatus();
+            git1.CommitAll();
             File.WriteAllText("sync_1/test1", "Hello world 222");
-            var status2 = git.GetGitStatus();
-            git.CommitAll();
+            var status2 = git1.GetGitStatus();
+            git1.CommitAll();
 
             Directory.CreateDirectory("sync_1/test dir/");
             File.WriteAllText("sync_1/test dir/file.x", "hello");
 
-            var status3 = git.GetGitStatus();
-            git.CommitAll();
+            var status3 = git1.GetGitStatus();
+            git1.CommitAll();
 
             File.WriteAllText("sync_1/test dir/file.x", "hello");
 
-            var status4 = git.GetGitStatus();
-            git.CommitAll();
+            var status4 = git1.GetGitStatus();
+            git1.CommitAll();
 
             Directory.Delete("sync_1/test dir", true);
 
-            var status5 = git.GetGitStatus();
-            git.CommitAll();
+            var status5 = git1.GetGitStatus();
+            git1.CommitAll();
 
-            var log = git.GetLog();
+            var log = git1.GetLog();
 
             try
             {
@@ -62,61 +62,42 @@ namespace udpc_cs2
             var git2 = new Git("sync_2");
             git2.Init();
 
-            var log2 = git.GetLog();
-            var log3 = git2.GetLog();
-            int lastmatch = -1;
-            string match = null;
-            int search = Math.Min(log2.Count, log3.Count);
-            for (int i = 0; i < search; i++)
-            {
-                var l1 = log2[log2.Count - 1 - i];
-                var l2 = log3[log3.Count - 1 - i];
-                if (l1 == l2)
-                {
-                    lastmatch = i;
-                    match = log2[log2.Count - 1 - i];
-                }
-            }
+            var commonBase = Git.GetCommonBase(git1, git2);
 
-            var items = log2.SkipLast(lastmatch + 1).ToArray();
-            var patchfile = git.GetPatch(items.FirstOrDefault(), lastmatch == -1 ? null : match);
+            var patchfile = git1.GetPatch(commonBase);
             // transfer file.
 
             git2.ApplyPatch(patchfile);
             File.Delete(patchfile);
 
-            var log4 = git.GetLog();
+            var log4 = git1.GetLog();
             var log5 = git2.GetLog();
 
             File.WriteAllText("sync_1/test2", "Hello world\nHello world\nHello world\n");
-            git.CommitAll();
+            git1.CommitAll();
 
-            log2 = git.GetLog();
-            log3 = git2.GetLog();
-            lastmatch = -1;
-            match = null;
-            search = Math.Min(log2.Count, log3.Count);
-            for (int i = 0; i < search; i++)
-            {
-                var l1 = log2[log2.Count - 1 - i];
-                var l2 = log3[log3.Count - 1 - i];
-                if (l1 == l2)
-                {
-                    lastmatch = i;
-                    match = log2[log2.Count - 1 - i];
-                }
-            }
+            commonBase = Git.GetCommonBase(git1, git2);
 
-            items = log2.SkipLast(lastmatch + 1).ToArray();
-            patchfile = git.GetPatch(items.FirstOrDefault(), lastmatch == -1 ? null : match);
+            patchfile = git1.GetPatch(commonBase);
             // transfer file.
 
             git2.ApplyPatch(patchfile);
             File.Delete(patchfile);
 
-            log2 = git.GetLog();
-            log3 = git2.GetLog();
+            File.WriteAllText("sync_2/test2", "Hello world");
+            git2.CommitAll();
 
+            var log2 = git1.GetLog();
+            var log3 = git2.GetLog();
+
+            commonBase = Git.GetCommonBase(git1, git2);
+
+            patchfile = git2.GetPatch(commonBase);
+            git1.ApplyPatch(patchfile);
+            File.Delete(patchfile);
+
+            var log6 = git1.GetLog();
+            var log7 = git2.GetLog();
 
             return;
 
