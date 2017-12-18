@@ -1,5 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography.X509Certificates;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
@@ -53,37 +56,40 @@ namespace udpc_cs2
 
   }
 
-  public interface IUdpcClient
-  {
-    void Write(byte[] data, int length);
-    int Read(byte[] buffer, int length);
-    void Disconnect();
-  }
 
-  public interface IUdpcServer
-  {
-    void Disconnect();
-    IUdpcClient Listen();
-  }
 
   public static class Udpc
   {
-    public static IUdpcClient Connect(string connectionString)
+    public static Client Connect(string connectionString)
     {
       IntPtr cli = UdpcApi.udpc_connect(connectionString);
       if (cli == IntPtr.Zero) return null;
       return new UdpcClient(cli);
     }
 
-    public static IUdpcServer Login(string connection)
+    public static Server Login(string connection)
     {
       var con = UdpcApi.udpc_login(connection);
       if (con == IntPtr.Zero) return null;
       return new UdpcServer(con);
     }
+
+    public interface Client
+    {
+      void Write(byte[] data, int length);
+      int Read(byte[] buffer, int length);
+      int Peek(byte[] buffer, int length);
+      void Disconnect();
+    }
+
+    public interface Server
+    {
+      void Disconnect();
+      Client Listen();
+    }
   }
 
-  class UdpcClient : IUdpcClient
+  class UdpcClient : Udpc.Client
   {
     IntPtr con;
 
@@ -102,13 +108,18 @@ namespace udpc_cs2
       return UdpcApi.udpc_read(con, buffer, (ulong)length);
     }
 
+    public int Peek(byte[] buffer, int length)
+    {
+      return UdpcApi.udpc_peek(con, buffer, (ulong) length);
+    }
+
     public void Disconnect()
     {
       UdpcApi.udpc_close(con);
     }
   }
 
-  class UdpcServer : IUdpcServer
+  class UdpcServer : Udpc.Server
   {
 
     IntPtr con;
@@ -125,7 +136,7 @@ namespace udpc_cs2
       con = IntPtr.Zero;
     }
 
-    public IUdpcClient Listen()
+    public Udpc.Client Listen()
     {
       if(con == IntPtr.Zero)
         throw new InvalidOperationException("UDPC server is disconnected");
@@ -135,12 +146,101 @@ namespace udpc_cs2
     }
   }
 
-  public class UdpcConversation
+  public class ConversationManager
   {
+    int conversationId = 0xF0;
 
-    static int staticConversationId = 0;
-    public int ConversationId = staticConversationId++;
+    Udpc.Client cli;
+    bool isServer = false;
+    public ConversationManager(Udpc.Client cli, bool isServer)
+    {
+      this.cli = cli;
+      if (isServer)
+      {
+        conversationId += 1;
+        this.isServer = true;
+      }
+    }
 
+    int newConversationId()
+    {
+      return conversationId += 2;
+    }
 
+    Dictionary<int, Conversation> Conversations = new Dictionary<int, Conversation>();
+    Dictionary<Conversation, int> ConversationIds = new Dictionary<Conversation, int>();
+
+    public int GetConversationId(Conversation conv)
+    {
+      int id;
+      if (ConversationIds.TryGetValue(conv, out id))
+        return id;
+      return -1;
+
+    }
+
+    public int StartConversation(Conversation conv)
+    {
+      var convId = newConversationId();
+
+      Conversations[convId] = conv;
+      ConversationIds[conv] = convId;
+
+      return convId;
+    }
+
+    public Func<byte[], Conversation> NewConversation = (bytes)
+      => throw new InvalidOperationException("Manager cannot create new conversations!");
+
+    byte[] buffer = new byte[4];
+
+    public void Process()
+    {
+      int l = cli.Peek(buffer, buffer.Length);
+      if(l < 4) throw new InvalidOperationException("Invalid amount of data read.");
+      int convId = BitConverter.ToInt32(buffer, 0);
+      if(convId == 0 || convId == -1)
+        throw new InvalidOperationException($"Invalid conversation ID: {convId}.");
+      Conversation conv;
+      if (!Conversations.TryGetValue(convId, out conv))
+      {
+        int mod = convId % 2;
+        if ((isServer && mod == 0) || (!isServer && mod == 1))
+        {
+          conv = NewConversation(buffer);
+
+          Conversations[convId] = conv;
+          ConversationIds[conv] = convId;
+        }
+        else
+        {
+          throw new InvalidOperationException($"Conversation ID '{convId}' does not exist.");
+        }
+      }
+      byte[] rawbuffer = new byte[l];
+      cli.Read(rawbuffer, rawbuffer.Length);
+      byte[] newbuffer = new byte[l - 4];
+      Array.Copy(rawbuffer,4,newbuffer,0,l - 4);
+      conv.HandleMessage(newbuffer);
+    }
+
+    byte[] sendBuffer = new byte[1024];
+
+    public void SendMessage(Conversation conv, byte[] message)
+    {
+      int id;
+      if(!ConversationIds.TryGetValue(conv, out id))
+        throw new InvalidOperationException($"Unknown conversation");
+      if(message.Length + 4 > sendBuffer.Length)
+        Array.Resize(ref sendBuffer, message.Length + 4);
+      Internal.Utils.IntToByteArray(id, sendBuffer, 0);
+      Array.Copy(message, 0, sendBuffer, 4, message.Length);
+      cli.Write(sendBuffer, message.Length + 4);
+    }
+  }
+
+  public interface Conversation
+  {
+    void HandleMessage(byte[] data);
   }
 }

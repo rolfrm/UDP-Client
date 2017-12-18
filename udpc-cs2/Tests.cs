@@ -1,6 +1,11 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
+using udpc_cs2.Internal;
 
 namespace udpc_cs2
 {
@@ -148,22 +153,159 @@ namespace udpc_cs2
         cli.Write(new byte[]{1,2,3}, 3);
         cli.Disconnect();
       });
-      var s1 = serv.Listen();
-      byte[] testbytes = new byte[3];
 
+      var tsk2 = Task.Factory.StartNew(() => {
+        var cli = Udpc.Connect("rolf@0.0.0.0:test1");
+        cli.Write(new byte[]{3,2,1}, 3);
+        cli.Disconnect();
+      });
+
+      var s1 = serv.Listen();
+      var s2 = serv.Listen();
+      var testbytes = new byte[3];
+      var testbytes2 = new byte[3];
       s1.Read(testbytes, testbytes.Length);
+      s2.Read(testbytes2, testbytes2.Length);
       tsk.Wait();
+      tsk2.Wait();
       Console.WriteLine("Got bytes {0} {1} {2}. {3}", testbytes[0], testbytes[1], testbytes[2],DateTime.Now);
+      Console.WriteLine("Got bytes {0} {1} {2}. {3}", testbytes2[0], testbytes2[1], testbytes2[2],DateTime.Now);
       s1.Disconnect();
+      s2.Disconnect();
       serv.Disconnect();
       Console.WriteLine("Finished!");
     }
+
+    void TestUtils()
+    {
+      int testInt = 0x11223344;
+      byte[] bytes = new byte[8];
+      Internal.Utils.IntToByteArray(testInt, bytes, 2);
+      if(bytes[2] != 0x44 || bytes[3] != 0x33 || bytes[4] != 0x22 || bytes[5] != 0x11)
+        throw new InvalidOperationException("IntToBytes not working.");
+      int testInt2 = BitConverter.ToInt32(bytes, 2);
+      if(testInt2 != testInt)
+        throw new Exception("Cannot convert back.");
+    }
+
+
+    class TestClient : Udpc.Client
+    {
+      Queue<byte[]> readBuffer = new Queue<byte[]>();
+
+      TestClient other;
+
+      public static void CreateConnection(out TestClient c1, out TestClient c2)
+      {
+        c1 = new TestClient();
+        c2 = new TestClient();
+        c1.other = c2;
+        c2.other = c1;
+      }
+
+      public void Write(byte[] data, int length)
+      {
+        if(other == null) throw new InvalidOperationException("Disconnected");
+        other.readBuffer.Enqueue(data.Take(length).ToArray());
+      }
+
+      public int Read(byte[] buffer, int length)
+      {
+        if(other == null) throw new InvalidOperationException("Disconnected");
+        if (!readBuffer.TryDequeue(out byte[] buffer2))
+          return 0;
+        int read = Math.Min(length, buffer2.Length);
+        Array.Copy(buffer2, buffer, read);
+        return read;
+      }
+
+      public int Peek(byte[] buffer, int length)
+      {
+        if(other == null) throw new InvalidOperationException("Disconnected");
+        var buffer2 = readBuffer.FirstOrDefault();
+        if (buffer2 == null) return 0;
+        int read = Math.Min(length, buffer2.Length);
+        Array.Copy(buffer2, buffer, read);
+        return read;
+      }
+
+      public void Disconnect()
+      {
+        other = null;
+        readBuffer.Clear();
+      }
+    }
+
+    class TestConversation : Conversation
+    {
+      ConversationManager manager;
+      public TestConversation(ConversationManager manager)
+      {
+        this.manager = manager;
+      }
+
+      public void HandleMessage(byte[] data)
+      {
+        int value = BitConverter.ToInt32(data, 0);
+        value += 1;
+        Console.WriteLine("   >> {0}", value);
+        Utils.IntToByteArray(value + 1, data, 0);
+        this.manager.SendMessage(this, data);
+      }
+
+      public void Start()
+      {
+        byte[] data = new byte[4];
+        int value = 0;
+        value += 1;
+        Utils.IntToByteArray(value + 1, data, 0);
+        this.manager.SendMessage(this, data);
+      }
+    }
+
+    void ConversationTest()
+    {
+      TestClient.CreateConnection(out var c1, out var c2);
+
+
+
+      var con1 = new ConversationManager(c1, true);
+      con1.NewConversation = b => new TestConversation(con1);
+      var con2 = new ConversationManager(c2, false);
+      con2.NewConversation = b => new TestConversation(con2);
+
+      byte[] testdata = new byte[10];
+      var conv = new TestConversation(con1);
+      var convid = con1.StartConversation(conv);
+
+      conv.Start();
+
+      var conv2 = new TestConversation(con2);
+      var convid2 = con2.StartConversation(conv2);
+      conv2.Start();
+
+      while (true)
+      {
+        con1.Process();
+        con2.Process();
+        Thread.Sleep(1000);
+      }
+
+
+
+
+
+
+    }
+
 
     public void RunTests()
     {
       //GitInterop();
       //UdpcBasicInterop();
-      UdpcSendFile();
+      //UdpcSendFile();
+      TestUtils();
+      ConversationTest();
     }
 
   }
