@@ -299,6 +299,10 @@ int ssl_server_peek(ssl_server_con * con, void * buffer, size_t buffer_size){
   return SSL_peek(con->ssl, buffer, buffer_size);
 }
 
+int ssl_server_pending(ssl_server_con * con){
+  return SSL_pending(con->ssl);
+}
+
 void ssl_server_write(ssl_server_con * con, const void * buffer, size_t buffer_size){
   simulate_pk_loss;
   SSL_write(con->ssl, buffer, buffer_size);
@@ -426,6 +430,10 @@ int ssl_client_read(ssl_client * cli, void * buffer, size_t length){
   if(ecode < 0)
     return ecode;
   return len;
+}
+
+int ssl_client_pending(ssl_client * cli){
+  return SSL_pending(cli->ssl);
 }
 
 int ssl_client_peek(ssl_client * cli, void * buffer, size_t length){

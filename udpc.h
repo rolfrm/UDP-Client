@@ -29,6 +29,9 @@ int udpc_read(udpc_connection * client, void * buffer, size_t max_size);
 // Reads data from the connection without removing it from the buffer.
 int udpc_peek(udpc_connection * client, void * buffer, size_t max_size);
 
+// Returns the number of bytes in the next package in the buffer.
+int udpc_pending(udpc_connection * client);
+
 void udpc_set_timeout(udpc_connection * client, int us);
 int udpc_get_timeout(udpc_connection * client);
 

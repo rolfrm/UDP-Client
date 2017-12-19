@@ -1,10 +1,7 @@
-﻿using System.IO;
-using System.Linq;
-using System.Runtime.ExceptionServices;
-using System.Threading.Tasks;
+﻿using System.Linq;
 namespace udpc_cs2
 {
-    class Program
+    static class Program
     {
         static void Main(string[] args)
         {

@@ -121,24 +121,28 @@ namespace udpc_cs2
 
     void UdpcBasicInterop()
     {
-      Console.WriteLine("Hello World!");
-      Console.WriteLine("Hello world2");
-      Console.WriteLine("Hello world3!!");
-      int x = 5;
-      int y = 425;
-      Console.WriteLine("??? {0}", x + y);
       UdpcApi.udpc_net_load();
       IntPtr con = UdpcApi.udpc_login("rolf@0.0.0.0:test1");
       var tsk = Task.Factory.StartNew(() => {
         IntPtr c2 = UdpcApi.udpc_connect("rolf@0.0.0.0:test1");
         UdpcApi.udpc_write(c2, new byte[]{1,2,3}, 3);
+        UdpcApi.udpc_write(c2, new byte[]{1,2,3}, 3);
+        UdpcApi.udpc_write(c2, new byte[]{1,2,3}, 3);
         UdpcApi.udpc_close(c2);
       });
 
       IntPtr c = UdpcApi.udpc_listen(con);
-      byte[] testbytes = new byte[3];
 
-      UdpcApi.udpc_read(c, testbytes, (ulong)testbytes.LongLength);
+      byte[] testbytes = new byte[3];
+      for (int i = 0; i < 3; i++)
+      {
+        int cnt = UdpcApi.udpc_peek(c, testbytes, 0);
+        int cnt2 = UdpcApi.udpc_pending(c);
+        UdpcApi.udpc_read(c, testbytes, (ulong)testbytes.LongLength);
+      }
+      int cnt3 = UdpcApi.udpc_pending(c);
+
+
       tsk.Wait();
       Console.WriteLine("Got bytes {0} {1} {2}. {3}", testbytes[0], testbytes[1], testbytes[2],DateTime.Now);
       UdpcApi.udpc_logout(con);
@@ -150,7 +154,8 @@ namespace udpc_cs2
       var serv = Udpc.Login("rolf@0.0.0.0:test1");
       var tsk = Task.Factory.StartNew(() => {
         var cli = Udpc.Connect("rolf@0.0.0.0:test1");
-        cli.Write(new byte[]{1,2,3}, 3);
+        var d = Enumerable.Range(0, 10000).Select(x => (byte)x).ToArray();
+        cli.Write(d, d.Length);
         cli.Disconnect();
       });
 
@@ -162,8 +167,17 @@ namespace udpc_cs2
 
       var s1 = serv.Listen();
       var s2 = serv.Listen();
-      var testbytes = new byte[3];
-      var testbytes2 = new byte[3];
+      var testbytes = new byte[0];
+      var testbytes2 = new byte[0];
+      s1.Peek(testbytes, 0);
+      int l1 = s1.Pending();
+      s2.Peek(testbytes2, 0);
+      int l2 = s2.Pending();
+
+      testbytes = new byte[l1];
+      testbytes2 = new byte[l2];
+
+
       s1.Read(testbytes, testbytes.Length);
       s2.Read(testbytes2, testbytes2.Length);
       tsk.Wait();
@@ -191,16 +205,29 @@ namespace udpc_cs2
 
     class TestClient : Udpc.Client
     {
-      Queue<byte[]> readBuffer = new Queue<byte[]>();
+      readonly Queue<byte[]> readBuffer = new Queue<byte[]>();
 
       TestClient other;
 
-      public static void CreateConnection(out TestClient c1, out TestClient c2)
+        public static void CreateConnection(out TestClient c1, out TestClient c2)
+        {
+          c1 = new TestClient();
+          c2 = new TestClient();
+          c1.other = c2;
+          c2.other = c1;
+        }
+
+      public static void CreateConnection2(out Udpc.Client c1, out Udpc.Client c2)
       {
-        c1 = new TestClient();
-        c2 = new TestClient();
-        c1.other = c2;
-        c2.other = c1;
+        var serv = Udpc.Login("rolf@0.0.0.0:test1");
+        Udpc.Client c11 = null;
+        var tsk = Task.Factory.StartNew(() =>
+        {
+          c11 = Udpc.Connect("rolf@0.0.0.0:test1");
+        });
+        c2 = serv.Listen();;
+        tsk.Wait();
+        c1 = c11;
       }
 
       public void Write(byte[] data, int length)
@@ -229,6 +256,11 @@ namespace udpc_cs2
         return read;
       }
 
+      public int Pending()
+      {
+        return readBuffer.FirstOrDefault()?.Length ?? 0;
+      }
+
       public void Disconnect()
       {
         other = null;
@@ -238,7 +270,7 @@ namespace udpc_cs2
 
     class TestConversation : Conversation
     {
-      ConversationManager manager;
+      readonly ConversationManager manager;
       public TestConversation(ConversationManager manager)
       {
         this.manager = manager;
@@ -246,65 +278,52 @@ namespace udpc_cs2
 
       public void HandleMessage(byte[] data)
       {
-        int value = BitConverter.ToInt32(data, 0);
-        value += 1;
+        int value = BitConverter.ToInt32(data, 0) + 1;
         Console.WriteLine("   >> {0}", value);
-        Utils.IntToByteArray(value + 1, data, 0);
+        Utils.IntToByteArray(value, data, 0);
         this.manager.SendMessage(this, data);
       }
 
       public void Start()
       {
-        byte[] data = new byte[4];
-        int value = 0;
-        value += 1;
-        Utils.IntToByteArray(value + 1, data, 0);
+        var data = new byte[4];
+        Utils.IntToByteArray(1, data, 0);
         this.manager.SendMessage(this, data);
       }
     }
 
     void ConversationTest()
     {
-      TestClient.CreateConnection(out var c1, out var c2);
-
-
+      TestClient.CreateConnection2(out var c1, out var c2);
 
       var con1 = new ConversationManager(c1, true);
       con1.NewConversation = b => new TestConversation(con1);
       var con2 = new ConversationManager(c2, false);
       con2.NewConversation = b => new TestConversation(con2);
 
-      byte[] testdata = new byte[10];
       var conv = new TestConversation(con1);
-      var convid = con1.StartConversation(conv);
+      con1.StartConversation(conv);
 
       conv.Start();
 
       var conv2 = new TestConversation(con2);
-      var convid2 = con2.StartConversation(conv2);
+      con2.StartConversation(conv2);
       conv2.Start();
 
-      while (true)
+      for(int i = 0; i < 100; i++)
       {
         con1.Process();
         con2.Process();
-        Thread.Sleep(1000);
       }
-
-
-
-
-
-
     }
 
 
     public void RunTests()
     {
       //GitInterop();
-      //UdpcBasicInterop();
-      //UdpcSendFile();
-      TestUtils();
+      UdpcBasicInterop();
+      UdpcSendFile();
+      //TestUtils();
       ConversationTest();
     }
 

@@ -6,7 +6,7 @@ LIB_OBJECTS =$(LIB_SOURCES:.c=.o)
 LDFLAGS= -L. $(OPT) -Wextra #-lmcheck #-ftlo #setrlimit on linux 
 LIBS= -ldl -lm -lssl -lcrypto -lpthread
 ALL= $(TARGET) server rpc speed file share test web dir_scanner share_log_reader share_manager
-CFLAGS = -I.. -std=c11 -c $(OPT) #-Wall -Wextra -Werror=implicit-function-declaration -Wformat=0 -D_GNU_SOURCE -fdiagnostics-color -Wextra -Werror -Wwrite-strings -fbounds-check  #-DDEBUG
+CFLAGS = -I.. -std=c11 -c $(OPT) -D_GNU_SOURCE -Wall -Wextra -Werror=implicit-function-declaration -Wformat=0  -fdiagnostics-color -Wextra -Werror -Wwrite-strings -fbounds-check  #-DDEBUG
 
 $(TARGET): $(LIB_OBJECTS)
 	$(CC) $(LDFLAGS) $(LIB_OBJECTS) $(LIBS) --shared -o $@

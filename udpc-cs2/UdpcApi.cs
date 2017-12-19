@@ -54,6 +54,8 @@ namespace udpc_cs2
     [DllImport("libudpc.so")]
     public static extern int udpc_peek(IntPtr con, byte[] buffer, ulong size);
 
+    [DllImport("libudpc.so")]
+    public static extern int udpc_pending(IntPtr con);
   }
 
 
@@ -79,6 +81,7 @@ namespace udpc_cs2
       void Write(byte[] data, int length);
       int Read(byte[] buffer, int length);
       int Peek(byte[] buffer, int length);
+      int Pending();
       void Disconnect();
     }
 
@@ -111,6 +114,11 @@ namespace udpc_cs2
     public int Peek(byte[] buffer, int length)
     {
       return UdpcApi.udpc_peek(con, buffer, (ulong) length);
+    }
+
+    public int Pending()
+    {
+      return UdpcApi.udpc_pending(con);
     }
 
     public void Disconnect()
@@ -193,10 +201,10 @@ namespace udpc_cs2
       => throw new InvalidOperationException("Manager cannot create new conversations!");
 
     byte[] buffer = new byte[4];
-
+    object bufferlock = new object();
     public void Process()
     {
-      int l = cli.Peek(buffer, buffer.Length);
+      int l = cli.Peek(buffer, 4);
       if(l < 4) throw new InvalidOperationException("Invalid amount of data read.");
       int convId = BitConverter.ToInt32(buffer, 0);
       if(convId == 0 || convId == -1)
@@ -217,10 +225,12 @@ namespace udpc_cs2
           throw new InvalidOperationException($"Conversation ID '{convId}' does not exist.");
         }
       }
-      byte[] rawbuffer = new byte[l];
-      cli.Read(rawbuffer, rawbuffer.Length);
+
+      l = cli.Pending();
+      Array.Resize(ref buffer, l);
+      cli.Read(buffer, buffer.Length);
       byte[] newbuffer = new byte[l - 4];
-      Array.Copy(rawbuffer,4,newbuffer,0,l - 4);
+      Array.Copy(buffer, 4, newbuffer, 0, l - 4);
       conv.HandleMessage(newbuffer);
     }
 

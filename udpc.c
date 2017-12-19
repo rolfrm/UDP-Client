@@ -259,13 +259,22 @@ int udpc_peek(udpc_connection * client, void * buffer, size_t max_size){
   return -1;
 }
 
+int udpc_pending(udpc_connection * client){
+  if(client->cli != NULL)
+    return ssl_client_pending(client->cli);
+  else if(client->con != NULL)
+    return ssl_server_pending(client->con);
+  else ERROR("Invalid operation");
+  return -1;
+}
+
 void udpc_close(udpc_connection * con){
   if(con->cli != NULL){
     ssl_client_close(con->cli);
     udp_close(con->fd);
   }
   else if(con->con != NULL){
-    ssl_server_close(con->con);
+    ssl_server_close((void *)con->con);
   }
   else ERROR("Invalid operation");
   
