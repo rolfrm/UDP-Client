@@ -421,9 +421,8 @@ void udpc_start_server(const char *local_address) {
     con_info->local_addr = server_addr;
     con_info->remote_addr = ssl_server_client_addr(scli);
     con_info->server = &server;
-    if (pthread_create( &tid, NULL, connection_handle, con_info) != 0) {
-      loge("pthread_create");
-      exit(-1);
-    }
+    if (pthread_create( &tid, NULL, connection_handle, con_info) != 0) 
+      ERROR("pthread create failed.");
+    
   }
 }

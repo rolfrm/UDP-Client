@@ -317,9 +317,16 @@ namespace udpc_cs2
       }
     }
 
+    void runServer()
+    {
+      UdpcApi.udpc_start_server("0.0.0.0");
+    }
 
     public void RunTests()
     {
+      var trd = new Thread(runServer) { IsBackground = true};
+      trd.Start();
+      Thread.Sleep(100);
       //GitInterop();
       UdpcBasicInterop();
       UdpcSendFile();

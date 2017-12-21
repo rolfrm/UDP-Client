@@ -56,6 +56,9 @@ namespace udpc_cs2
 
     [DllImport("libudpc.so")]
     public static extern int udpc_pending(IntPtr con);
+
+    [DllImport("libudpc.so")]
+    public static extern void udpc_start_server(string address);
   }
 
 
