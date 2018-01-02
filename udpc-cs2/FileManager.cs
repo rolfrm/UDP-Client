@@ -216,7 +216,7 @@ namespace udpc_cs2
             tryagain:
             var timenow = sw.ElapsedTicks;
             var start = windowStart.First();
-            var ts = TimeSpan.FromTicks((long) (timenow - start)).TotalSeconds;
+            var ts = (double)(timenow - start) / Stopwatch.Frequency;
             CurrentRate = windowTransferred.Sum / ts;
             if (CurrentRate > TargetRate)
             {
@@ -247,6 +247,7 @@ namespace udpc_cs2
                 return null;
             using (var ms2 = new MemoryStream(data))
             {
+                ms2.Seek(1, SeekOrigin.Begin);
                 return bf.Deserialize(ms2);
             }
 
@@ -295,7 +296,7 @@ namespace udpc_cs2
         {
             var fsinfo = new FileSendInfo
             {
-                ChunkSize =  1400 - 4,
+                ChunkSize =  1400 - 5,
                 FileName = fileName,
                 Length = file.Length
             };
@@ -312,12 +313,12 @@ namespace udpc_cs2
             {
                 int index = 0;
                 file.Seek(0, SeekOrigin.Begin);
-
-                while (file.Read(buffer, 5, buffer.Length - 5) > 0)
+                int read = 0;
+                while ((read = file.Read(buffer, 5, buffer.Length - 5)) > 0)
                 {
                     buffer[0] = 2;
                     Utils.IntToByteArray(index, buffer, 1);
-                    Send(buffer);
+                    Send(buffer, read + 5);
 
                     index += 1;
                 }
@@ -342,7 +343,9 @@ namespace udpc_cs2
         FileSendInfo SendInfo;
         string tmpFilePath;
         Stream outStream;
-        public void HandleMessage(byte[] data)
+        bool[] chunksToReceive;
+        int chunksLeft;
+        public override void HandleMessage(byte[] data)
         {
             
             if (data[0] == 2)
@@ -350,8 +353,19 @@ namespace udpc_cs2
                 if(SendInfo == null)
                     throw new InvalidOperationException("SendInfo is not received yet.");
                 int index = BitConverter.ToInt32(data, 1);
-                outStream.Seek(index * SendInfo.ChunkSize, SeekOrigin.Begin);
-                outStream.Write(data,0,data.Length);
+                if (chunksToReceive[index] == false)
+                {
+                    chunksToReceive[index] = true;
+                    outStream.Seek(index * SendInfo.ChunkSize, SeekOrigin.Begin);
+                    outStream.Write(data, 5, data.Length - 5);
+                    chunksToReceive[index] = true;
+                    chunksLeft--;
+                }
+
+                if (chunksLeft == 0)
+                {
+                    outStream.Close();
+                }
             }
             else if (data[0] == 1)
             {
@@ -362,6 +376,8 @@ namespace udpc_cs2
                             Directory.CreateDirectory("Downloads");
                             tmpFilePath = Path.Combine("Downloads", SendInfo.FileName);
                             outStream = File.Open(tmpFilePath, FileMode.Create);
+                            chunksLeft = (int)Math.Ceiling((double)SendInfo.Length / SendInfo.ChunkSize);
+                            chunksToReceive = new bool[chunksLeft];
                             Send(new ReceivedFileInfo());
                             break;
                         default:

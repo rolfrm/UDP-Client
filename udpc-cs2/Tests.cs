@@ -397,16 +397,41 @@ namespace udpc_cs2
 
     void TestFileConversation()
     {
-      TestClient.CreateConnection2(out var c1, out var c2);
+      TestClient.CreateConnection(out var c1, out var c2);
 
       var con1 = new ConversationManager(c1, true);
       con1.NewConversation = b => new ReceiveMessageConversation(con1);
       var con2 = new ConversationManager(c2, false);
       con2.NewConversation = b => new ReceiveMessageConversation(con2);
-      
-      var memstr = new MemoryStream(10000);
 
-      con1.StartConversation(new SendMessageConversation(con1, memstr, "TestFile"));
+      byte[] bytes = new byte[12345];
+      for (int i = 0; i < bytes.Length; i++)
+        bytes[i] = (byte)(i % 3);
+      var memstr = new MemoryStream(bytes);
+      var snd = new SendMessageConversation(con1, memstr, "TestFile");
+      
+      con1.StartConversation(snd);
+      Thread.Sleep(50);
+      snd.Start();
+      for (int i = 0; i < 10; i++)
+      {  
+        bool done2 = !con2.Process();
+        bool done1 = !con1.Process();
+        if (done2 && done1)
+          break;
+      }
+
+      var data = File.ReadAllBytes("Downloads/TestFile");
+      if (false == data.SequenceEqual(bytes))
+      {
+        for (int i = 0; i < data.Length; i++)
+        {
+          if(data[i] != bytes[i])
+            throw new InvalidOperationException("Sequences are not equal");
+          
+        }
+        
+      }
 
 
     }

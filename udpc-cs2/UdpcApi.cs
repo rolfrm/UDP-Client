@@ -205,10 +205,16 @@ namespace udpc_cs2
 
     byte[] buffer = new byte[4];
     object bufferlock = new object();
-    public void Process()
+    public bool Process()
     {
       int l = cli.Peek(buffer, 4);
-      if(l < 4) throw new InvalidOperationException("Invalid amount of data read.");
+      
+      if(l < 4)
+        if (l == 0)
+          return false;
+      else 
+          throw new InvalidOperationException("Invalid amount of data read.");
+      
       int convId = BitConverter.ToInt32(buffer, 0);
       if(convId == 0 || convId == -1)
         throw new InvalidOperationException($"Invalid conversation ID: {convId}.");
@@ -235,6 +241,7 @@ namespace udpc_cs2
       byte[] newbuffer = new byte[l - 4];
       Array.Copy(buffer, 4, newbuffer, 0, l - 4);
       conv.HandleMessage(newbuffer);
+      return true;
     }
 
     byte[] sendBuffer = new byte[1024];
