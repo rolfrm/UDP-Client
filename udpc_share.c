@@ -313,7 +313,7 @@ int main(int argc, char ** argv){
 	case DIRSCAN_DIFF_MD5:
 	  difft = difftime(ext_dir.last_change[i2], local_dir.last_change[i1]);
 	  // -fallthrough
-	  __attribute__((fallthrough));
+	  //__attribute__((fallthrough));
 	case DIRSCAN_NEW:
 	  {
 	    char * f = NULL;

@@ -239,16 +239,18 @@ namespace udpc_cs2
 
     byte[] sendBuffer = new byte[1024];
 
-    public void SendMessage(Conversation conv, byte[] message)
+    public void SendMessage(Conversation conv, byte[] message, int count = -1)
     {
+      if (count == -1) count = message.Length;
+      if(count > message.Length) throw new InvalidOperationException("Count cannot be larger than message.Length");
       int id;
       if(!ConversationIds.TryGetValue(conv, out id))
         throw new InvalidOperationException($"Unknown conversation");
-      if(message.Length + 4 > sendBuffer.Length)
-        Array.Resize(ref sendBuffer, message.Length + 4);
+      if(count + 4 > sendBuffer.Length)
+        Array.Resize(ref sendBuffer, count + 4);
       Internal.Utils.IntToByteArray(id, sendBuffer, 0);
-      Array.Copy(message, 0, sendBuffer, 4, message.Length);
-      cli.Write(sendBuffer, message.Length + 4);
+      Array.Copy(message, 0, sendBuffer, 4, count);
+      cli.Write(sendBuffer, count + 4);
     }
   }
 

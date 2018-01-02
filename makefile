@@ -5,7 +5,7 @@ TARGET = libudpc.so
 LIB_OBJECTS =$(LIB_SOURCES:.c=.o)
 LDFLAGS= -L. $(OPT) -Wextra #-lmcheck #-ftlo #setrlimit on linux 
 LIBS= -ldl -lm -lssl -lcrypto -lpthread
-ALL= $(TARGET) server rpc speed file share test web dir_scanner share_log_reader share_manager
+ALL= $(TARGET) server rpc speed file share test  share_log_reader share_manager #web dir_scanner
 CFLAGS = -I.. -std=c11 -c $(OPT) -D_GNU_SOURCE -Wall -Wextra -Werror=implicit-function-declaration -Wformat=0  -fdiagnostics-color -Wextra -Werror -Wwrite-strings -fbounds-check  #-DDEBUG
 
 $(TARGET): $(LIB_OBJECTS)
@@ -53,5 +53,5 @@ share_manager: $(TARGET) udpc_share_manager.o
 test: $(TARGET) udpc_test.o
 	$(CC) $(LDFLAGS) udpc_test.o $(LIBS) -ludpc -Wl,-rpath,. -o test
 
-web: $(TARGET) share_web.o
-	$(CC) $(LDFLAGS) share_web.o $(LIBS) -lmicrohttpd -ludpc -Wl,-rpath,. -o web
+#web: $(TARGET) share_web.o
+#	$(CC) $(LDFLAGS) share_web.o $(LIBS) -lmicrohttpd -ludpc -Wl,-rpath,. -o #web

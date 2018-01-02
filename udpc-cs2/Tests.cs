@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using udpc_cs2.Internal;
@@ -119,6 +121,50 @@ namespace udpc_cs2
       var log9 = git2.GetLog();
     }
 
+    void gitSuperPatch()
+    {
+      string[] dirs = new string[] {"sync_1", "sync_2", "sync_3"};
+      Git[] gits = new Git[dirs.Length];
+      int idx = 0;
+      foreach (var dir in dirs)
+      {
+        try
+        {
+          Directory.Delete(dir, true);
+        }
+        catch
+        {
+        }
+
+        Directory.CreateDirectory(dir);
+        var git2 = new Git(dir);
+        git2.Init();
+        gits[idx] = git2;
+        idx++;
+      }
+
+      while (true)
+      {
+        foreach (var git in gits)
+        {
+          if (git.CommitAll())
+          {
+            foreach (var git2 in gits)
+            {
+              if (git2 == git) continue;
+              var commonBase = Git.GetCommonBase(git, git2);
+              var patchfile1 = git.GetPatch(commonBase);
+              git2.ApplyPatch(patchfile1);
+            }
+          }
+        }
+        Thread.Sleep(500);
+        
+      }
+      
+      
+    }
+
     void UdpcBasicInterop()
     {
       UdpcApi.udpc_net_load();
@@ -189,6 +235,8 @@ namespace udpc_cs2
       serv.Disconnect();
       Console.WriteLine("Finished!");
     }
+    
+    
 
     void TestUtils()
     {
@@ -294,7 +342,7 @@ namespace udpc_cs2
 
     void ConversationTest()
     {
-      TestClient.CreateConnection2(out var c1, out var c2);
+      TestClient.CreateConnection(out var c1, out var c2);
 
       var con1 = new ConversationManager(c1, true);
       con1.NewConversation = b => new TestConversation(con1);
@@ -322,16 +370,64 @@ namespace udpc_cs2
       UdpcApi.udpc_start_server("0.0.0.0");
     }
 
+    void TestShareFolders()
+    {
+      var share_1 = Share.Create("rolf@0.0.0.0:test_1", "sync_test_2");
+      var share_2 = Share.Create("rolf@0.0.0.0:test_2", "sync_test_1");
+      share_2.ConnectTo(share_1.Service);
+      
+    }
+
+
+    void TestCircularSum()
+    {
+      var circ = new CircularSum(10);
+      for (int i = 0; i < 20; i++)
+      {
+        circ.Add(i);
+      }
+      
+      if(Math.Abs(circ.Sum - (10 + 11 + 12 + 13 + 14 + 15 + 16 + 17 + 18 + 19)) > 0.001)
+        throw new InvalidOperationException("Error in algorithm");
+      if(circ.Last() != 19)
+        throw new InvalidOperationException("Error in algorithm");
+      if(circ.First() != 10)
+        throw new InvalidOperationException("Error in algorithm");  
+    }
+
+    void TestFileConversation()
+    {
+      TestClient.CreateConnection2(out var c1, out var c2);
+
+      var con1 = new ConversationManager(c1, true);
+      con1.NewConversation = b => new ReceiveMessageConversation(con1);
+      var con2 = new ConversationManager(c2, false);
+      con2.NewConversation = b => new ReceiveMessageConversation(con2);
+      
+      var memstr = new MemoryStream(10000);
+
+      con1.StartConversation(new SendMessageConversation(con1, memstr, "TestFile"));
+
+
+    }
+
     public void RunTests()
     {
+      
+      TestCircularSum();
+      //gitSuperPatch();
+      GitInterop();
+      TestUtils();
       var trd = new Thread(runServer) { IsBackground = true};
       trd.Start();
       Thread.Sleep(100);
-      //GitInterop();
+      
       UdpcBasicInterop();
       UdpcSendFile();
-      //TestUtils();
+      
       ConversationTest();
+      TestFileConversation();
+      Console.WriteLine("Tests finished");
     }
 
   }

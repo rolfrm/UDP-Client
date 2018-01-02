@@ -119,8 +119,9 @@ namespace udpc_cs2
 
     int commits = 0;
 
-    public void CommitAll()
+    public bool CommitAll()
     {
+      var commits1 = commits;
       while (true)
       {
         var status = GetGitStatus();
@@ -133,6 +134,8 @@ namespace udpc_cs2
         }
         runProcess("git", "commit", "-m", string.Format("\"{0},{1}\"", DirPath, ++commits));
       }
+
+      return commits1 != commits;
     }
 
     public string GetPatch(string baseCommit = null)
