@@ -1,7 +1,9 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -253,19 +255,22 @@ namespace udpc_cs2
 
     class TestClient : Udpc.Client
     {
-      readonly Queue<byte[]> readBuffer = new Queue<byte[]>();
+      readonly ConcurrentQueue<byte[]> readBuffer = new ConcurrentQueue<byte[]>();
 
       TestClient other;
 
-        public static void CreateConnection(out TestClient c1, out TestClient c2)
+        public static void CreateConnectionTest(out Udpc.Client c1, out Udpc.Client c2)
         {
-          c1 = new TestClient();
-          c2 = new TestClient();
-          c1.other = c2;
-          c2.other = c1;
+          
+          var c11 = new TestClient();
+          var c22 = new TestClient();
+          c11.other = c22;
+          c22.other = c11;
+          c1 = c11;
+          c2 = c22;
         }
 
-      public static void CreateConnection2(out Udpc.Client c1, out Udpc.Client c2)
+      public static void CreateConnectionUdp(out Udpc.Client c1, out Udpc.Client c2)
       {
         var serv = Udpc.Login("rolf@0.0.0.0:test1");
         Udpc.Client c11 = null;
@@ -342,7 +347,7 @@ namespace udpc_cs2
 
     void ConversationTest()
     {
-      TestClient.CreateConnection(out var c1, out var c2);
+      TestClient.CreateConnectionTest(out var c1, out var c2);
 
       var con1 = new ConversationManager(c1, true);
       con1.NewConversation = b => new TestConversation(con1);
@@ -395,16 +400,21 @@ namespace udpc_cs2
         throw new InvalidOperationException("Error in algorithm");  
     }
 
-    void TestFileConversation()
+    void TestFileConversation(bool useUdp)
     {
-      TestClient.CreateConnection(out var c1, out var c2);
+      Console.WriteLine("TestFileConversation");
+      Udpc.Client c1, c2;
+      if (useUdp)
+        TestClient.CreateConnectionUdp(out c1, out c2);
+      else
+        TestClient.CreateConnectionTest(out c1, out c2);
 
       var con1 = new ConversationManager(c1, true);
       con1.NewConversation = b => new ReceiveMessageConversation(con1);
       var con2 = new ConversationManager(c2, false);
       con2.NewConversation = b => new ReceiveMessageConversation(con2);
 
-      byte[] bytes = new byte[12345];
+      byte[] bytes = new byte[123451];
       for (int i = 0; i < bytes.Length; i++)
         bytes[i] = (byte)(i % 3);
       var memstr = new MemoryStream(bytes);
@@ -413,13 +423,21 @@ namespace udpc_cs2
       con1.StartConversation(snd);
       Thread.Sleep(50);
       snd.Start();
-      for (int i = 0; i < 10; i++)
-      {  
-        bool done2 = !con2.Process();
-        bool done1 = !con1.Process();
-        if (done2 && done1)
-          break;
+
+      void runProcessing(ConversationManager con)
+      {
+        var sw = Stopwatch.StartNew();
+        while (sw.ElapsedMilliseconds < 1000)
+        {
+          if(con.Process())
+            sw.Restart();
+        }
       }
+
+      var t1 = Task.Factory.StartNew(() => runProcessing(con1));
+      var t2 = Task.Factory.StartNew(() => runProcessing(con2));
+      t1.Wait();
+      t2.Wait();
 
       var data = File.ReadAllBytes("Downloads/TestFile");
       if (false == data.SequenceEqual(bytes))
@@ -429,11 +447,9 @@ namespace udpc_cs2
           if(data[i] != bytes[i])
             throw new InvalidOperationException("Sequences are not equal");
           
-        }
-        
+        } 
       }
-
-
+      Console.WriteLine("Download file done.");
     }
 
     public void RunTests()
@@ -451,7 +467,8 @@ namespace udpc_cs2
       UdpcSendFile();
       
       ConversationTest();
-      TestFileConversation();
+      TestFileConversation(false);
+      TestFileConversation(true);
       Console.WriteLine("Tests finished");
     }
 

@@ -210,7 +210,7 @@ namespace udpc_cs2
       int l = cli.Peek(buffer, 4);
       
       if(l < 4)
-        if (l == 0)
+        if (l <= 0)
           return false;
       else 
           throw new InvalidOperationException("Invalid amount of data read.");
