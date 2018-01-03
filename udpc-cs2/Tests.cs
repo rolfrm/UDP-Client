@@ -377,8 +377,8 @@ namespace udpc_cs2
 
     void TestShareFolders()
     {
-      var share_1 = Share.Create("rolf@0.0.0.0:test_1", "sync_test_2");
-      var share_2 = Share.Create("rolf@0.0.0.0:test_2", "sync_test_1");
+      var share_1 = FileShare.Create("rolf@0.0.0.0:test_1", "sync_test_2");
+      var share_2 = FileShare.Create("rolf@0.0.0.0:test_2", "sync_test_1");
       share_2.ConnectTo(share_1.Service);
       
     }
