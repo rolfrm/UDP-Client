@@ -256,16 +256,28 @@ namespace udpc_cs2
     class TestClient : Udpc.Client
     {
       readonly ConcurrentQueue<byte[]> readBuffer = new ConcurrentQueue<byte[]>();
+      // the general propability of loosing a packet.
+      public double LossPropability = 0.0;
+      // The surpassing this limit will make it loose packets.
+      public double MaxThroughPut = 1e6;
+      
+      // Circular buffers/sums to keep track of amount of data sent and when.
+      const int windowSize = 100;
+      readonly CircularSum windowTransferred = new CircularSum(windowSize);
+      readonly CircularSum windowStart = new CircularSum(windowSize);
+      static readonly Stopwatch rateTimer = Stopwatch.StartNew();
+      double CurrentRate;  
 
+      Random lossSimulationRnd = new Random();
+      
       TestClient other;
 
-        public static void CreateConnectionTest(out Udpc.Client c1, out Udpc.Client c2)
+        public static void CreateConnectionTest(out Udpc.Client c1, out Udpc.Client c2, double lossPropability)
         {
-          
-          var c11 = new TestClient();
-          var c22 = new TestClient();
+
+          var c11 = new TestClient {LossPropability = lossPropability};
+          var c22 = new TestClient {LossPropability = lossPropability, other = c11};
           c11.other = c22;
-          c22.other = c11;
           c1 = c11;
           c2 = c22;
         }
@@ -286,6 +298,35 @@ namespace udpc_cs2
       public void Write(byte[] data, int length)
       {
         if(other == null) throw new InvalidOperationException("Disconnected");
+        
+        {   // Ensure that we are below the target transfer rate.
+          checkTransferRate:
+
+          var timenow = rateTimer.ElapsedTicks;
+          var start = windowStart.First();
+          double ts = (timenow - start) / Stopwatch.Frequency;
+          if (ts < 1.0)
+          { // simulate that the buffers can hold one sec of data.
+            if (windowTransferred.Sum > MaxThroughPut)
+              return;
+          }
+          else
+          {
+            CurrentRate = windowTransferred.Sum / ts;
+            if (CurrentRate > MaxThroughPut)
+            {
+              return; // loose the packet.
+            }
+          }
+          
+          windowStart.Add(rateTimer.ElapsedTicks);
+          windowTransferred.Add(length);
+        }
+        var losscheck = lossSimulationRnd.NextDouble();
+        if (losscheck < LossPropability)
+          return; // simulate random packet loss.
+        
+        
         other.readBuffer.Enqueue(data.Take(length).ToArray());
       }
 
@@ -337,6 +378,13 @@ namespace udpc_cs2
         this.manager.SendMessage(this, data);
       }
 
+      public bool ConversationFinished { get; }
+      
+      public void Update()
+      {
+        
+      }
+
       public void Start()
       {
         var data = new byte[4];
@@ -347,7 +395,7 @@ namespace udpc_cs2
 
     void ConversationTest()
     {
-      TestClient.CreateConnectionTest(out var c1, out var c2);
+      TestClient.CreateConnectionTest(out var c1, out var c2, 0);
 
       var con1 = new ConversationManager(c1, true);
       con1.NewConversation = b => new TestConversation(con1);
@@ -407,12 +455,12 @@ namespace udpc_cs2
       if (useUdp)
         TestClient.CreateConnectionUdp(out c1, out c2);
       else
-        TestClient.CreateConnectionTest(out c1, out c2);
-
+        TestClient.CreateConnectionTest(out c1, out c2, 0.1);
+      ReceiveMessageConversation rcv = null;
       var con1 = new ConversationManager(c1, true);
       con1.NewConversation = b => new ReceiveMessageConversation(con1);
       var con2 = new ConversationManager(c2, false);
-      con2.NewConversation = b => new ReceiveMessageConversation(con2);
+      con2.NewConversation = b => rcv = new ReceiveMessageConversation(con2);
 
       byte[] bytes = new byte[123451];
       for (int i = 0; i < bytes.Length; i++)
@@ -424,24 +472,32 @@ namespace udpc_cs2
       Thread.Sleep(50);
       snd.Start();
 
-      void runProcessing(ConversationManager con)
-      {
-        var sw = Stopwatch.StartNew();
-        while (sw.ElapsedMilliseconds < 1000)
+      void runProcessing(ConversationManager con, string name)
+      { 
+        while (con.ConversationsActive)
         {
-          if(con.Process())
-            sw.Restart();
+          if (con.Process()) 
+            ; //sw.Restart();
+          else
+          {
+            con.Update();
+            Thread.Sleep(10);
+          }
+
         }
       }
 
-      var t1 = Task.Factory.StartNew(() => runProcessing(con1));
-      var t2 = Task.Factory.StartNew(() => runProcessing(con2));
+      var t1 = Task.Factory.StartNew(() => runProcessing(con1, "Send"));
+      var t2 = Task.Factory.StartNew(() => runProcessing(con2, "Receive"));
       t1.Wait();
       t2.Wait();
+      rcv.Stop();
 
       var data = File.ReadAllBytes("Downloads/TestFile");
       if (false == data.SequenceEqual(bytes))
-      {
+      { 
+        if(data.Length != bytes.Length)
+          throw new InvalidOperationException("Lengths does not match.");
         for (int i = 0; i < data.Length; i++)
         {
           if(data[i] != bytes[i])
@@ -454,6 +510,8 @@ namespace udpc_cs2
 
     public void RunTests()
     {
+      TestFileConversation(false);
+      return;
       
       TestCircularSum();
       //gitSuperPatch();
@@ -467,7 +525,7 @@ namespace udpc_cs2
       UdpcSendFile();
       
       ConversationTest();
-      TestFileConversation(false);
+      
       TestFileConversation(true);
       Console.WriteLine("Tests finished");
     }

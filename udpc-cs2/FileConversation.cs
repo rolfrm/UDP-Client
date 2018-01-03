@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.Serialization.Formatters.Binary;
@@ -52,11 +53,12 @@ namespace udpc_cs2
                     Thread.Sleep(10);
                     goto checkTransferRate;
                 }
+                windowStart.Add(rateTimer.ElapsedTicks);
+                windowTransferred.Add(length);
             }
 
             manager.SendMessage(this, data, length);
-            windowStart.Add(rateTimer.ElapsedTicks);
-            windowTransferred.Add(length);
+            
         }
 
         readonly BinaryFormatter bf;
@@ -86,6 +88,12 @@ namespace udpc_cs2
         {
             
         }
+
+        public bool ConversationFinished { get; protected set; }
+        public virtual void Update()
+        {
+            
+        }
     }
     
     
@@ -109,6 +117,12 @@ namespace udpc_cs2
         
     }
 
+    [Serializable]
+    public class ReceiveFinished
+    {
+        
+    }
+
     /// <summary>
     /// Sends any size of message over a udpc channel.
     /// </summary>
@@ -116,7 +130,7 @@ namespace udpc_cs2
     {
         readonly Stream file;
         readonly string fileName;
-        
+        Stopwatch sw = new Stopwatch();
         public SendMessageConversation(ConversationManager manager, Stream fileToSend, string fileName) : base(manager)
         {
             file = fileToSend;
@@ -134,8 +148,15 @@ namespace udpc_cs2
             Send(fsinfo);
         }
 
+        public override void Update()
+        {
+            if (sw.ElapsedMilliseconds > 500)
+                ConversationFinished = true;
+        }
+
         public override void HandleMessage(byte[] data)
         {
+            sw.Reset();
             base.HandleMessage(data);
             var obj = ReadObject(data);
             if (obj == null) throw new InvalidOperationException("Un expected message from target.");
@@ -161,15 +182,24 @@ namespace udpc_cs2
                     foreach (var chunk in o.chunkIds)
                     {
                         buffer[0] = 2;
+                        Utils.IntToByteArray(chunk, buffer,1);
                         file.Seek(chunk * (1400 - 5), SeekOrigin.Begin);
                         file.Read(buffer, 5, buffer.Length - 5);
                         Send(buffer);
                     }
 
                     break;
+                case ReceiveFinished _:
+                    ConversationFinished = true;
+                    break;
+                default:
+                    throw new InvalidOperationException("Unsupported kind of object.");
+                        
             }
-        
+
+            sw.Start();
         }
+        
     }
 
     public class ReceiveMessageConversation : FileConversation
@@ -179,6 +209,38 @@ namespace udpc_cs2
         Stream outStream;
         bool[] chunksToReceive;
         int chunksLeft;
+
+        int finishedIndex = 0;
+        bool unfinishedData = false;
+        Stopwatch sw = new Stopwatch();
+        public override void Update()
+        {
+            base.Update();
+            if (unfinishedData && sw.ElapsedMilliseconds > 100)
+            {
+                List<int> indexes = new List<int>();
+                for (int i = finishedIndex + 1; i < chunksToReceive.Length; i++)
+                {
+                    if (chunksToReceive[i] == false)
+                    {
+                        indexes.Add(i);
+                    }
+                    
+
+                    var data = indexes.ToArray();
+                    if (data.Length == 0)
+                    {
+                        unfinishedData = false;
+                    }
+                    else
+                    {
+                        Send(new FileSendReq {chunkIds = data});
+                    }
+                }
+                sw.Restart();
+            }
+        }
+
         public override void HandleMessage(byte[] data)
         {
             
@@ -194,11 +256,24 @@ namespace udpc_cs2
                     outStream.Write(data, 5, data.Length - 5);
                     chunksToReceive[index] = true;
                     chunksLeft--;
+                    if (sw.IsRunning)
+                        sw.Restart();
+                    
+                    if (finishedIndex == index - 1)
+                        finishedIndex = index;
+                    else
+                    {
+                        unfinishedData = true;
+                        if (sw.IsRunning == false)
+                            sw.Start();
+                    }
                 }
 
                 if (chunksLeft == 0)
                 {
                     outStream.Close();
+                    ConversationFinished = true;
+                    Send(new ReceiveFinished());
                 }
             }
             else if (data[0] == 1)
@@ -222,6 +297,12 @@ namespace udpc_cs2
 
         public ReceiveMessageConversation(ConversationManager manager) : base(manager)
         {
+        }
+
+        public void Stop()
+        {
+            if(outStream != null)
+                outStream.Close();
         }
     }
 

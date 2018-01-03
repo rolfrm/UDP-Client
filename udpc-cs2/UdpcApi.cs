@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
@@ -215,6 +216,8 @@ namespace udpc_cs2
       else 
           throw new InvalidOperationException("Invalid amount of data read.");
       
+      ticks = 0;
+      
       int convId = BitConverter.ToInt32(buffer, 0);
       if(convId == 0 || convId == -1)
         throw new InvalidOperationException($"Invalid conversation ID: {convId}.");
@@ -244,10 +247,36 @@ namespace udpc_cs2
       return true;
     }
 
+    int ticks = 0;
+    
+    public void Update()
+    {
+      ticks++;
+      foreach (var con in Conversations.Values.Where(x => x.ConversationFinished).ToArray())
+      {
+        Conversations.Remove(ConversationIds[con]);
+        ConversationIds.Remove(con);
+      }
+
+      foreach (var con in Conversations.Values)
+      {
+        con.Update();  
+      }
+
+      if (Conversations.Values.Count == 0)
+        Thread.Sleep(10);
+    }
+    
+    public bool ConversationsActive
+    {
+      get { return ticks < 100; }
+    } 
+
     byte[] sendBuffer = new byte[1024];
 
     public void SendMessage(Conversation conv, byte[] message, int count = -1)
     {
+      ticks = 0;
       if (count == -1) count = message.Length;
       if(count > message.Length) throw new InvalidOperationException("Count cannot be larger than message.Length");
       int id;
@@ -264,5 +293,7 @@ namespace udpc_cs2
   public interface Conversation
   {
     void HandleMessage(byte[] data);
+    bool ConversationFinished { get; }
+    void Update();
   }
 }
