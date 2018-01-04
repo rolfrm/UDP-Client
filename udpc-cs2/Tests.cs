@@ -161,10 +161,10 @@ namespace udpc_cs2
           }
         }
         Thread.Sleep(500);
-        
+
       }
-      
-      
+
+
     }
 
     void UdpcBasicInterop()
@@ -237,8 +237,8 @@ namespace udpc_cs2
       serv.Disconnect();
       Console.WriteLine("Finished!");
     }
-    
-    
+
+
 
     void TestUtils()
     {
@@ -260,16 +260,16 @@ namespace udpc_cs2
       public double LossPropability = 0.0;
       // The surpassing this limit will make it loose packets.
       public double MaxThroughPut = 1e6;
-      
+
       // Circular buffers/sums to keep track of amount of data sent and when.
       const int windowSize = 100;
       readonly CircularSum windowTransferred = new CircularSum(windowSize);
       readonly CircularSum windowStart = new CircularSum(windowSize);
       static readonly Stopwatch rateTimer = Stopwatch.StartNew();
-      double CurrentRate;  
+      double CurrentRate;
 
       Random lossSimulationRnd = new Random();
-      
+
       TestClient other;
 
         public static void CreateConnectionTest(out Udpc.Client c1, out Udpc.Client c2, double lossPropability)
@@ -298,7 +298,7 @@ namespace udpc_cs2
       public void Write(byte[] data, int length)
       {
         if(other == null) throw new InvalidOperationException("Disconnected");
-        
+
         {   // Ensure that we are below the target transfer rate.
           checkTransferRate:
 
@@ -318,15 +318,15 @@ namespace udpc_cs2
               return; // loose the packet.
             }
           }
-          
+
           windowStart.Add(rateTimer.ElapsedTicks);
           windowTransferred.Add(length);
         }
         var losscheck = lossSimulationRnd.NextDouble();
         if (losscheck < LossPropability)
           return; // simulate random packet loss.
-        
-        
+
+
         other.readBuffer.Enqueue(data.Take(length).ToArray());
       }
 
@@ -379,10 +379,10 @@ namespace udpc_cs2
       }
 
       public bool ConversationFinished { get; }
-      
+
       public void Update()
       {
-        
+
       }
 
       public void Start()
@@ -428,7 +428,7 @@ namespace udpc_cs2
       var share_1 = FileShare.Create("rolf@0.0.0.0:test_1", "sync_test_2");
       var share_2 = FileShare.Create("rolf@0.0.0.0:test_2", "sync_test_1");
       share_2.ConnectTo(share_1.Service);
-      
+
     }
 
 
@@ -439,13 +439,13 @@ namespace udpc_cs2
       {
         circ.Add(i);
       }
-      
+
       if(Math.Abs(circ.Sum - (10 + 11 + 12 + 13 + 14 + 15 + 16 + 17 + 18 + 19)) > 0.001)
         throw new InvalidOperationException("Error in algorithm");
       if(circ.Last() != 19)
         throw new InvalidOperationException("Error in algorithm");
       if(circ.First() != 10)
-        throw new InvalidOperationException("Error in algorithm");  
+        throw new InvalidOperationException("Error in algorithm");
     }
 
     void TestFileConversation(bool useUdp)
@@ -461,22 +461,22 @@ namespace udpc_cs2
       con1.NewConversation = b => new ReceiveMessageConversation(con1);
       var con2 = new ConversationManager(c2, false);
       con2.NewConversation = b => rcv = new ReceiveMessageConversation(con2);
-
+      restart:
       byte[] bytes = new byte[123451];
       for (int i = 0; i < bytes.Length; i++)
         bytes[i] = (byte)(i % 3);
       var memstr = new MemoryStream(bytes);
       var snd = new SendMessageConversation(con1, memstr, "TestFile");
-      
+
       con1.StartConversation(snd);
       Thread.Sleep(50);
       snd.Start();
 
       void runProcessing(ConversationManager con, string name)
-      { 
+      {
         while (con.ConversationsActive)
         {
-          if (con.Process()) 
+          if (con.Process())
             ; //sw.Restart();
           else
           {
@@ -491,19 +491,26 @@ namespace udpc_cs2
       var t2 = Task.Factory.StartNew(() => runProcessing(con2, "Receive"));
       t1.Wait();
       t2.Wait();
+      if (rcv == null)
+        goto restart;
       rcv.Stop();
 
+
       var data = File.ReadAllBytes("Downloads/TestFile");
+      if (data.Length == 0)
+        goto restart;
+
       if (false == data.SequenceEqual(bytes))
-      { 
+      {
         if(data.Length != bytes.Length)
           throw new InvalidOperationException("Lengths does not match.");
         for (int i = 0; i < data.Length; i++)
         {
           if(data[i] != bytes[i])
+
             throw new InvalidOperationException("Sequences are not equal");
-          
-        } 
+
+        }
       }
       Console.WriteLine("Download file done.");
     }
@@ -512,7 +519,7 @@ namespace udpc_cs2
     {
       TestFileConversation(false);
       return;
-      
+
       TestCircularSum();
       //gitSuperPatch();
       GitInterop();
@@ -520,12 +527,12 @@ namespace udpc_cs2
       var trd = new Thread(runServer) { IsBackground = true};
       trd.Start();
       Thread.Sleep(100);
-      
+
       UdpcBasicInterop();
       UdpcSendFile();
-      
+
       ConversationTest();
-      
+
       TestFileConversation(true);
       Console.WriteLine("Tests finished");
     }

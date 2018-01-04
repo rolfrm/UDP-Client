@@ -194,7 +194,7 @@ namespace udpc_cs2
     public int StartConversation(Conversation conv)
     {
       var convId = newConversationId();
-
+      previousConversations.Add(convId);
       Conversations[convId] = conv;
       ConversationIds[conv] = convId;
 
@@ -209,15 +209,15 @@ namespace udpc_cs2
     public bool Process()
     {
       int l = cli.Peek(buffer, 4);
-      
+
       if(l < 4)
         if (l <= 0)
           return false;
-      else 
+      else
           throw new InvalidOperationException("Invalid amount of data read.");
-      
+
       ticks = 0;
-      
+
       int convId = BitConverter.ToInt32(buffer, 0);
       if(convId == 0 || convId == -1)
         throw new InvalidOperationException($"Invalid conversation ID: {convId}.");
@@ -227,14 +227,30 @@ namespace udpc_cs2
         int mod = convId % 2;
         if ((isServer && mod == 0) || (!isServer && mod == 1))
         {
+          if (previousConversations.Contains(convId))
+          {
+            cli.Read(buffer, buffer.Length);
+            return false;
+
+          }
+
           conv = NewConversation(buffer);
 
           Conversations[convId] = conv;
           ConversationIds[conv] = convId;
+          previousConversations.Add(convId);
+
+
         }
         else
         {
-          throw new InvalidOperationException($"Conversation ID '{convId}' does not exist.");
+          if(previousConversations.Contains(convId) == false)
+            throw new InvalidOperationException($"Conversation ID '{convId}' does not exist.");
+          else
+          {
+            // conversation was already closed.
+            return false;
+          }
         }
       }
 
@@ -247,8 +263,10 @@ namespace udpc_cs2
       return true;
     }
 
+    HashSet<int> previousConversations = new HashSet<int>();
+
     int ticks = 0;
-    
+
     public void Update()
     {
       ticks++;
@@ -260,17 +278,20 @@ namespace udpc_cs2
 
       foreach (var con in Conversations.Values)
       {
-        con.Update();  
+        con.Update();
       }
 
       if (Conversations.Values.Count == 0)
         Thread.Sleep(10);
     }
-    
+
     public bool ConversationsActive
     {
-      get { return ticks < 100; }
-    } 
+      get
+      {
+        return (cli.Pending() > 0) || (ticks < 100);
+      }
+    }
 
     byte[] sendBuffer = new byte[1024];
 
