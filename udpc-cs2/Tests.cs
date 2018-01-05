@@ -282,7 +282,7 @@ namespace udpc_cs2
           c2 = c22;
         }
 
-      public static void CreateConnectionUdp(out Udpc.Client c1, out Udpc.Client c2)
+      public static Udpc.Server CreateConnectionUdp(out Udpc.Client c1, out Udpc.Client c2)
       {
         var serv = Udpc.Login("rolf@0.0.0.0:test1");
         Udpc.Client c11 = null;
@@ -293,6 +293,7 @@ namespace udpc_cs2
         c2 = serv.Listen();;
         tsk.Wait();
         c1 = c11;
+        return serv;
       }
 
       public void Write(byte[] data, int length)
@@ -360,6 +361,8 @@ namespace udpc_cs2
         other = null;
         readBuffer.Clear();
       }
+
+      public int TimeoutUs { get; set; }
     }
 
     class TestConversation : Conversation
@@ -452,15 +455,23 @@ namespace udpc_cs2
     {
       Console.WriteLine("TestFileConversation");
       Udpc.Client c1, c2;
+      Udpc.Server serv = null;
       if (useUdp)
-        TestClient.CreateConnectionUdp(out c1, out c2);
+        serv = TestClient.CreateConnectionUdp(out c1, out c2);
       else
-        TestClient.CreateConnectionTest(out c1, out c2, 0.1);
+        TestClient.CreateConnectionTest(out c1, out c2, 0);
       ReceiveMessageConversation rcv = null;
       var con1 = new ConversationManager(c1, true);
-      con1.NewConversation = b => new ReceiveMessageConversation(con1);
+      //con1.NewConversation = b => new ReceiveMessageConversation(con1);
       var con2 = new ConversationManager(c2, false);
       con2.NewConversation = b => rcv = new ReceiveMessageConversation(con2);
+
+
+      for (int _i = 0; _i < 10; _i++)
+      {
+
+
+
       restart:
       byte[] bytes = new byte[123451];
       for (int i = 0; i < bytes.Length; i++)
@@ -468,9 +479,11 @@ namespace udpc_cs2
       var memstr = new MemoryStream(bytes);
       var snd = new SendMessageConversation(con1, memstr, "TestFile");
 
-      con1.StartConversation(snd);
+
       Thread.Sleep(50);
+      con1.StartConversation(snd);
       snd.Start();
+      Thread.Sleep(50);
 
       void runProcessing(ConversationManager con, string name)
       {
@@ -481,7 +494,6 @@ namespace udpc_cs2
           else
           {
             con.Update();
-            Thread.Sleep(10);
           }
 
         }
@@ -512,17 +524,28 @@ namespace udpc_cs2
 
         }
       }
+
       Console.WriteLine("Download file done.");
+      }
+      c1.Disconnect();
+      c2.Disconnect();
+      if(serv != null)
+        serv.Disconnect();
+      Thread.Sleep(100);
     }
 
     public void RunTests()
     {
-      TestFileConversation(false);
-      return;
+      //var sw = Stopwatch.StartNew();
+      //for(int i = 0 ; i < 10; i++)
+      //  TestFileConversation(false);
+
+      //Console.WriteLine("Time spent: {0}", sw.Elapsed);
+      //return;
 
       TestCircularSum();
       //gitSuperPatch();
-      GitInterop();
+      //GitInterop();
       TestUtils();
       var trd = new Thread(runServer) { IsBackground = true};
       trd.Start();
@@ -532,6 +555,15 @@ namespace udpc_cs2
       UdpcSendFile();
 
       ConversationTest();
+
+      var sw2 = Stopwatch.StartNew();
+      for (int i = 0; i < 1000; i++)
+      {
+        Console.WriteLine(">> {0}", i);
+        TestFileConversation(true);
+      }
+
+      Console.WriteLine("Time spent: {0}", sw2.Elapsed);
 
       TestFileConversation(true);
       Console.WriteLine("Tests finished");

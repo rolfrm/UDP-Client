@@ -60,6 +60,13 @@ namespace udpc_cs2
 
     [DllImport("libudpc.so")]
     public static extern void udpc_start_server(string address);
+
+    [DllImport("libudpc.so")]
+    public static extern void udpc_set_timeout(IntPtr con, int us);
+
+    [DllImport("libudpc.so")]
+    public static extern int udpc_get_timeout(IntPtr con);
+
   }
 
 
@@ -87,6 +94,7 @@ namespace udpc_cs2
       int Peek(byte[] buffer, int length);
       int Pending();
       void Disconnect();
+      int TimeoutUs { get; set; }
     }
 
     public interface Server
@@ -129,6 +137,15 @@ namespace udpc_cs2
     {
       UdpcApi.udpc_close(con);
     }
+
+    public int TimeoutUs
+    {
+      get { return UdpcApi.udpc_get_timeout(con); }
+      set {UdpcApi.udpc_set_timeout(con, value);}
+    }
+
+
+
   }
 
   class UdpcServer : Udpc.Server
@@ -162,11 +179,12 @@ namespace udpc_cs2
   {
     int conversationId = 0xF0;
 
-    Udpc.Client cli;
+    public Udpc.Client cli;
     bool isServer = false;
     public ConversationManager(Udpc.Client cli, bool isServer)
     {
       this.cli = cli;
+      this.cli.TimeoutUs = 10000;
       if (isServer)
       {
         conversationId += 1;
@@ -215,6 +233,10 @@ namespace udpc_cs2
           return false;
       else
           throw new InvalidOperationException("Invalid amount of data read.");
+      l = cli.Pending();
+      if(l > buffer.Length)
+        Array.Resize(ref buffer, l);
+
 
       ticks = 0;
 
@@ -254,8 +276,6 @@ namespace udpc_cs2
         }
       }
 
-      l = cli.Pending();
-      Array.Resize(ref buffer, l);
       cli.Read(buffer, buffer.Length);
       byte[] newbuffer = new byte[l - 4];
       Array.Copy(buffer, 4, newbuffer, 0, l - 4);
@@ -289,7 +309,7 @@ namespace udpc_cs2
     {
       get
       {
-        return (cli.Pending() > 0) || (ticks < 100);
+        return (cli.Pending() > 0) || (ticks < 10);
       }
     }
 
