@@ -234,7 +234,7 @@ dirscan dirscan_from_buffer(void * buffer){
   out.files = iron_clone(strs, sizeof(strs));
   out.md5s = alloc(sizeof(out.md5s[0]) * cnt);
   udpc_unpack(out.md5s, sizeof(out.md5s[0]) * cnt, &ptr);
-  out.last_change = alloc0(sizeof(out.last_change[0]) * cnt);
+  out.last_change = alloc(sizeof(out.last_change[0]) * cnt);
   udpc_unpack(out.last_change, sizeof(out.last_change[0]) * cnt, &ptr);
   out.size = alloc(sizeof(out.size[0]) * cnt);
   udpc_unpack(out.size, sizeof(out.size[0]) * cnt, &ptr);
@@ -289,7 +289,7 @@ int udpc_dirscan_client(udpc_connection * con, udpc_connection_stats * stats, di
 		   size_t chunk_id, size_t chunk_size, void * userdata){
     UNUSED(userdata);
     if(buffer == NULL){
-      buffer = alloc0(tid->total_size);
+      buffer = alloc(tid->total_size);
     }
     size_t offset = chunk_id * tid->chunk_size;
     size_t to_write = MIN(chunk_size, tid->total_size - offset);

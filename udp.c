@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdarg.h>
 #include <iron/log.h>
+#include <iron/process.h>
 #include "udp.h"
 
 struct sockaddr_storage udp_get_addr(const char * remote_address, int port){
@@ -36,16 +37,38 @@ struct sockaddr_storage udp_get_addr(const char * remote_address, int port){
   remote_addr.s4.sin_port = htons(port);
   return remote_addr.ss;
 }
+static int opened_closed = 0;
+static int closed_ports[1024];
 
+static iron_mutex mut = {0};
+void take_udp_mutex(){
+  if(mut.data == NULL){
+    mut = iron_mutex_create();
+  }
+  iron_mutex_lock(mut);
+  logd("TAKE MUTEX\n");
+}
+
+void release_udp_mutex(){
+  iron_mutex_unlock(mut);
+  logd("Release MUTEX\n");
+}
 int udp_connect(struct sockaddr_storage * local, struct sockaddr_storage * remote, bool reuse){
-  int fd = socket(local->ss_family, SOCK_DGRAM, 0);
-  if (fd < 0) return fd;
+  take_udp_mutex();
+  int fd = socket(local->ss_family, SOCK_DGRAM | SOCK_CLOEXEC, IPPROTO_UDP);
+  if (fd < 0) {
+    release_udp_mutex();
+    return fd;
+  }
+  if(closed_ports[fd] == 1){
+    ERROR("CONNECT: PORT ALREADY OPEN %i\n", fd);
+  }
   int on = 1;
   if(reuse){
     setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const void*) &on, (socklen_t) sizeof(on));
-#ifdef SO_REUSEPORT
+    //#ifdef SO_REUSEPORT
     setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, (const void*) &on, (socklen_t) sizeof(on));
-#endif
+    //#endif
   }
   
   ASSERT(remote->ss_family == local->ss_family);
@@ -61,7 +84,12 @@ int udp_connect(struct sockaddr_storage * local, struct sockaddr_storage * remot
   } else {
     connect(fd, (struct sockaddr *) remote, sizeof(struct sockaddr_in6));
   }
+  opened_closed += 1;
+  logd("CONNECTED: %i\n", fd);
   
+  closed_ports[fd] = 1;
+
+  release_udp_mutex();  
   return fd;
 }
 
@@ -77,23 +105,51 @@ int udp_get_port(int fd){
   return local_addr.s4.sin_port;
 }
 
+
 int udp_open(struct sockaddr_storage * local){
   const int on = 1, off = 0;
-  int fd = socket(local->ss_family, SOCK_DGRAM, 0);
-  if(fd < 0) return fd;
+  take_udp_mutex();
+  int fd = socket(local->ss_family, SOCK_DGRAM| SOCK_CLOEXEC, IPPROTO_UDP);
+  if(fd < 0){
+    release_udp_mutex();
+    return fd;
+  }
+  logd("OPENED: %i\n", fd);
+  if(closed_ports[fd] == 1)
+    ERROR("OPEN: PORT ALREADY OPEN %i\n", fd);
   setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const void*) &on, (socklen_t) sizeof(on));
-#ifdef SO_REUSEPORT
+  //#ifdef SO_REUSEPORT
   setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, (const void*) &on, (socklen_t) sizeof(on));
-#endif
+  //#endif
   if (local->ss_family == AF_INET) {
     bind(fd, (const struct sockaddr *) local, sizeof(struct sockaddr_in));
   } else {
     setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, (char *)&off, sizeof(off));
     bind(fd, (const struct sockaddr *) local, sizeof(struct sockaddr_in6));
   }
+  opened_closed += 1;
+
+  closed_ports[fd] = 1;
+  release_udp_mutex();
   return fd;
 }
-
+void iron_sleep(double);
 void udp_close(int fd){
-  close(fd);
+  take_udp_mutex();
+  if(closed_ports[fd] == 0)
+    ERROR("PORT NOT OPEN");
+  ASSERT(fd != 0);
+  //int ok = shutdown(fd, 0);
+  //logd("OK?? %i\n", ok);
+  //flush(fd);
+  
+  opened_closed -= 1;
+
+  closed_ports[fd] = 0;
+  logd("CLOSED: %i %i\n", opened_closed, fd);
+  while(!close(fd)){
+    iron_sleep(0.001);
+  }
+  release_udp_mutex();
+
 }

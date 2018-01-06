@@ -11,6 +11,8 @@
 //#define simulate_pk_loss {int rnd = rand() % 2; if(rnd == 0)return;}
 #define simulate_pk_loss ;
 
+//"HIGH:!aNULL:!MD5:!RC4"
+const char * ssl_ciphers = "AES256-SHA256";
 struct _ssl_server{
   SSL_CTX * ctx;
   int fd;
@@ -29,6 +31,7 @@ struct _ssl_server_con{
 struct _ssl_client{
   SSL * ssl;
   SSL_CTX * ctx;
+  int fd;
 };
 
 static void ssl_ensure_initialized(){
@@ -208,19 +211,28 @@ static int dtls_verify_callback (int ok, X509_STORE_CTX *ctx) {
 
 ssl_server * ssl_setup_server(int fd){
   ssl_ensure_initialized();
-  SSL_CTX * ctx = SSL_CTX_new(DTLSv1_server_method());
+  SSL_CTX * ctx = SSL_CTX_new(DTLSv1_2_server_method());
   { // setup server SSL CTX
-    SSL_CTX_set_cipher_list(ctx, "HIGH:!aNULL:!MD5:!RC4");
+    SSL_CTX_set_cipher_list(ctx, ssl_ciphers);
     SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_OFF);
     
-    if (!SSL_CTX_use_certificate_file(ctx, "certs/client-cert.pem", SSL_FILETYPE_PEM))
-      printf("\nERROR: no certificate found!");
+    if (!SSL_CTX_use_certificate_file(ctx, "certs/client-cert.pem", SSL_FILETYPE_PEM)){
+      loge("ERROR: no certificate found!\n");
+      SSL_CTX_free(ctx);
+      return NULL;
+    }
     
-    if (!SSL_CTX_use_PrivateKey_file(ctx, "certs/client-key.pem", SSL_FILETYPE_PEM))
-      printf("\nERROR: no private key found!");
+    if (!SSL_CTX_use_PrivateKey_file(ctx, "certs/client-key.pem", SSL_FILETYPE_PEM)){
+      loge("ERROR: no private key found!\n");
+      SSL_CTX_free(ctx);
+      return NULL;
+    }
     
-    if (!SSL_CTX_check_private_key (ctx))
-      printf("\nERROR: invalid private key!");
+    if (!SSL_CTX_check_private_key (ctx)){
+      loge("ERROR: invalid private key!\n");
+      SSL_CTX_free(ctx);
+      return NULL;
+    }
     
     /* Client has to authenticate */
     SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_CLIENT_ONCE, dtls_verify_callback);
@@ -229,7 +241,7 @@ ssl_server * ssl_setup_server(int fd){
     SSL_CTX_set_cookie_generate_cb(ctx, generate_cookie);
     SSL_CTX_set_cookie_verify_cb(ctx, verify_cookie);
   }
-  ssl_server * srv = alloc0(sizeof(ssl_server));
+  ssl_server * srv = alloc(sizeof(ssl_server));
   srv->ctx = ctx;
   srv->fd = fd;
   return srv;
@@ -274,19 +286,28 @@ static void handle_ssl_error(SSL * ssl, int ret){
 ssl_server_con * ssl_server_accept(ssl_server_client * scli, int fd){
   BIO_set_fd(SSL_get_rbio(scli->ssl), fd, BIO_NOCLOSE);
   BIO_ctrl(SSL_get_rbio(scli->ssl), BIO_CTRL_DGRAM_SET_CONNECTED, 0, &scli->addr);
+  int retries = 0;
+ retry:;
   int ret = 0;
   do{ret = SSL_accept(scli->ssl);}
   while(ret == 0);
+  
   if(ret < 0){
-    handle_ssl_error(scli->ssl, ret);
-    return NULL;
+    if(retries > 10){
+      logd("Retry %i: \n");
+      handle_ssl_error(scli->ssl, ret);
+      return NULL;
+    }
+    retries++;
+    goto retry;
   }
+  
   ASSERT(ret > 0);
   struct timeval timeout;
   timeout.tv_sec = 5;
   timeout.tv_usec = 0;
   BIO_ctrl(SSL_get_rbio(scli->ssl), BIO_CTRL_DGRAM_SET_RECV_TIMEOUT, 0, &timeout);
-  ssl_server_con * con = alloc0(sizeof(ssl_server_con));
+  ssl_server_con * con = alloc(sizeof(ssl_server_con));
   con->ssl = scli->ssl;
   return con;
 }
@@ -317,25 +338,47 @@ void ssl_server_close(ssl_server_client * cli){
   SSL_free(cli->ssl);
 }
 
+void ssl_info_callback(const SSL *ssl, int type, int val){
+  UNUSED(ssl);
+
+  logd("SERVER: %i %i\n", type, val);
+  logd("SERVER: %s\n", SSL_state_string_long(ssl));
+
+}
+
 ssl_server_client * ssl_server_listen(ssl_server * serv){
 
   BIO * bio = BIO_new_dgram(serv->fd, BIO_NOCLOSE);
   {
     struct timeval timeout;
-    timeout.tv_sec = 10;
-    timeout.tv_usec = 0;
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 10000;
     BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_RECV_TIMEOUT, 0, &timeout);
   }
   SSL * ssl = SSL_new(serv->ctx);
   SSL_set_bio(ssl, bio, bio);
   SSL_set_options(ssl, SSL_OP_COOKIE_EXCHANGE);
 
+  //SSL_set_accept_state(ssl);
+  //SSL_set_info_callback(ssl, ssl_info_callback);
   struct sockaddr_storage client_addr = {0};
-  while (DTLSv1_listen(ssl, &client_addr) <= 0){
+  int error = 0;
+  while ((error = DTLSv1_listen(ssl, &client_addr)) <= 0){
+
+    int err = SSL_get_error(ssl, error);
+    SSL_clear(ssl);
+    //logd("ERROR: %i\n", err);
+    //iron_sleep(0.1);
+    if(err == 2)
+      continue;
+    SSL_set_accept_state(ssl);
+    //handle_ssl_error(ssl, error);
     SSL_free(ssl);
+    //BIO_ssl_shutdown(bio);
+    
     return NULL;
   }
-  ssl_server_client * con = alloc0(sizeof(ssl_server_client));
+  ssl_server_client * con = alloc(sizeof(ssl_server_client));
   con->ssl = ssl;
   con->addr = client_addr;
   con->bio = bio;
@@ -343,45 +386,102 @@ ssl_server_client * ssl_server_listen(ssl_server * serv){
   
 }
 
+void SSL_CTX_state_cb(const SSL *s, int where, int ret)
+{
+    const char *str;
+    int w;
+    w = where& ~SSL_ST_MASK;
+    if (w & SSL_ST_CONNECT)
+        str="SSL_connect";
+    else if (w & SSL_ST_ACCEPT)
+        str="SSL_accept";
+    else
+        str="undefined";
+
+    if (where & SSL_CB_LOOP)
+    {
+        logd("%s:%s\n", str,
+            SSL_state_string_long(s));
+    }
+    else if (where & SSL_CB_ALERT)
+    {
+        str=(where & SSL_CB_READ)?"read":"write";
+        logd("SSL3 alert %s:%s:%s\n",
+            str,
+            SSL_alert_type_string_long(ret),
+            SSL_alert_desc_string_long(ret));
+    }
+    else if (where & SSL_CB_EXIT)
+    {
+        if (ret == 0)
+            logd("%s:failed in %s\n",
+                str, SSL_state_string_long(s));
+        else if (ret < 0)
+        {
+            logd("%s:error in %s\n",
+                str, SSL_state_string_long(s));
+        }
+    }
+}
+
+
 ssl_client * ssl_start_client(int fd, struct sockaddr * remote_addr){
   ssl_ensure_initialized();
-  SSL_CTX * ctx = SSL_CTX_new(DTLSv1_client_method());
-  SSL_CTX_set_cipher_list(ctx, "HIGH:!aNULL:!MD5:!RC4");
+  SSL_CTX * ctx = SSL_CTX_new(DTLSv1_2_client_method());
+  //SSL_CTX_set_info_callback(ctx, SSL_CTX_state_cb);
+  SSL_CTX_set_cipher_list(ctx, ssl_ciphers);
+
+  if (!SSL_CTX_use_certificate_file(ctx, "certs/client-cert.pem", SSL_FILETYPE_PEM)){
+    printf("\nERROR: no certificate found!\n");
+    SSL_CTX_free(ctx);
+    return NULL;
+  }
   
-  if (!SSL_CTX_use_certificate_file(ctx, "certs/client-cert.pem", SSL_FILETYPE_PEM))
-    printf("\nERROR: no certificate found!");
   
-  if (!SSL_CTX_use_PrivateKey_file(ctx, "certs/client-key.pem", SSL_FILETYPE_PEM))
-    printf("\nERROR: no private key found!");
+  if (!SSL_CTX_use_PrivateKey_file(ctx, "certs/client-key.pem", SSL_FILETYPE_PEM)){
+    printf("\nERROR: no private key found!\n");
+    SSL_CTX_free(ctx);
+    return NULL;
+  }
   
-  if (!SSL_CTX_check_private_key (ctx))
-    printf("\nERROR: invalid private key!");
-  
+  if (!SSL_CTX_check_private_key (ctx)){
+    printf("\nERROR: invalid private key!\n");
+    SSL_CTX_free(ctx);
+    return NULL;
+  }
+  SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_COMPRESSION);
   SSL_CTX_set_verify_depth (ctx, 2);
   SSL_CTX_set_read_ahead(ctx, 1);
   
-  SSL * ssl = SSL_new(ctx);
   
+  SSL * ssl = SSL_new(ctx);
+  SSL_set_options(ssl, SSL_OP_COOKIE_EXCHANGE | SSL_OP_ALL);
+  SSL_set_mode(ssl, SSL_MODE_AUTO_RETRY);
   // Create BIO, connect and set to already connected.
-  BIO * bio = BIO_new_dgram(fd, BIO_CLOSE);
+  BIO * bio = BIO_new_dgram(fd, BIO_NOCLOSE);
   
   BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_CONNECTED, 0, remote_addr);
   SSL_set_bio(ssl, bio, bio);
-  int ret = SSL_connect(ssl);
-  if(ret < 0){
-    handle_ssl_error(ssl, ret);
-  }
-  
   {
     struct timeval timeout;
-    timeout.tv_sec = 3;
+    timeout.tv_sec = 1;
     timeout.tv_usec = 0;
     BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_RECV_TIMEOUT, 0, &timeout);
   }
+    
+  int ret = SSL_connect(ssl);
+  if(ret < 0){
+    //BIO_ssl_shutdown(bio);
+    SSL_free(ssl);
+    SSL_CTX_free(ctx);
 
-  ssl_client * cli = alloc0(sizeof(ssl_client));
+    return NULL;
+  }
+
+  ssl_client * cli = alloc(sizeof(ssl_client));
   cli->ssl = ssl;
   cli->ctx = ctx;
+  cli->fd = fd;
   return cli;
 }
 
@@ -451,8 +551,10 @@ void ssl_client_heartbeat(ssl_client * cli){
 }
 
 void ssl_client_close(ssl_client * cli){
+  BIO_ssl_shutdown(SSL_get_rbio(cli->ssl));
   SSL_shutdown(cli->ssl);
   SSL_free(cli->ssl);
+  SSL_CTX_free(cli->ctx);
 }
 
 struct sockaddr_storage ssl_server_client_addr(ssl_server_client * cli){

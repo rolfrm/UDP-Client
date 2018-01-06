@@ -405,9 +405,57 @@ bool test_transmission(){
   return TEST_SUCCESS;
 }
 
+int test_basic_functionality(){
+  void * server_thread( void * unused){
+    UNUSED(unused);
+    udpc_start_server("0.0.0.0");
+    return NULL;
+  }
+
+  iron_thread * trd = iron_start_thread(server_thread, NULL);
+  UNUSED(trd);
+  iron_sleep(0.25);
+  for(int i = 0; i< 100000; i++){
+    logd("TEST BASIC: %i\n", i);
+
+    udpc_service * s1 = udpc_login("test@0.0.0.0:a");
+    while(s1 == NULL)
+      s1 = udpc_login("test@0.0.0.0:a");
+    iron_sleep(0.1);
+    udpc_connection * s3 = NULL;
+    void * send_test_code(void * unused){
+      UNUSED(unused);
+      while(s3 == NULL)
+	s3 = udpc_listen(s1);
+      
+      const char * buf = "test test";
+      udpc_write(s3, buf, strlen(buf) + 1);
+      return NULL;
+    }
+    
+    iron_thread * trd2= iron_start_thread(send_test_code, NULL);
+    
+    udpc_connection * s2 = udpc_connect("test@0.0.0.0:a");
+    while(s2 == NULL)
+      s2 = udpc_connect("test@0.0.0.0:a");
+    //iron_sleep(0.01);
+    
+    char buffer2[20];
+    udpc_read(s2, buffer2,sizeof(buffer2));
+    ASSERT(strcmp(buffer2, "test test") == 0);
+    iron_thread_join(trd2);
+    udpc_close(s3);
+    udpc_close(s2);
+    udpc_logout(s1);
+  }
+  
+  return TEST_SUCCESS;
+}
+
 int main(){
+  TEST(test_basic_functionality);
   //TEST(test_dirscan);
-  TEST(test_dirscan2);
+  //TEST(test_dirscan2);
   //TEST(test_udpc_seq);
   //TEST(test_transmission);
   //TEST(test_udpc_share);
