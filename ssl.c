@@ -279,9 +279,6 @@ static int handle_ssl_error2(SSL * ssl, int ret, int * accepted_errors,
   return 0;
 }
 
-static void handle_ssl_error(SSL * ssl, int ret){
-  handle_ssl_error2(ssl, ret, NULL, NULL, 0);
-}
 
 ssl_server_con * ssl_server_accept(ssl_server_client * scli, int fd){
   BIO_set_fd(SSL_get_rbio(scli->ssl), fd, BIO_NOCLOSE);
