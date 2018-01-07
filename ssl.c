@@ -7,7 +7,7 @@
 #include <iron/log.h>
 #include <iron/utils.h>
 #include "ssl.h"
-
+#include <pthread.h>
 //#define simulate_pk_loss {int rnd = rand() % 2; if(rnd == 0)return;}
 #define simulate_pk_loss ;
 
@@ -34,13 +34,75 @@ struct _ssl_client{
   int fd;
 };
 
+// locking stuff needed top make OpenSSL thread safe
+#include <iron/utils.h>
+#include <openssl/crypto.h>
+#define MUTEX_TYPE       pthread_mutex_t
+#define MUTEX_SETUP(x)   pthread_mutex_init(&(x), NULL)
+#define MUTEX_CLEANUP(x) pthread_mutex_destroy(&(x))
+#define MUTEX_LOCK(x)    pthread_mutex_lock(&(x))
+#define MUTEX_UNLOCK(x)  pthread_mutex_unlock(&(x))
+#define THREAD_ID        pthread_self()
+ 
+ 
+/* This array will store all of the mutexes available to OpenSSL. */ 
+static MUTEX_TYPE *mutex_buf = NULL;
+ 
+static void locking_function(int mode, int n, const char *file, int line)
+{
+  UNUSED(file);
+  UNUSED(line);
+  if(mode & CRYPTO_LOCK){
+    MUTEX_LOCK(mutex_buf[n]);
+  }else{
+    MUTEX_UNLOCK(mutex_buf[n]);
+  }
+}
+ 
+static unsigned long id_function(void)
+{
+  return ((unsigned long)THREAD_ID);
+}
+ 
+int thread_setup(void)
+{
+  int i;
+ 
+  mutex_buf = malloc(CRYPTO_num_locks() * sizeof(MUTEX_TYPE));
+  if(!mutex_buf)
+    return 0;
+  for(i = 0;  i < CRYPTO_num_locks();  i++)
+    MUTEX_SETUP(mutex_buf[i]);
+  CRYPTO_set_id_callback(id_function);
+  CRYPTO_set_locking_callback(locking_function);
+  return 1;
+}
+ 
+int thread_cleanup(void)
+{
+  int i;
+ 
+  if(!mutex_buf)
+    return 0;
+  CRYPTO_set_id_callback(NULL);
+  CRYPTO_set_locking_callback(NULL);
+  for(i = 0;  i < CRYPTO_num_locks();  i++)
+    MUTEX_CLEANUP(mutex_buf[i]);
+  free(mutex_buf);
+  mutex_buf = NULL;
+  return 1;
+}
+
 static void ssl_ensure_initialized(){
   static bool initialized = false;
   if(initialized) return;
   SSL_library_init();
   OpenSSL_add_ssl_algorithms();
   SSL_load_error_strings();
-  initialized = true;
+  thread_setup();
+  if(initialized)
+    ERROR("this shouldn ot happen");
+  initialized = true; 
 }
 
 #define BUFFER_SIZE          (1<<16)
@@ -237,7 +299,6 @@ ssl_server * ssl_setup_server(int fd){
     /* Client has to authenticate */
     SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_CLIENT_ONCE, dtls_verify_callback);
     
-    SSL_CTX_set_read_ahead(ctx, 1);
     SSL_CTX_set_cookie_generate_cb(ctx, generate_cookie);
     SSL_CTX_set_cookie_verify_cb(ctx, verify_cookie);
   }
@@ -279,11 +340,9 @@ static int handle_ssl_error2(SSL * ssl, int ret, int * accepted_errors,
   return 0;
 }
 
-
 ssl_server_con * ssl_server_accept(ssl_server_client * scli, int fd){
   BIO_set_fd(SSL_get_rbio(scli->ssl), fd, BIO_NOCLOSE);
   BIO_ctrl(SSL_get_rbio(scli->ssl), BIO_CTRL_DGRAM_SET_CONNECTED, 0, &scli->addr);
-
   int ret = 0;
   do{ret = SSL_accept(scli->ssl);}
   while(ret == 0);
@@ -330,8 +389,8 @@ ssl_server_client * ssl_server_listen(ssl_server * serv){
   BIO * bio = BIO_new_dgram(serv->fd, BIO_NOCLOSE);
   {
     struct timeval timeout;
-    timeout.tv_sec = 0;
-    timeout.tv_usec = 10000;
+    timeout.tv_sec = 2;
+    timeout.tv_usec = 0;
     BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_RECV_TIMEOUT, 0, &timeout);
   }
   SSL * ssl = SSL_new(serv->ctx);
@@ -340,12 +399,12 @@ ssl_server_client * ssl_server_listen(ssl_server * serv){
 
   struct sockaddr_storage client_addr = {0};
   int error = 0;
-  while ((error = DTLSv1_listen(ssl, &client_addr)) <= 0){
 
-    int err = SSL_get_error(ssl, error);
-    SSL_clear(ssl);
-    if(err == 2)
-      continue;
+  while ((error = DTLSv1_listen(ssl, &client_addr)) <= 0){
+    if(error == 0) continue;
+    SSL_free(ssl);
+    //logd("Connect error: %i\n", error);
+    return NULL;
   }
   ssl_server_client * con = alloc(sizeof(ssl_server_client));
   con->ssl = ssl;
@@ -380,12 +439,9 @@ ssl_client * ssl_start_client(int fd, struct sockaddr * remote_addr){
     return NULL;
   }
   SSL_CTX_set_verify_depth (ctx, 2);
-  SSL_CTX_set_read_ahead(ctx, 1);
-  
   
   SSL * ssl = SSL_new(ctx);
-  SSL_set_options(ssl, SSL_OP_COOKIE_EXCHANGE | SSL_OP_ALL);
-  SSL_set_mode(ssl, SSL_MODE_AUTO_RETRY);
+  SSL_set_options(ssl, SSL_OP_COOKIE_EXCHANGE);
   // Create BIO, connect and set to already connected.
   BIO * bio = BIO_new_dgram(fd, BIO_NOCLOSE);
   
@@ -393,17 +449,15 @@ ssl_client * ssl_start_client(int fd, struct sockaddr * remote_addr){
   SSL_set_bio(ssl, bio, bio);
   {
     struct timeval timeout;
-    timeout.tv_sec = 1;
+    timeout.tv_sec = 2;
     timeout.tv_usec = 0;
     BIO_ctrl(bio, BIO_CTRL_DGRAM_SET_RECV_TIMEOUT, 0, &timeout);
   }
     
   int ret = SSL_connect(ssl);
   if(ret < 0){
-    //BIO_ssl_shutdown(bio);
     SSL_free(ssl);
     SSL_CTX_free(ctx);
-
     return NULL;
   }
 

@@ -452,7 +452,24 @@ int test_basic_functionality(){
   return TEST_SUCCESS;
 }
 
-int main(){
+int main(int argc, char ** argv){
+  int port_idx = -1;
+  int port = -1;
+  for(int i = 0; i < argc; i++){
+    if(strcmp(argv[i], "--port") == 0){
+      port_idx = i + 1;
+    }
+    if(i == port_idx){
+      sscanf(argv[i], "%i", &port);
+    }
+  }
+  if(port > 0){
+    if(port > 65000)
+      ERROR("Invalid port value: %i\n", port);
+    logd("Using port %i\n", port);
+    udpc_server_port = port;
+  }
+  
   TEST(test_basic_functionality);
   //TEST(test_dirscan);
   //TEST(test_dirscan2);

@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reflection.Metadata.Ecma335;
 using System.Threading;
 using System.Threading.Tasks;
 using udpc_cs2.Internal;
@@ -195,11 +196,14 @@ namespace udpc_cs2
 
     void UdpcAbstractTest()
     {
-      Console.WriteLine("Abstract Test");
-      for (int i = 0; i < 100; i++)
+
+      for (int i = 0; i < 10000; i++)
       {
-        Thread.Sleep(50);
+        Console.WriteLine("Abstract Test {0}", i);
         var serv = Udpc.Login("rolf@0.0.0.0:test1");
+        while(serv == null)
+          serv = Udpc.Login("rolf@0.0.0.0:test1");
+        Thread.Sleep(100);
         var tsk = Task.Factory.StartNew(() =>
         {
           var cli = Udpc.Connect("rolf@0.0.0.0:test1");
@@ -211,18 +215,25 @@ namespace udpc_cs2
         var tsk2 = Task.Factory.StartNew(() =>
         {
           var cli = Udpc.Connect("rolf@0.0.0.0:test1");
+          while(cli == null)
+            Udpc.Connect("rolf@0.0.0.0:test1");
           cli.Write(new byte[] {3, 2, 1}, 3);
           cli.Disconnect();
-        });
+        });  
 
         var s1 = serv.Listen();
+        while (s1 == null)
+          s1 = serv.Listen();
         var s2 = serv.Listen();
+        while (s2 == null)
+          s2 = serv.Listen();
         var testbytes = new byte[0];
         var testbytes2 = new byte[0];
         s1.Peek(testbytes, 0);
         int l1 = s1.Pending();
         s2.Peek(testbytes2, 0);
         int l2 = s2.Pending();
+
 
         testbytes = new byte[l1];
         testbytes2 = new byte[l2];
@@ -231,9 +242,14 @@ namespace udpc_cs2
         s1.Read(testbytes, testbytes.Length);
         s2.Read(testbytes2, testbytes2.Length);
         tsk.Wait();
+
         tsk2.Wait();
-        Console.WriteLine("Got bytes {0} {1} {2}. {3}", testbytes[0], testbytes[1], testbytes[2], DateTime.Now);
-        Console.WriteLine("Got bytes {0} {1} {2}. {3}", testbytes2[0], testbytes2[1], testbytes2[2], DateTime.Now);
+        if (testbytes.Length > 2)
+        {
+          Console.WriteLine("Got bytes {0} {1} {2}. {3}", testbytes[0], testbytes[1], testbytes[2], DateTime.Now);
+          Console.WriteLine("Got bytes {0} {1} {2}. {3}", testbytes2[0], testbytes2[1], testbytes2[2], DateTime.Now);
+        }
+
         s1.Disconnect();
         s2.Disconnect();
         serv.Disconnect();
@@ -456,6 +472,7 @@ namespace udpc_cs2
 
     void TestFileConversation(bool useUdp)
     {
+      Thread.Sleep(1000);
       Console.WriteLine("TestFileConversation");
       Udpc.Client c1, c2;
       Udpc.Server serv = null;
@@ -548,15 +565,15 @@ namespace udpc_cs2
       //Console.WriteLine("Time spent: {0}", sw.Elapsed);
       //return;
 
-      TestCircularSum();
+      //TestCircularSum();
       //gitSuperPatch();
       //GitInterop();
-      TestUtils();
+      //TestUtils();
       var trd = new Thread(runServer) { IsBackground = true};
       trd.Start();
-      Thread.Sleep(100);
+      Thread.Sleep(500);
 
-      UdpcBasicInterop();
+      //UdpcBasicInterop();
 
       UdpcAbstractTest();
       return;

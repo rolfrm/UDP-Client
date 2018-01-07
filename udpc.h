@@ -1,7 +1,7 @@
 typedef struct _udpc_connection udpc_connection;
 typedef struct _udpc_server udpc_server;
 typedef struct _udpc_service udpc_service;
-
+extern int udpc_server_port;
 // Client API
 // Creates and logs into the service described by , storing the IP/port on the server.
 // From now on the port should be kept open by sending empty

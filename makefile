@@ -1,11 +1,11 @@
-OPT = -g3 -O0
+OPT = -g3 -Og
 LIB_SOURCES = udpc.c udp.c ssl.c ../iron/mem.c ../iron/process.c ../iron/array.c ../iron/math.c service_descriptor.c ../iron/time.c udpc_utils.c udpc_stream_check.c udpc_send_file.c udpc_dir_scan.c ../iron/log.c ../iron/fileio.c udpc_seq.c udpc_share_log.c udpc_share_delete.c
 CC = gcc
 TARGET = libudpc.so
 LIB_OBJECTS =$(LIB_SOURCES:.c=.o)
 LDFLAGS= -L. $(OPT) -Wextra #-lmcheck #-ftlo #setrlimit on linux 
 LIBS= -ldl -lm -lssl -lcrypto -lpthread
-ALL= $(TARGET) server rpc speed file share test  share_log_reader share_manager #web dir_scanner
+ALL= $(TARGET) server rpc speed file share test  share_log_reader share_manager libudpc_net #web dir_scanner
 CFLAGS = -I.. -std=c11 -c $(OPT) -D_GNU_SOURCE -Wall -Wextra -Werror=implicit-function-declaration -Wformat=0  -fdiagnostics-color -Wextra -Werror -Wwrite-strings -fbounds-check  #-DDEBUG
 
 $(TARGET): $(LIB_OBJECTS)

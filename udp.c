@@ -38,12 +38,28 @@ struct sockaddr_storage udp_get_addr(const char * remote_address, int port){
   return remote_addr.ss;
 }
 static int opened_closed = 0;
-static int closed_ports[1024];
+static bool closed_ports[1024] = {0};
+static iron_mutex mtex = {0};
+
+void udp_lock(){
+  if(mtex.data == NULL)
+    mtex = iron_mutex_create();
+  iron_mutex_lock(mtex);
+}
+
+void udp_unlock(){
+  if(mtex.data == NULL)
+    mtex = iron_mutex_create();
+  iron_mutex_unlock(mtex);
+}
 
 int udp_connect(struct sockaddr_storage * local, struct sockaddr_storage * remote, bool reuse){
+  udp_lock();
   int fd = socket(local->ss_family, SOCK_DGRAM | SOCK_CLOEXEC, IPPROTO_UDP);
-  if (fd < 0)
+  if (fd < 0){
+    udp_unlock();
     return fd;
+  }
   if(closed_ports[fd] == 1)
     ERROR("CONNECT: PORT ALREADY OPEN %i\n", fd);  
   int on = 1;
@@ -67,6 +83,8 @@ int udp_connect(struct sockaddr_storage * local, struct sockaddr_storage * remot
   }
   opened_closed += 1;
   closed_ports[fd] = 1;
+  //logd("UDP_connect: %i\n", fd);
+  udp_unlock();
   return fd;
 }
 
@@ -84,9 +102,12 @@ int udp_get_port(int fd){
 
 int udp_open(struct sockaddr_storage * local){
   const int on = 1, off = 0;
+  udp_lock();
   int fd = socket(local->ss_family, SOCK_DGRAM| SOCK_CLOEXEC, IPPROTO_UDP);
-  if(fd < 0)
+  if(fd < 0){
+    udp_unlock();
     return fd;
+  }
   if(closed_ports[fd] == 1)
     ERROR("OPEN: PORT ALREADY OPEN %i\n", fd);
   setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (const void*) &on, (socklen_t) sizeof(on));
@@ -100,10 +121,13 @@ int udp_open(struct sockaddr_storage * local){
   opened_closed += 1;
 
   closed_ports[fd] = 1;
+  //logd("UDP_open: %i\n", fd);
+  udp_unlock();
   return fd;
 }
 void iron_sleep(double);
 void udp_close(int fd){
+  udp_lock();
   if(closed_ports[fd] == 0)
     ERROR("PORT NOT OPEN");
   ASSERT(fd != 0);
@@ -111,6 +135,8 @@ void udp_close(int fd){
   opened_closed -= 1;
 
   closed_ports[fd] = 0;
+  //logd("UDP_close: %i\n", fd);
   while(!close(fd))
     iron_sleep(0.001);
+  udp_unlock();
 }

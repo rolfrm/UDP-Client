@@ -7,6 +7,7 @@
 #include <iron/mem.h>
 #include <iron/log.h>
 #include <iron/types.h>
+#include <iron/process.h>
 #include "udpc.h"
 #include "udpc_utils.h"
 #include "service_descriptor.h"
@@ -20,7 +21,7 @@ const int udpc_response_ok = 4;
 const int udpc_response_error = 6;
 const int udpc_mode_disconnect = 5;
 
-const int udpc_server_port = 11511;
+int udpc_server_port = 11511;
 
 struct _udpc_connection {
   bool is_server;
@@ -66,18 +67,20 @@ udpc_service * udpc_login(const char * service){
     return NULL;
   struct sockaddr_storage server_addr = udp_get_addr(sitem.host, udpc_server_port);
   struct sockaddr_storage local_addr = udp_get_addr("0.0.0.0", 0);
- reconnect:;
+
   int fd2 = udp_connect(&local_addr, &server_addr, false);
   int fd = udp_open(&local_addr);
-  while(fd == -1){
-    iron_sleep(0.01);
-    fd = udp_open(&local_addr);
-  }
+  if(fd == -1 || fd2 == -1)
+    ERROR("Unable to open socket");
+  
   int port = udp_get_port(fd);
   ssl_client * cli = ssl_start_client(fd2, (struct sockaddr *) &server_addr);
-  if(cli == NULL)
-    goto reconnect;
-  ssl_set_timeout(cli, 1000000);
+  if(cli == NULL){
+    logd("ssl_start_client error\n");
+    udp_close(fd);
+    udp_close(fd2);
+    return NULL;
+  }
  retry:
   { // send login request
     size_t s = strlen(service);
@@ -119,8 +122,9 @@ void udpc_logout(udpc_service * con){
     int fd = udp_connect(&local_addr, &udpc_server_addr, false);
     ssl_client * cli = ssl_start_client(fd, (struct sockaddr *) &udpc_server_addr);
     if(cli == NULL){
-      udpc_logout(con);
       udp_close(fd);
+      udpc_logout(con);
+
       return;
     }
     
@@ -156,7 +160,16 @@ udpc_connection * udpc_listen(udpc_service * con){
   struct sockaddr_storage cli_ss = ssl_server_client_addr(scli);
   int fd = udp_connect(&con->local_addr, &cli_ss, true);
   ASSERT(fd > 0);
+  if(fd <= 0)
+    ERROR("Invalid socket created");
   ssl_server_con * _con = ssl_server_accept(scli, fd);
+  if(_con == NULL){
+    ERROR("Unable to create ssl server connection");
+    udp_close(fd);
+    ssl_server_close(scli);
+    free(scli);
+    return NULL;
+  }
   udpc_connection * c = alloc(sizeof(udpc_connection));
   c->is_server = true;
   c->con = _con;
@@ -183,10 +196,10 @@ udpc_connection * udpc_connect(const char * service){
     return udpc_connect(service);
     
   }
-  logd("Connect to: %i\n", fd);
   ssl_client * cli = ssl_start_client(fd, (struct sockaddr *) &server_addr);
   if(cli == NULL){
     iron_sleep(0.1);
+    udp_close(fd);
     goto retry2;
   }
   ssl_set_timeout(cli, 1000000);
@@ -301,6 +314,7 @@ typedef struct{
 typedef struct{
   size_t service_cnt;
   service * services;
+  iron_mutex connect_mutex;
 }service_server;
 
 typedef struct{
@@ -317,14 +331,20 @@ static void * connection_handle(void * _info) {
   struct sockaddr_storage local_addr = info->local_addr;
   struct sockaddr_storage remote_addr = info->remote_addr;
   pthread_detach(pthread_self());
+  iron_mutex_lock(info->server->connect_mutex);
   int fd = udp_connect(&local_addr, &remote_addr, true);
+ retry_con:;
   ssl_server_con * con = ssl_server_accept(pinfo, fd);
+  if(con == NULL)
+    goto retry_con;
+  
   
   char buf[100];
   int len = ssl_server_read(con, buf, sizeof(buf));
   if(len == -1){
     udp_close(fd);
     ssl_server_close(pinfo);
+    iron_mutex_unlock(info->server->connect_mutex);
     return NULL;
   }
   buf[len] = 0;
@@ -351,6 +371,7 @@ static void * connection_handle(void * _info) {
 	ssl_server_write(con, &udpc_response_ok, sizeof(udpc_response_ok));
 	ssl_server_close(pinfo);
 	udp_close(fd);
+	iron_mutex_unlock(info->server->connect_mutex);
 	return NULL;
       }
     }
@@ -380,7 +401,7 @@ static void * connection_handle(void * _info) {
 	ssl_server_write(con, buffer, buf_size);
 	ssl_server_close(pinfo);
 	udp_close(fd);
-	
+	iron_mutex_unlock(info->server->connect_mutex);	
 	return NULL;
       }
     }
@@ -404,6 +425,7 @@ static void * connection_handle(void * _info) {
 	ssl_server_write(con, &udpc_response_ok, sizeof(udpc_response_ok));
 	ssl_server_close(pinfo);
 	udp_close(fd);
+	iron_mutex_unlock(info->server->connect_mutex);
 	return NULL;
       }
     }
@@ -411,26 +433,27 @@ static void * connection_handle(void * _info) {
   }
   udp_close(fd);
   ssl_server_close(pinfo);
+  iron_mutex_unlock(info->server->connect_mutex);
   return NULL;
   
  error:
   ssl_server_write(con, &udpc_response_error, sizeof(udpc_response_error));
   ssl_server_close(pinfo);
-  return NULL;
-  
+  iron_mutex_unlock(info->server->connect_mutex);
+  return NULL;  
 }
 
 void udpc_start_server(const char *local_address) {
-  
   pthread_t tid;
   service_server server;
   server.service_cnt = 0;
   server.services = NULL;
+  server.connect_mutex = iron_mutex_create();
   struct sockaddr_storage server_addr = udp_get_addr(local_address, udpc_server_port);
   int fd = udp_open(&server_addr);
   ssl_server * srv = ssl_setup_server(fd);
   while (1) {
-    ssl_server_client * scli = ssl_server_listen(srv);
+    ssl_server_client * scli = ssl_server_listen (srv);
     if(scli == NULL)
       continue;
     connection_info * con_info = alloc(sizeof(connection_info));
@@ -438,8 +461,8 @@ void udpc_start_server(const char *local_address) {
     con_info->local_addr = server_addr;
     con_info->remote_addr = ssl_server_client_addr(scli);
     con_info->server = &server;
-    if (pthread_create( &tid, NULL, connection_handle, con_info) != 0) 
+    connection_handle(con_info);
+    if (false && pthread_create( &tid, NULL, connection_handle, con_info) != 0) 
       ERROR("pthread create failed.");
-    
   }
 }
