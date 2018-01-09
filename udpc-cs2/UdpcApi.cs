@@ -143,9 +143,6 @@ namespace udpc_cs2
       get { return UdpcApi.udpc_get_timeout(con); }
       set {UdpcApi.udpc_set_timeout(con, value);}
     }
-
-
-
   }
 
   class UdpcServer : Udpc.Server

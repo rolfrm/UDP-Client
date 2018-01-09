@@ -219,7 +219,7 @@ namespace udpc_cs2
             Udpc.Connect("rolf@0.0.0.0:test1");
           cli.Write(new byte[] {3, 2, 1}, 3);
           cli.Disconnect();
-        });  
+        });
 
         var s1 = serv.Listen();
         while (s1 == null)
@@ -257,8 +257,6 @@ namespace udpc_cs2
       }
     }
 
-
-
     void TestUtils()
     {
       int testInt = 0x11223344;
@@ -270,7 +268,6 @@ namespace udpc_cs2
       if(testInt2 != testInt)
         throw new Exception("Cannot convert back.");
     }
-
 
     class TestClient : Udpc.Client
     {
@@ -291,15 +288,16 @@ namespace udpc_cs2
 
       TestClient other;
 
-        public static void CreateConnectionTest(out Udpc.Client c1, out Udpc.Client c2, double lossPropability)
-        {
+      TimeSpan timeout => TimeSpan.FromTicks((long)(TimeSpan.TicksPerSecond * TimeoutUs * 1e-6));
 
-          var c11 = new TestClient {LossPropability = lossPropability};
-          var c22 = new TestClient {LossPropability = lossPropability, other = c11};
-          c11.other = c22;
-          c1 = c11;
-          c2 = c22;
-        }
+      public static void CreateConnectionTest(out Udpc.Client c1, out Udpc.Client c2, double lossPropability)
+      {
+        var c11 = new TestClient {LossPropability = lossPropability};
+        var c22 = new TestClient {LossPropability = lossPropability, other = c11};
+        c11.other = c22;
+        c1 = c11;
+        c2 = c22;
+      }
 
       public static Udpc.Server CreateConnectionUdp(out Udpc.Client c1, out Udpc.Client c2)
       {
@@ -353,8 +351,15 @@ namespace udpc_cs2
       public int Read(byte[] buffer, int length)
       {
         if(other == null) throw new InvalidOperationException("Disconnected");
+
         if (!readBuffer.TryDequeue(out byte[] buffer2))
-          return 0;
+        {
+
+          Thread.Sleep(timeout);
+          if (!readBuffer.TryDequeue(out buffer2))
+            return 0;
+        }
+
         int read = Math.Min(length, buffer2.Length);
         Array.Copy(buffer2, buffer, read);
         return read;
@@ -363,6 +368,8 @@ namespace udpc_cs2
       public int Peek(byte[] buffer, int length)
       {
         if(other == null) throw new InvalidOperationException("Disconnected");
+        if(readBuffer.Count == 0)
+          Thread.Sleep(timeout);
         var buffer2 = readBuffer.FirstOrDefault();
         if (buffer2 == null) return 0;
         int read = Math.Min(length, buffer2.Length);
@@ -472,7 +479,6 @@ namespace udpc_cs2
 
     void TestFileConversation(bool useUdp)
     {
-      Thread.Sleep(1000);
       Console.WriteLine("TestFileConversation");
       Udpc.Client c1, c2;
       Udpc.Server serv = null;
@@ -487,88 +493,87 @@ namespace udpc_cs2
       con2.NewConversation = b => rcv = new ReceiveMessageConversation(con2);
 
 
-      for (int _i = 0; _i < 10; _i++)
+      for (int _i = 0; _i < 3; _i++)
       {
+        restart:
+        rcv = null;
+        byte[] bytes = new byte[123451];
+        for (int i = 0; i < bytes.Length; i++)
+          bytes[i] = (byte) (i % 3);
+        var memstr = new MemoryStream(bytes);
+        var snd = new SendMessageConversation(con1, memstr, "TestFile");
 
 
+        Thread.Sleep(50);
+        con1.StartConversation(snd);
+        snd.Start();
+        Thread.Sleep(50);
 
-      restart:
-      byte[] bytes = new byte[123451];
-      for (int i = 0; i < bytes.Length; i++)
-        bytes[i] = (byte)(i % 3);
-      var memstr = new MemoryStream(bytes);
-      var snd = new SendMessageConversation(con1, memstr, "TestFile");
-
-
-      Thread.Sleep(50);
-      con1.StartConversation(snd);
-      snd.Start();
-      Thread.Sleep(50);
-
-      void runProcessing(ConversationManager con, string name)
-      {
-        while (con.ConversationsActive)
+        void runProcessing(ConversationManager con, string name)
         {
-          if (con.Process())
-            ; //sw.Restart();
-          else
+          while (con.ConversationsActive)
           {
-            con.Update();
+            if (con.Process())
+              ; //sw.Restart();
+            else
+            {
+              con.Update();
+            }
           }
-
         }
-      }
 
-      var t1 = Task.Factory.StartNew(() => runProcessing(con1, "Send"));
-      var t2 = Task.Factory.StartNew(() => runProcessing(con2, "Receive"));
-      t1.Wait();
-      t2.Wait();
-      if (rcv == null)
-        goto restart;
-      rcv.Stop();
+        var t1 = Task.Factory.StartNew(() => runProcessing(con1, "Send"));
+        var t2 = Task.Factory.StartNew(() => runProcessing(con2, "Receive"));
+        t1.Wait();
+        t2.Wait();
+        if (rcv == null)
+          goto restart;
+        rcv.Stop();
 
 
-      var data = File.ReadAllBytes("Downloads/TestFile");
-      if (data.Length == 0)
-        goto restart;
+        var data = File.ReadAllBytes("Downloads/TestFile");
+        if (data.Length == 0)
+          goto restart;
 
-      if (false == data.SequenceEqual(bytes))
-      {
-        if(data.Length != bytes.Length)
-          throw new InvalidOperationException("Lengths does not match.");
-        for (int i = 0; i < data.Length; i++)
+        if (false == data.SequenceEqual(bytes))
         {
-          if(data[i] != bytes[i])
+          if (data.Length != bytes.Length)
+            throw new InvalidOperationException("Lengths does not match.");
+          for (int i = 0; i < data.Length; i++)
+          {
+            if (data[i] != bytes[i])
 
-            throw new InvalidOperationException("Sequences are not equal");
-
+              throw new InvalidOperationException("Sequences are not equal");
+          }
         }
-      }
 
-      Console.WriteLine("Download file done.");
+        Console.WriteLine("Download file done.");
       }
-      Thread.Sleep(100);
+      Thread.Sleep(10);
       c1.Disconnect();
-      Thread.Sleep(100);
+      Thread.Sleep(10);
       c2.Disconnect();
-      Thread.Sleep(100);
+      Thread.Sleep(10);
       serv?.Disconnect();
-      Thread.Sleep(100);
     }
 
     public void RunTests()
     {
-      //var sw = Stopwatch.StartNew();
-      //for(int i = 0 ; i < 10; i++)
-      //  TestFileConversation(false);
+      //if (false)
+      {
+        //var sw = Stopwatch.StartNew();
+        for (int i = 0; i < 10; i++)
+          TestFileConversation(false);
 
-      //Console.WriteLine("Time spent: {0}", sw.Elapsed);
-      //return;
+        //Console.WriteLine("Time spent: {0}", sw.Elapsed);
+        //return;
 
-      //TestCircularSum();
-      //gitSuperPatch();
-      //GitInterop();
-      //TestUtils();
+        TestCircularSum();
+        gitSuperPatch();
+      }
+
+      GitInterop();
+      TestUtils();
       var trd = new Thread(runServer) { IsBackground = true};
       trd.Start();
       Thread.Sleep(500);

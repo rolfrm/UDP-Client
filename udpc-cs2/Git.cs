@@ -101,19 +101,13 @@ namespace udpc_cs2
 
     public List<string> GetLog()
     {
-      try
-      {
-        var result = runProcess("git", "log", "--full-history", "--oneline", "--no-abbrev-commit");
-        var logs = result.Output.Split("\n").Select(x => x.Trim()).ToList();
-        return logs.Select(x => x.Split(" ", StringSplitOptions.RemoveEmptyEntries).FirstOrDefault())
-          .Where(x => x != null)
-          .ToList();
-      }
-      catch (Exception e) when(e.Message.Contains("does not have any commits yet"))
-      {
-
+      var result = runProcess(true, "git", "log", "--full-history", "--oneline", "--no-abbrev-commit");
+      if (result.ExitCode != 0)
         return new List<string>();
-      }
+      var logs = result.Output.Split("\n").Select(x => x.Trim()).ToList();
+      return logs.Select(x => x.Split(" ", StringSplitOptions.RemoveEmptyEntries).FirstOrDefault())
+        .Where(x => x != null)
+        .ToList();
     }
 
 
@@ -182,8 +176,12 @@ namespace udpc_cs2
       return Path.GetFullPath(Path.Combine(DirPath, ".patch.bin"));
     }
 
-
     ProcStatus runProcess(string name, params string[] args)
+    {
+      return runProcess(false, name, args);
+    }
+
+    ProcStatus runProcess(bool ignoreErrors, string name, params string[] args)
     {
       Console.WriteLine("Running: '{0} {1}'", name, string.Join(" ", args));
       var startinfo = new ProcessStartInfo(name, string.Join(" ", args))
@@ -209,7 +207,7 @@ namespace udpc_cs2
 
         Console.WriteLine("{0}", output.ToString());
 
-        if(proc.ExitCode != 0)
+        if(proc.ExitCode != 0 && !ignoreErrors)
           throw new InvalidOperationException(string.Format("program exited with error '{0}'", erroroutput.ToString()));
 
         return new ProcStatus()
