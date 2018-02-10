@@ -44,7 +44,7 @@ static void _send_file(udpc_connection * c2, udpc_connection_stats * stats, char
     UNUSED(tid); UNUSED(userdata);
     size_t offset =  chunk_id * tid->chunk_size;
     fseek(file, offset, SEEK_SET);
-    fread(_chunk, chunk_size, 1, file);
+    UNUSED(fread(_chunk, chunk_size, 1, file));
     sent += chunk_size;
     if(chunk_id % 1000 == 0)
       share_log_progress(sent, size);

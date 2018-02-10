@@ -5,6 +5,6 @@
     <LangVersion>7.1</LangVersion>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="System.Threading.Tasks" Version="4.3.0" CopyLocal="True" />
+    <PackageReference Include="System.Threading.Tasks" Version="4.3.0"  />
   </ItemGroup>
 </Project>

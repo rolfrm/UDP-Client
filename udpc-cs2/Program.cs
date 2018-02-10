@@ -11,9 +11,6 @@ namespace udpc_cs2
                 tst.RunTests();
                 return;
             }
-
-            
-            
         }
     }
 }

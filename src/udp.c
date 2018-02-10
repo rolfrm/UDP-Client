@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdarg.h>
 #include <iron/log.h>
+#include <iron/types.h>
 #include <iron/process.h>
 #include "udp.h"
 
