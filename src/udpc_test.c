@@ -52,7 +52,7 @@ void sync(){
 }
 
 bool test_dirscan2(){
-  system("rm -r dir\\ test\\ 2/");
+  UNUSED(system("rm -r dir\\ test\\ 2/"));
   dirscan ds = {0};
 
   mkdir("dir test 2", 0777);
@@ -102,7 +102,7 @@ bool test_dirscan(){
   allocator * _allocator = trace_allocator_make();
   allocator * old_allocator = iron_get_allocator();
   iron_set_allocator(_allocator);
-  system("rm -r dir\\ test\\ 1/");
+  UNUSED(system("rm -r dir\\ test\\ 1/"));
   dirscan ds = {0};
   //size_t max_diff_cnt = 0;
   //size_t max_file_cnt = 0;

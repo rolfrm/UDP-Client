@@ -9,9 +9,9 @@ using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
 using Microsoft.VisualBasic.CompilerServices;
 
-namespace udpc_cs2
+namespace Udpc.Share
 {
-  class UdpcApi {
+  public class UdpcApi {
     static UdpcApi()
     {
       dlopen("./libudpc_net.so", RTLD_NOW + RTLD_GLOBAL);

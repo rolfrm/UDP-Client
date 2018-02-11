@@ -5,7 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 
-namespace udpc_cs2
+namespace Udpc.Share
 {
   public enum GitItemStatus
   {

@@ -1,4 +1,4 @@
-﻿namespace udpc_cs2
+﻿namespace Udpc.Share
 {
     /// <summary>
     /// This class uses git to have a version controlled list of files.

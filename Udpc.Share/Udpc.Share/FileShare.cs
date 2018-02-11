@@ -2,11 +2,11 @@
 using System.Collections.Concurrent;
 using System.IO;
 using System.Threading;
-using udpc_cs2.Internal;
+using Udpc.Share.Internal;
 
-namespace udpc_cs2
+namespace Udpc.Share
 {
-    class FileShare
+    public class FileShare
     {
         Thread shareThread;
         Udpc.Server serv;
@@ -19,9 +19,8 @@ namespace udpc_cs2
         {
             dataFolder = Path.GetFullPath(dataFolder);
             Utils.EnsureDirectoryExists(dataFolder);
-            
-            var share = new FileShare();
-            share.serv = Udpc.Login(service);
+
+            var share = new FileShare {serv = Udpc.Login(service)};
             share.shareThread = new Thread(share.runShare);
             share.Service = service;
             share.DataFolder = dataFolder;

@@ -51,8 +51,8 @@ share_log_reader: $(TARGET) udpc_share_log_reader.o
 share_manager: $(TARGET) udpc_share_manager.o
 	$(CC) $(LDFLAGS) udpc_share_manager.o $(LIBS) -ludpc -Wl,-rpath,. -o share_manager
 
-test: $(TARGET) udpc_test.o
-	$(CC) $(LDFLAGS) udpc_test.o $(LIBS) -ludpc -Wl,-rpath,. -o test
+test: $(TARGET) src/udpc_test.o
+	$(CC) $(LDFLAGS) src/udpc_test.o $(LIBS) -ludpc -Wl,-rpath,. -o test
 
 #web: $(TARGET) share_web.o
 #	$(CC) $(LDFLAGS) share_web.o $(LIBS) -lmicrohttpd -ludpc -Wl,-rpath,. -o #web

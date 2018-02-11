@@ -4,9 +4,9 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Threading;
-using udpc_cs2.Internal;
+using Udpc.Share.Internal;
 
-namespace udpc_cs2
+namespace Udpc.Share
 {
     /// <summary>
     /// Not thread-safe.

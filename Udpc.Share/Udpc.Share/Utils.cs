@@ -1,6 +1,6 @@
 ﻿using System.IO;
 
-namespace udpc_cs2.Internal
+namespace Udpc.Share.Internal
 {
     public class Utils
     {

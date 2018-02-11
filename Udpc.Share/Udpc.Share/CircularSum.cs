@@ -1,5 +1,6 @@
-﻿namespace udpc_cs2
+﻿namespace Udpc.Share
 {
+    
     public class CircularSum
     {
         public double Sum;

@@ -6,9 +6,9 @@ using System.Linq;
 using System.Reflection.Metadata.Ecma335;
 using System.Threading;
 using System.Threading.Tasks;
-using udpc_cs2.Internal;
+using Udpc.Share.Internal;
 
-namespace udpc_cs2
+namespace Udpc.Share.Test
 {
   public class Tests
   {
@@ -562,14 +562,14 @@ namespace udpc_cs2
       //if (false)
       {
         //var sw = Stopwatch.StartNew();
-        for (int i = 0; i < 10; i++)
+        for (int i = 0; i < 3; i++)
           TestFileConversation(false);
 
         //Console.WriteLine("Time spent: {0}", sw.Elapsed);
         //return;
 
         TestCircularSum();
-        gitSuperPatch();
+        //gitSuperPatch();
       }
 
       GitInterop();
@@ -581,11 +581,10 @@ namespace udpc_cs2
       //UdpcBasicInterop();
 
       UdpcAbstractTest();
-      return;
       ConversationTest();
 
       var sw2 = Stopwatch.StartNew();
-      for (int i = 0; i < 1000; i++)
+      for (int i = 0; i < 20; i++)
       {
         Console.WriteLine(">> {0}", i);
         TestFileConversation(true);
