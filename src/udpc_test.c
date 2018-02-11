@@ -421,7 +421,7 @@ int test_basic_functionality(){
     udpc_service * s1 = udpc_login("test@0.0.0.0:a");
     while(s1 == NULL)
       s1 = udpc_login("test@0.0.0.0:a");
-    iron_sleep(0.1);
+    //iron_sleep(0.1);
     udpc_connection * s3 = NULL;
     void * send_test_code(void * unused){
       UNUSED(unused);
@@ -452,15 +452,71 @@ int test_basic_functionality(){
   return TEST_SUCCESS;
 }
 
+static int test_client(char * service){
+  udpc_connection * s1 = udpc_connect(service);
+  while(s1 == NULL)
+    s1 = udpc_connect(service);
+  char buffer[100];
+
+  for(int i = 0; i < 10; i++){
+    int cnt = udpc_read(s1, buffer, sizeof(buffer));
+    udpc_write(s1, buffer, cnt);
+  }
+
+  udpc_close(s1);
+  return 0;
+}
+
+static int test_server(){
+  void * server_thread( void * unused){
+    UNUSED(unused);
+    udpc_start_server("0.0.0.0");
+    return NULL;
+  }
+
+  iron_thread * trd = iron_start_thread(server_thread, NULL);
+  UNUSED(trd);
+  iron_sleep(0.25);
+  
+  udpc_service * service = udpc_login("test@0.0.0.0:a");
+  while(service == NULL)
+    service = udpc_login("test@0.0.0.0:a");
+  udpc_connection * s1 = udpc_listen(service);
+  while(s1 == NULL)
+    s1 = udpc_listen(service);
+  const char * buffer = "__--::;;>>..dsdadwadsa";
+
+  for(int i = 0; i < 10; i++){
+    udpc_write(s1, buffer, sizeof(buffer));
+    char readbuffer[sizeof(buffer)];
+    int cnt = udpc_read(s1, readbuffer, sizeof(readbuffer));
+    ASSERT(cnt == sizeof(buffer));
+    logd("%i cnt %i\n", i, cnt);
+  }
+  udpc_close(s1);
+  udpc_logout(service);
+  return 0;
+}
+
 int main(int argc, char ** argv){
   int port_idx = -1;
   int port = -1;
+  int client_idx = -1;
+  int server_idx = -1;
   for(int i = 0; i < argc; i++){
     if(strcmp(argv[i], "--port") == 0){
       port_idx = i + 1;
     }
     if(i == port_idx){
       sscanf(argv[i], "%i", &port);
+    }
+    
+    if(strcmp(argv[i], "--client-test") == 0){
+      client_idx = i + 1;
+    }
+    
+    if(strcmp(argv[i], "--server-test") == 0){
+      server_idx = i + 1;
     }
   }
   if(port > 0){
@@ -469,6 +525,17 @@ int main(int argc, char ** argv){
     logd("Using port %i\n", port);
     udpc_server_port = port;
   }
+
+  if(client_idx != -1){
+    test_client(argv[client_idx]);
+    return 0;
+  }
+
+  if(server_idx != -1){
+    test_server(argv[client_idx]);
+    return 0;
+  }
+  
   
   TEST(test_basic_functionality);
   //TEST(test_dirscan);
