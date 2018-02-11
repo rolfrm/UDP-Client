@@ -57,6 +57,7 @@ void udp_unlock(){
 int udp_connect(struct sockaddr_storage * local, struct sockaddr_storage * remote, bool reuse){
   udp_lock();
   int fd = socket(local->ss_family, SOCK_DGRAM | SOCK_CLOEXEC, IPPROTO_UDP);
+  logd("FD: %i\n",fd );
   if (fd < 0){
     udp_unlock();
     return fd;
