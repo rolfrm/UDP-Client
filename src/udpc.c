@@ -43,23 +43,6 @@ struct _udpc_service{
   struct sockaddr_storage local_addr;
 };
 
-char ** udpc_errors = NULL;
-size_t udpc_error_cnt = 0;
-
-void udpc_push_error(const char * error_message){
-  udpc_errors = realloc(udpc_errors, sizeof(udpc_errors[0]) * (udpc_error_cnt + 1));
-  udpc_errors[udpc_error_cnt] = iron_clone(error_message, strlen(error_message) + 1);
-  udpc_error_cnt += 1;
-}
-
-char * udpc_pop_error(){
-  if(udpc_error_cnt == 0)
-    return NULL;
-  char * err = udpc_errors[0];
-  memmove(udpc_errors, udpc_errors + 1, (udpc_error_cnt - 1) * sizeof(udpc_errors[0]));
-  return err;
-}
-void iron_sleep(double);
 // connect to a server. Format of service must be name@host:service
 udpc_service * udpc_login(const char * service){
   service_descriptor sitem;
@@ -177,11 +160,21 @@ udpc_connection * udpc_listen(udpc_service * con){
   return c;
 }
 void iron_sleep(double);
+
+iron_mutex connect_mutex;
+bool connect_mutex_initialized = false;
+
 udpc_connection * udpc_connect(const char * service){
+  if(!connect_mutex_initialized){
+    connect_mutex = iron_mutex_create();
+  }
+  iron_mutex_lock(connect_mutex);
+  
   ASSERT(service != NULL);
   service_descriptor sitem;
   if(false == udpc_get_service_descriptor(service, &sitem)){
     logd("no service detected: '%s'\n", service);
+    iron_mutex_unlock(connect_mutex);
     return NULL;
   }
   
@@ -193,6 +186,7 @@ udpc_connection * udpc_connect(const char * service){
     iron_sleep(0.1);
     // wrecklessly try to reconnect
     // might not be necessesart.
+    iron_mutex_unlock(connect_mutex);
     return udpc_connect(service);
     
   }
@@ -216,7 +210,6 @@ udpc_connection * udpc_connect(const char * service){
   {// receive [port peer_addr] and connect client
     char buffer[100];
     int read_size = ssl_client_read(cli, buffer, sizeof(buffer));
-    //logd("Read size: %i\n", read_size);
     if(read_size < 0){
       ssl_client_close(cli);
       udp_close(fd);
@@ -235,14 +228,17 @@ udpc_connection * udpc_connect(const char * service){
       ((struct sockaddr_in *)&peer_addr)->sin_port = port;
       int _fd = udp_connect(&local_addr, &peer_addr, false);
       ssl_client * cli = ssl_start_client(_fd, (struct sockaddr *)&peer_addr);
-      if(cli == NULL)
+      if(cli == NULL){
+	iron_mutex_unlock(connect_mutex);
 	return NULL;
+      }
       udpc_connection * connection = alloc(sizeof(udpc_connection));
       connection->cli = cli;
       connection->fd = _fd;
       connection->local_addr = local_addr;
       connection->remote_addr = peer_addr;
       connection->is_server = false;
+      iron_mutex_unlock(connect_mutex);
       return connection;
     } 
   }
@@ -324,6 +320,24 @@ typedef struct{
   service_server * server;
 }connection_info;
 
+struct sockaddr_storage get_loopback(int port){
+  return udp_get_addr("0.0.0.0", port);
+}
+
+bool sockaddr_is_localhost(struct sockaddr_storage addr){
+  unsigned char * ip = (unsigned char *)& (((struct sockaddr_in *)&addr)->sin_addr.s_addr);
+  if(ip[0] == 127 && ip[1] == 0 && ip[2] == 0 && ip[3] == 1)
+    return true;
+  return false;
+}
+
+bool sockaddr_is_server(struct sockaddr_storage addr){
+  unsigned char * ip = (unsigned char *)& (((struct sockaddr_in *)&addr)->sin_addr.s_addr);
+  if(ip[0] == 0 && ip[1] == 0 && ip[2] == 0 && ip[3] == 0)
+    return true;
+  return false;
+}
+
 
 static void * connection_handle(void * _info) {
   connection_info * info = _info;
@@ -357,8 +371,12 @@ static void * connection_handle(void * _info) {
     bool ok = udpc_get_service_descriptor(bufptr, &srv.desc);
     if(!ok)
       goto error;
-    
-    srv.client_addr = remote_addr;
+     
+    if(sockaddr_is_localhost(remote_addr))
+      srv.client_addr = get_loopback(udpc_server_port);
+    else
+      srv.client_addr = remote_addr;
+
     srv.port = port;
     service_descriptor d = srv.desc;
     int cnt = info->server->service_cnt;
@@ -444,7 +462,6 @@ static void * connection_handle(void * _info) {
 }
 
 void udpc_start_server(const char *local_address) {
-  pthread_t tid;
   service_server server;
   server.service_cnt = 0;
   server.services = NULL;
@@ -462,7 +479,7 @@ void udpc_start_server(const char *local_address) {
     con_info->remote_addr = ssl_server_client_addr(scli);
     con_info->server = &server;
     connection_handle(con_info);
-    if (false && pthread_create( &tid, NULL, connection_handle, con_info) != 0) 
-      ERROR("pthread create failed.");
+    //if (false && pthread_create( &tid, NULL, connection_handle, con_info) != 0) 
+    //  ERROR("pthread create failed.");
   }
 }

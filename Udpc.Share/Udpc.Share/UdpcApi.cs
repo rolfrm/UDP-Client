@@ -11,16 +11,16 @@ using Microsoft.VisualBasic.CompilerServices;
 
 namespace Udpc.Share
 {
-  public class UdpcApi {
-    static UdpcApi()
+  class UdpcApi2 {
+    static UdpcApi2()
     {
       dlopen("./libudpc_net.so", RTLD_NOW + RTLD_GLOBAL);
     }
     [DllImport("libdl.so")]
-    static extern IntPtr dlopen(string filename, int flags);
+    public static extern IntPtr dlopen(string filename, int flags);
 
     [DllImport("libdl.so")]
-    static extern IntPtr dlsym(IntPtr handle, string symbol);
+    public static extern IntPtr dlsym(IntPtr handle, string symbol);
 
     const int RTLD_NOW = 2; // for dlopen's flags [DllImport("libdl.so")]
     const int RTLD_GLOBAL = 0x00100;
@@ -30,7 +30,7 @@ namespace Udpc.Share
 
     [DllImport("libudpc.so")]
     public static extern IntPtr udpc_login(string service);
-
+    
     [DllImport("libudpc.so")]
     public static extern void udpc_logout(IntPtr con);
 
@@ -66,9 +66,112 @@ namespace Udpc.Share
 
     [DllImport("libudpc.so")]
     public static extern int udpc_get_timeout(IntPtr con);
-
   }
 
+  class TraceDi : IDisposable
+  {
+    private string _thing;
+    public TraceDi(string thing)
+    {
+      Console.WriteLine("Start {0}", thing);
+      _thing = thing;
+    }
+    public void Dispose()
+    {
+      Console.WriteLine("Stop {0}", _thing);
+    }
+
+    public static TraceDi Log(string thing)
+    {
+      return new TraceDi(thing);
+    }
+  }
+
+  public class UdpcApi 
+  {
+    public static void udpc_net_load()
+    {
+      UdpcApi2.udpc_net_load();
+    }
+
+    public static IntPtr udpc_login(string service)
+    {
+      using(TraceDi.Log(nameof(udpc_login))) 
+      return UdpcApi2.udpc_login(service);
+      
+    }
+
+    public static void udpc_logout(IntPtr con)
+    {
+      using(TraceDi.Log(nameof(udpc_logout)))
+      UdpcApi2.udpc_logout(con);
+    }
+
+    public static void udpc_heartbeat(IntPtr con)
+    {
+      UdpcApi2.udpc_heartbeat(con);
+    }
+
+    public static IntPtr udpc_connect(string service)
+    {
+      using(TraceDi.Log(nameof(udpc_connect)))
+      return UdpcApi2.udpc_connect(service);
+    }
+
+    public static void udpc_close(IntPtr service)
+    {
+      using(TraceDi.Log(nameof(udpc_close)))
+      UdpcApi2.udpc_close(service);
+    }
+
+    public static IntPtr udpc_listen(IntPtr con)
+    {
+      using(TraceDi.Log(nameof(udpc_listen)))
+      return UdpcApi2.udpc_listen(con);
+    }
+
+    public static void udpc_write(IntPtr con, byte[] buffer, ulong length)
+    {
+      using(TraceDi.Log(nameof(udpc_write)))
+      UdpcApi2.udpc_write(con, buffer, length);
+    }
+
+    public static int udpc_read(IntPtr con, byte[] buffer, ulong size)
+    {
+      using(TraceDi.Log(nameof(udpc_read)))
+      return UdpcApi2.udpc_read(con, buffer, size);
+    }
+
+    public static int udpc_peek(IntPtr con, byte[] buffer, ulong size)
+    {
+      using(TraceDi.Log(nameof(udpc_peek)))
+      return UdpcApi2.udpc_peek(con, buffer, size);
+    }
+
+    public static int udpc_pending(IntPtr con)
+    {
+      using(TraceDi.Log(nameof(udpc_pending)))
+      return UdpcApi2.udpc_pending(con);
+    }
+
+    public static void udpc_start_server(string address)
+    {
+      using(TraceDi.Log(nameof(udpc_start_server)))
+      UdpcApi2.udpc_start_server(address);
+    }
+
+    public static void udpc_set_timeout(IntPtr con, int us)
+    {
+      using(TraceDi.Log(nameof(udpc_set_timeout)))
+      UdpcApi2.udpc_set_timeout(con, us);
+    }
+
+    public static int udpc_get_timeout(IntPtr con)
+    {
+      using(TraceDi.Log(nameof(udpc_get_timeout)))
+      return UdpcApi2.udpc_get_timeout(con);
+    }
+  }
 
 
   public static class Udpc

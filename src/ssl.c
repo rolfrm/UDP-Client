@@ -101,7 +101,7 @@ static void ssl_ensure_initialized(){
   SSL_load_error_strings();
   thread_setup();
   if(initialized)
-    ERROR("this shouldn ot happen");
+    ERROR("this shouldn not happen");
   initialized = true; 
 }
 

@@ -108,7 +108,7 @@ namespace Udpc.Share
     [Serializable]
     public class FileSendReq
     {
-        public int[] chunkIds;
+        public int[] ChunkIds;
     }
 
     [Serializable]
@@ -130,7 +130,7 @@ namespace Udpc.Share
     {
         readonly Stream file;
         readonly string fileName;
-        Stopwatch sw = new Stopwatch();
+        readonly Stopwatch sw = new Stopwatch();
         bool isStarted = false;
 
 
@@ -189,7 +189,7 @@ namespace Udpc.Share
                     if(!isStarted)
                         throw new InvalidOperationException("Unexpected");
                     FileSendReq o = (FileSendReq) obj;
-                    foreach (var chunk in o.chunkIds)
+                    foreach (var chunk in o.ChunkIds)
                     {
                         buffer[0] = 2;
                         Utils.IntToByteArray(chunk, buffer, 1);
@@ -225,33 +225,26 @@ namespace Udpc.Share
 
         int finishedIndex = -1;
         bool unfinishedData = false;
-        Stopwatch sw = new Stopwatch();
+        readonly Stopwatch sw = new Stopwatch();
         public override void Update()
         {
             base.Update();
-            if (unfinishedData && sw.ElapsedMilliseconds > 100)
+            if (!unfinishedData || sw.ElapsedMilliseconds <= 100) return;
+            List<int> indexes = new List<int>();
+            for (int i = finishedIndex + 1; i < chunksToReceive.Length; i++)
             {
-                List<int> indexes = new List<int>();
-                for (int i = finishedIndex + 1; i < chunksToReceive.Length; i++)
+                if (chunksToReceive[i] == false)
                 {
-                    if (chunksToReceive[i] == false)
-                    {
-                        indexes.Add(i);
-                    }
-
-
-                    var data = indexes.ToArray();
-                    if (data.Length == 0)
-                    {
-                        unfinishedData = false;
-                    }
-                    else
-                    {
-                        Send(new FileSendReq {chunkIds = data});
-                    }
+                    indexes.Add(i);
                 }
-                sw.Restart();
+
+                var data = indexes.ToArray();
+                if (data.Length == 0)
+                    unfinishedData = false;
+                else
+                    Send(new FileSendReq {ChunkIds = data});
             }
+            sw.Restart();
         }
 
         public override void HandleMessage(byte[] data)
@@ -314,8 +307,7 @@ namespace Udpc.Share
 
         public void Stop()
         {
-            if(outStream != null)
-                outStream.Close();
+            outStream?.Close();
         }
     }
 

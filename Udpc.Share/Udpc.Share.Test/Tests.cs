@@ -559,7 +559,7 @@ namespace Udpc.Share.Test
 
     public void RunTests()
     {
-      //if (false)
+      if (false)
       {
         //var sw = Stopwatch.StartNew();
         for (int i = 0; i < 3; i++)
@@ -570,10 +570,11 @@ namespace Udpc.Share.Test
 
         TestCircularSum();
         //gitSuperPatch();
-      }
+      
 
       GitInterop();
       TestUtils();
+      }
       var trd = new Thread(runServer) { IsBackground = true};
       trd.Start();
       Thread.Sleep(500);
