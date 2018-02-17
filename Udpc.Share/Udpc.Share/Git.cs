@@ -151,6 +151,20 @@ namespace Udpc.Share
       runProcess("rm", patchfile);
     }
 
+    static public string GetCommonBase(List<string> log2, List<string> log3)
+    {
+      string match = null;
+      var search = Math.Min(log2.Count, log3.Count);
+      for (int i = 0; i < search; i++)
+      {
+        var l1 = log2[log2.Count - 1 - i];
+        var l2 = log3[log3.Count - 1 - i];
+        if (l1 != l2) break;
+        match = log2[log2.Count - 1 - i];
+      }
+      return match;
+    }
+    
     static public string GetCommonBase(Git gitA, Git gitB)
     {
       var log2 = gitA.GetLog();
@@ -183,14 +197,15 @@ namespace Udpc.Share
 
     ProcStatus runProcess(bool ignoreErrors, string name, params string[] args)
     {
-      Console.WriteLine("Running: '{0} {1}'", name, string.Join(" ", args));
+      //Console.WriteLine("Running: '{0} {1}'", name, string.Join(" ", args));
       var startinfo = new ProcessStartInfo(name, string.Join(" ", args))
       {
         WorkingDirectory = DirPath,
         CreateNoWindow = true,
         RedirectStandardError = true,
         RedirectStandardOutput = true,
-        UseShellExecute = false
+        UseShellExecute = false,
+
       };
 
       using (var proc = new Process(){StartInfo =  startinfo})

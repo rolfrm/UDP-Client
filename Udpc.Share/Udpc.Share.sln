@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Udpc.Share.WebApi", "Udpc.S
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Udpc.Share.Page2", "Udpc.Share.Page\Udpc.Share.Page2.csproj", "{54C893B7-12CB-49E2-BB36-7AEAB0361326}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Updc.Share.Cli", "Updc.Share.Cli\Updc.Share.Cli.csproj", "{25DE69A5-875B-44E8-94FE-E2293BAF2B06}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -33,6 +35,10 @@ Global
 		{54C893B7-12CB-49E2-BB36-7AEAB0361326}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{54C893B7-12CB-49E2-BB36-7AEAB0361326}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{54C893B7-12CB-49E2-BB36-7AEAB0361326}.Release|Any CPU.Build.0 = Release|Any CPU
+		{25DE69A5-875B-44E8-94FE-E2293BAF2B06}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{25DE69A5-875B-44E8-94FE-E2293BAF2B06}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{25DE69A5-875B-44E8-94FE-E2293BAF2B06}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{25DE69A5-875B-44E8-94FE-E2293BAF2B06}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

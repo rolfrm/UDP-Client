@@ -317,7 +317,7 @@ namespace Udpc.Share.Test
       // the general propability of loosing a packet.
       public double LossPropability = 0.0;
       // The surpassing this limit will make it loose packets.
-      public double MaxThroughPut = 1e6;
+      public double MaxThroughPut = 1e8;
 
       // Circular buffers/sums to keep track of amount of data sent and when.
       const int windowSize = 100;
@@ -413,9 +413,13 @@ namespace Udpc.Share.Test
       public int Peek(byte[] buffer, int length)
       {
         if(other == null) throw new InvalidOperationException("Disconnected");
-        if(readBuffer.Count == 0)
-          Thread.Sleep(timeout);
         var buffer2 = readBuffer.FirstOrDefault();
+        if (buffer2 == null)
+        {
+          Thread.Sleep(timeout);
+          buffer2 = readBuffer.FirstOrDefault();
+        }
+
         if (buffer2 == null) return 0;
         int read = Math.Min(length, buffer2.Length);
         Array.Copy(buffer2, buffer, read);
@@ -550,7 +554,7 @@ namespace Udpc.Share.Test
         
         restart:
         rcv = null;
-        byte[] bytes = new byte[523451000];
+        byte[] bytes = new byte[100000];
         for (int i = 0; i < bytes.Length; i++)
           bytes[i] = (byte) (i % 3);
         var memstr = new MemoryStream(bytes);
@@ -558,8 +562,8 @@ namespace Udpc.Share.Test
 
 
         Thread.Sleep(50);
-        con1.StartConversation(snd);
-        snd.Start();
+        //con1.StartConversation(snd);
+        //snd.Start();
         Thread.Sleep(50);
         var sw = Stopwatch.StartNew();
         con1.Process();
@@ -616,20 +620,65 @@ namespace Udpc.Share.Test
       serv?.Disconnect();
     }
 
+    static void TestFileShare()
+    {
+      try
+      {
+        Directory.Delete("myData", true);
+      }
+      catch
+      {
+        
+      }
+
+      try
+      {
+        Directory.Delete("myData2", true);
+      }
+      catch
+      {
+        
+      }
+
+      Directory.CreateDirectory("myData");
+      Directory.CreateDirectory("myData2");
+      
+      var fs = FileShare.Create("test2@0.0.0.0:share1", "myData");
+      Thread.Sleep(500);
+      var fs2 = FileShare.Create("test3@0.0.0.0:share1", "myData2");
+      Thread.Sleep(500);
+      fs.ConnectTo(fs2.Service);
+      fs2.ConnectTo(fs.Service);
+
+      File.WriteAllBytes("myData/testfile", new byte[]{1,2,3,4,5,6});
+      Thread.Sleep(500);
+      fs.UpdateIfNeeded();
+      Thread.Sleep(500);
+      fs2.UpdateIfNeeded();
+      
+      Thread.Sleep(1000000);
+      fs.Stop();
+      
+      
+      
+      fs2.Stop();
+
+    }
+
     public void RunTests()
     {
+      //for (int i = 0; i < 3; i++)
+      //  w  TestFileConversation(false);
       if (false)
       {
         //var sw = Stopwatch.StartNew();
-        for (int i = 0; i < 3; i++)
-          TestFileConversation(false);
+        
 
         //Console.WriteLine("Time spent: {0}", sw.Elapsed);
         //return;
 
         
         //gitSuperPatch();
-
 
         GitInterop();
         
@@ -640,9 +689,12 @@ namespace Udpc.Share.Test
       var trd = new Thread(runServer) {IsBackground = true};
       trd.Start();
 
+      
       Thread.Sleep(500);
+      TestFileShare();
+      return;
       UdpcLatencyTest();
-      //UdpcBasicInterop();
+      UdpcBasicInterop();
 
       UdpcAbstractTest();
       ConversationTest();

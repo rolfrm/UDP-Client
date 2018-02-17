@@ -16,7 +16,7 @@ namespace Udpc.Share
         /// <summary>
         /// In bytes per second.
         /// </summary>
-        public double TargetRate { get; set; } = 5e7;
+        public double TargetRate { get; set; } = 100e7;
 
         // Circular buffers/sums to keep track of amount of data sent and when.
         const int windowSize = 100;
@@ -148,6 +148,8 @@ namespace Udpc.Share
         {
             file = fileToSend;
             this.fileName = fileName;
+            manager.StartConversation(this);
+            Start();
         }
 
         public void Start()
@@ -297,9 +299,10 @@ namespace Udpc.Share
 
                 if (chunksLeft == 0)
                 {
-                    outStream.Close();
+                    Stop();
                     ConversationFinished = true;
                     Send(new ReceiveFinished());
+                    Completed?.Invoke(this, new EventArgs());
                 }
             }
             else if (data[0] == 1)
@@ -308,9 +311,17 @@ namespace Udpc.Share
                 {
                         case FileSendInfo rcvSendInfo:
                             sendInfo = rcvSendInfo;
-                            Directory.CreateDirectory("Downloads");
-                            tmpFilePath = Path.Combine("Downloads", sendInfo.FileName);
-                            outStream = new BufferedStream(File.Open(tmpFilePath, FileMode.Create), 1000000);
+                            if (streamOverride == null)
+                            {
+                                Directory.CreateDirectory("Downloads");
+                                tmpFilePath = Path.Combine("Downloads", sendInfo.FileName);
+                                outStream = new BufferedStream(File.Open(tmpFilePath, FileMode.Create), 1000000);
+                            }
+                            else
+                            {
+                                outStream = streamOverride;
+                            }
+
                             chunksLeft = (int)Math.Ceiling((double)sendInfo.Length / sendInfo.ChunkSize);
                             chunksToReceive = new bool[chunksLeft];
                             Send(new ReceivedFileInfo());
@@ -320,13 +331,18 @@ namespace Udpc.Share
                 }
             }
         }
-        public ReceiveMessageConversation(ConversationManager manager) : base(manager)
+
+        readonly Stream streamOverride;
+        public event EventHandler Completed;
+        public ReceiveMessageConversation(ConversationManager manager, Stream outStream = null) : base(manager)
         {
+            streamOverride = outStream;
         }
 
         public void Stop()
         {
-            outStream?.Close();
+            if(streamOverride == null)
+                outStream?.Close();
         }
     }
 
