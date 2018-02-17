@@ -185,6 +185,7 @@ udpc_connection * udpc_connect(const char * service){
   struct sockaddr_storage local_addr = udp_get_addr("0.0.0.0", 0);
  retry2:;
   int fd = udp_connect(&local_addr, &server_addr, false);
+  logd("FD: %i\n", fd);
   if(fd == -1){
     iron_sleep(0.1);
     // wrecklessly try to reconnect
@@ -196,6 +197,7 @@ udpc_connection * udpc_connect(const char * service){
   ssl_client * cli = ssl_start_client(fd, (struct sockaddr *) &server_addr);
   if(cli == NULL){
     iron_sleep(0.1);
+
     udp_close(fd);
     goto retry2;
   }
@@ -224,12 +226,18 @@ udpc_connection * udpc_connect(const char * service){
     int response_status = udpc_unpack_int(&resp2);
     ssl_client_close(cli);
     udp_close(fd);
+
     if(response_status == udpc_response_ok_ip4){
       struct sockaddr_storage peer_addr;
       int port = udpc_unpack_int(&resp2);
+
       udpc_unpack(&peer_addr, sizeof(peer_addr), &resp2);
+      unsigned char *ip = (unsigned char *)& (((struct sockaddr_in *)&peer_addr)->sin_addr.s_addr);
+      
+					     logd("%d %d %d %d\n", ip[0], ip[1], ip[2], ip[3]);
       ((struct sockaddr_in *)&peer_addr)->sin_port = port;
       int _fd = udp_connect(&local_addr, &peer_addr, false);
+
       ssl_client * cli = ssl_start_client(_fd, (struct sockaddr *)&peer_addr);
       if(cli == NULL){
 	iron_mutex_unlock(connect_mutex);
@@ -347,6 +355,7 @@ static void * connection_handle(void * _info) {
   ssl_server_client * pinfo = info->scli;
   struct sockaddr_storage local_addr = info->local_addr;
   struct sockaddr_storage remote_addr = info->remote_addr;
+  
   pthread_detach(pthread_self());
   iron_mutex_lock(info->server->connect_mutex);
   int fd = udp_connect(&local_addr, &remote_addr, true);
