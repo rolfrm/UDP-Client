@@ -84,7 +84,6 @@ int udp_connect(struct sockaddr_storage * local, struct sockaddr_storage * remot
   }
   opened_closed += 1;
   closed_ports[fd] = 1;
-  logd("UDP_connect: %i\n", fd);
   udp_unlock();
   return fd;
 }

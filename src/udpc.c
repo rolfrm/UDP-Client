@@ -42,6 +42,13 @@ struct _udpc_service{
   service_descriptor service;
   struct sockaddr_storage local_addr;
 };
+iron_mutex connect_mutex;
+void udpc_init(){
+  static bool connect_mutex_initialized = false;
+  if(connect_mutex_initialized) return;
+  connect_mutex = iron_mutex_create();
+  connect_mutex_initialized = true;
+}
 
 // connect to a server. Format of service must be name@host:service
 udpc_service * udpc_login(const char * service){
@@ -161,13 +168,9 @@ udpc_connection * udpc_listen(udpc_service * con){
 }
 void iron_sleep(double);
 
-iron_mutex connect_mutex;
-bool connect_mutex_initialized = false;
 
 udpc_connection * udpc_connect(const char * service){
-  if(!connect_mutex_initialized){
-    connect_mutex = iron_mutex_create();
-  }
+  udpc_init();
   iron_mutex_lock(connect_mutex);
   
   ASSERT(service != NULL);
