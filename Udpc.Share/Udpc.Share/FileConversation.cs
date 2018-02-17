@@ -11,12 +11,12 @@ namespace Udpc.Share
     /// <summary>
     /// Not thread-safe.
     /// </summary>
-    public class FileConversation : Conversation
+    public class FileConversation : IConversation
     {
         /// <summary>
         /// In bytes per second.
         /// </summary>
-        public double TargetRate { get; set; } = 1e6;
+        public double TargetRate { get; set; } = 5e7;
 
         // Circular buffers/sums to keep track of amount of data sent and when.
         const int windowSize = 100;
@@ -24,6 +24,8 @@ namespace Udpc.Share
         readonly CircularSum windowStart = new CircularSum(windowSize);
         static readonly Stopwatch rateTimer = Stopwatch.StartNew();
 
+        public const int CHUNK_SIZE = 1500; 
+        
         /// <summary>
         /// In bytes per second.
         /// </summary>
@@ -48,12 +50,20 @@ namespace Udpc.Share
                 var start = windowStart.First();
                 double ts = (timenow - start) / Stopwatch.Frequency;
                 CurrentRate = windowTransferred.Sum / ts;
-                if (CurrentRate > TargetRate)
+                //
+                if (windowStart.Count == windowSize)
                 {
-                    Thread.Sleep(10);
-                    goto checkTransferRate;
+                    
+                    if (CurrentRate > TargetRate)
+                    {
+                        //Console.WriteLine("------");
+                        Thread.Sleep(1);
+                        
+                        goto checkTransferRate;
+                    }
                 }
-                windowStart.Add(rateTimer.ElapsedTicks);
+                //Console.WriteLine("Current Rate {0}  /  {1}    /    {2}     / {3}", (int) CurrentRate, (int) TargetRate, windowTransferred.Sum, ts);
+                windowStart.Add(timenow);
                 windowTransferred.Add(length);
             }
 
@@ -144,7 +154,7 @@ namespace Udpc.Share
         {
             var fsinfo = new FileSendInfo
             {
-                ChunkSize =  1400 - 5,
+                ChunkSize =  CHUNK_SIZE - 5,
                 FileName = fileName,
                 Length = file.Length
             };
@@ -163,7 +173,7 @@ namespace Udpc.Share
             base.HandleMessage(data);
             var obj = ReadObject(data);
             if (obj == null) throw new InvalidOperationException("Un expected message from target.");
-            byte[] buffer = new byte[1400];
+            byte[] buffer = new byte[CHUNK_SIZE];
             switch (obj)
             {
                 case ReceivedFileInfo _:
@@ -189,11 +199,12 @@ namespace Udpc.Share
                     if(!isStarted)
                         throw new InvalidOperationException("Unexpected");
                     FileSendReq o = (FileSendReq) obj;
+                    Console.WriteLine("Resend {0}", o.ChunkIds.Length);
                     foreach (var chunk in o.ChunkIds)
                     {
                         buffer[0] = 2;
                         Utils.IntToByteArray(chunk, buffer, 1);
-                        file.Seek(chunk * (1400 - 5), SeekOrigin.Begin);
+                        file.Seek(chunk * (CHUNK_SIZE - 5), SeekOrigin.Begin);
                         int read = file.Read(buffer, 5, buffer.Length - 5);
                         Send(buffer, read + 5);
                     }
@@ -231,19 +242,28 @@ namespace Udpc.Share
             base.Update();
             if (!unfinishedData || sw.ElapsedMilliseconds <= 100) return;
             List<int> indexes = new List<int>();
-            for (int i = finishedIndex + 1; i < chunksToReceive.Length; i++)
-            {
-                if (chunksToReceive[i] == false)
-                {
-                    indexes.Add(i);
-                }
 
+            void sendIndexes()
+            {
                 var data = indexes.ToArray();
                 if (data.Length == 0)
                     unfinishedData = false;
                 else
                     Send(new FileSendReq {ChunkIds = data});
+                indexes.Clear();
             }
+            
+            for (int i = finishedIndex + 1; i < chunksToReceive.Length; i++)
+            {
+                if (chunksToReceive[i] == false)
+                    indexes.Add(i);
+
+                if (indexes.Count < 200) continue;
+                sendIndexes();
+                sw.Restart();
+                return;
+            }
+            sendIndexes();
             sw.Restart();
         }
 
@@ -290,7 +310,7 @@ namespace Udpc.Share
                             sendInfo = rcvSendInfo;
                             Directory.CreateDirectory("Downloads");
                             tmpFilePath = Path.Combine("Downloads", sendInfo.FileName);
-                            outStream = File.Open(tmpFilePath, FileMode.Create);
+                            outStream = new BufferedStream(File.Open(tmpFilePath, FileMode.Create), 1000000);
                             chunksLeft = (int)Math.Ceiling((double)sendInfo.Length / sendInfo.ChunkSize);
                             chunksToReceive = new bool[chunksLeft];
                             Send(new ReceivedFileInfo());
@@ -300,7 +320,6 @@ namespace Udpc.Share
                 }
             }
         }
-
         public ReceiveMessageConversation(ConversationManager manager) : base(manager)
         {
         }

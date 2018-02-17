@@ -9,7 +9,7 @@ namespace Udpc.Share
     public class FileShare
     {
         Thread shareThread;
-        Udpc.Server serv;
+        Udpc.IServer serv;
         bool shutdown;
         public string Service { get; private set; }
         public string DataFolder { get; private set; }
@@ -74,7 +74,7 @@ namespace Udpc.Share
             serv.Disconnect();
         }
 
-        void onConnected(Udpc.Client con, bool isServer)
+        void onConnected(Udpc.IClient con, bool isServer)
         {
             var connectionManager = new ConversationManager(con, isServer);
             CreateFileManager(connectionManager);
@@ -90,7 +90,7 @@ namespace Udpc.Share
         
         public void CreateFileManager(ConversationManager conv)
         {
-            Conversation newConversation(byte[] bytes)
+            IConversation newConversation(byte[] bytes)
             {
                 if (bytes[0] != header)
                     throw new InvalidOperationException("Unexpected data in start of conversation.");

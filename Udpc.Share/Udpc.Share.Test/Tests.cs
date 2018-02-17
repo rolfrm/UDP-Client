@@ -3,7 +3,6 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Reflection.Metadata.Ecma335;
 using System.Threading;
 using System.Threading.Tasks;
 using Udpc.Share.Internal;
@@ -193,21 +192,64 @@ namespace Udpc.Share.Test
       UdpcApi.udpc_logout(con);
       Console.WriteLine("Exit..");
     }
+    
+    void UdpcLatencyTest()
+    {
+      UdpcApi.udpc_net_load();
+      IntPtr con = UdpcApi.udpc_login("rolf@0.0.0.0:test1");
+      int count = 1000;
+      var tsk = Task.Factory.StartNew(() => {
+        IntPtr c2 = UdpcApi.udpc_connect("rolf@0.0.0.0:test1");
+        var sw = Stopwatch.StartNew();
+        
+        for (int i = 0; i < count; i++)
+        {
+          UdpcApi.udpc_write(c2, new byte[] {(byte)(1 + i), 2, 3}, 3);
+          byte[] read = new byte[3];
+          if(3 != UdpcApi.udpc_read(c2, read, (ulong) read.LongLength))
+             throw new Exception("..");
+          if((byte)(1 + i) != read[0])
+            throw new Exception("...");
+          
+        }
+        Console.WriteLine("Ping/pong test in {0}ms. {1}ms", sw.Elapsed.TotalMilliseconds, sw.Elapsed.TotalMilliseconds /count);
+
+        UdpcApi.udpc_close(c2);
+      });
+
+      IntPtr c = UdpcApi.udpc_listen(con);
+
+      byte[] testbytes = new byte[3];
+      for (int i = 0; i < count; i++)
+      {
+        UdpcApi.udpc_read(c, testbytes, (ulong)testbytes.LongLength);
+        UdpcApi.udpc_write(c, testbytes, (ulong)testbytes.LongLength);
+      }
+      int cnt3 = UdpcApi.udpc_pending(c);
+
+
+      tsk.Wait();
+      Console.WriteLine("Got bytes {0} {1} {2}. {3}", testbytes[0], testbytes[1], testbytes[2],DateTime.Now);
+      UdpcApi.udpc_logout(con);
+      Console.WriteLine("Exit..");
+    }
+    
 
     void UdpcAbstractTest()
     {
-
-      for (int i = 0; i < 10000; i++)
+      var d = Enumerable.Range(0, 10000).Select(x => (byte) x).ToArray();
+      var arr = new byte[] {3, 2, 1};
+      for (int i = 0; i < 10; i++)
       {
         Console.WriteLine("Abstract Test {0}", i);
         var serv = Udpc.Login("rolf@0.0.0.0:test1");
         while(serv == null)
           serv = Udpc.Login("rolf@0.0.0.0:test1");
-        Thread.Sleep(100);
+        //Thread.Sleep(20);
         var tsk = Task.Factory.StartNew(() =>
         {
           var cli = Udpc.Connect("rolf@0.0.0.0:test1");
-          var d = Enumerable.Range(0, 10000).Select(x => (byte) x).ToArray();
+          
           cli.Write(d, d.Length);
           cli.Disconnect();
         });
@@ -216,8 +258,8 @@ namespace Udpc.Share.Test
         {
           var cli = Udpc.Connect("rolf@0.0.0.0:test1");
           while(cli == null)
-            Udpc.Connect("rolf@0.0.0.0:test1");
-          cli.Write(new byte[] {3, 2, 1}, 3);
+            cli = Udpc.Connect("rolf@0.0.0.0:test1");
+          cli.Write(arr, 3);
           cli.Disconnect();
         });
 
@@ -269,7 +311,7 @@ namespace Udpc.Share.Test
         throw new Exception("Cannot convert back.");
     }
 
-    class TestClient : Udpc.Client
+    class TestClient : Udpc.IClient
     {
       readonly ConcurrentQueue<byte[]> readBuffer = new ConcurrentQueue<byte[]>();
       // the general propability of loosing a packet.
@@ -290,7 +332,7 @@ namespace Udpc.Share.Test
 
       TimeSpan timeout => TimeSpan.FromTicks((long)(TimeSpan.TicksPerSecond * TimeoutUs * 1e-6));
 
-      public static void CreateConnectionTest(out Udpc.Client c1, out Udpc.Client c2, double lossPropability)
+      public static void CreateConnectionTest(out Udpc.IClient c1, out Udpc.IClient c2, double lossPropability)
       {
         var c11 = new TestClient {LossPropability = lossPropability};
         var c22 = new TestClient {LossPropability = lossPropability, other = c11};
@@ -299,10 +341,10 @@ namespace Udpc.Share.Test
         c2 = c22;
       }
 
-      public static Udpc.Server CreateConnectionUdp(out Udpc.Client c1, out Udpc.Client c2)
+      public static Udpc.IServer CreateConnectionUdp(out Udpc.IClient c1, out Udpc.IClient c2)
       {
         var serv = Udpc.Login("rolf@0.0.0.0:test1");
-        Udpc.Client c11 = null;
+        Udpc.IClient c11 = null;
         var tsk = Task.Factory.StartNew(() =>
         {
           c11 = Udpc.Connect("rolf@0.0.0.0:test1");
@@ -318,22 +360,25 @@ namespace Udpc.Share.Test
         if(other == null) throw new InvalidOperationException("Disconnected");
 
         {   // Ensure that we are below the target transfer rate.
-          checkTransferRate:
 
           var timenow = rateTimer.ElapsedTicks;
-          var start = windowStart.First();
-          double ts = (timenow - start) / Stopwatch.Frequency;
-          if (ts < 1.0)
-          { // simulate that the buffers can hold one sec of data.
-            if (windowTransferred.Sum > MaxThroughPut)
-              return;
-          }
-          else
+          if (windowStart.Count > 0)
           {
-            CurrentRate = windowTransferred.Sum / ts;
-            if (CurrentRate > MaxThroughPut)
+            var start = windowStart.First();
+            double ts = (timenow - start) / Stopwatch.Frequency;
+            if (ts < 1.0)
             {
-              return; // loose the packet.
+              // simulate that the buffers can hold one sec of data.
+              if (windowTransferred.Sum > MaxThroughPut)
+                return;
+            }
+            else
+            {
+              CurrentRate = windowTransferred.Sum / ts;
+              if (CurrentRate > MaxThroughPut)
+              {
+                return; // loose the packet.
+              }
             }
           }
 
@@ -391,7 +436,7 @@ namespace Udpc.Share.Test
       public int TimeoutUs { get; set; }
     }
 
-    class TestConversation : Conversation
+    class TestConversation : IConversation
     {
       readonly ConversationManager manager;
       public TestConversation(ConversationManager manager)
@@ -466,7 +511,14 @@ namespace Udpc.Share.Test
       var circ = new CircularSum(10);
       for (int i = 0; i < 20; i++)
       {
+        if(i > 10 && (i - 10) != circ.First() )
+          throw new InvalidOperationException();
         circ.Add(i);
+        if(i != circ.Last() )
+          throw new InvalidOperationException();
+        
+        
+        
       }
 
       if(Math.Abs(circ.Sum - (10 + 11 + 12 + 13 + 14 + 15 + 16 + 17 + 18 + 19)) > 0.001)
@@ -480,8 +532,8 @@ namespace Udpc.Share.Test
     void TestFileConversation(bool useUdp)
     {
       Console.WriteLine("TestFileConversation");
-      Udpc.Client c1, c2;
-      Udpc.Server serv = null;
+      Udpc.IClient c1, c2;
+      Udpc.IServer serv = null;
       if (useUdp)
         serv = TestClient.CreateConnectionUdp(out c1, out c2);
       else
@@ -495,9 +547,10 @@ namespace Udpc.Share.Test
 
       for (int _i = 0; _i < 3; _i++)
       {
+        
         restart:
         rcv = null;
-        byte[] bytes = new byte[123451];
+        byte[] bytes = new byte[523451000];
         for (int i = 0; i < bytes.Length; i++)
           bytes[i] = (byte) (i % 3);
         var memstr = new MemoryStream(bytes);
@@ -508,13 +561,18 @@ namespace Udpc.Share.Test
         con1.StartConversation(snd);
         snd.Start();
         Thread.Sleep(50);
+        var sw = Stopwatch.StartNew();
+        con1.Process();
+        con2.Process();
 
         void runProcessing(ConversationManager con, string name)
         {
           while (con.ConversationsActive)
           {
             if (con.Process())
-              ; //sw.Restart();
+            {
+              //sw.Restart();}
+            }
             else
             {
               con.Update();
@@ -547,7 +605,8 @@ namespace Udpc.Share.Test
           }
         }
 
-        Console.WriteLine("Download file done.");
+        Console.WriteLine("Download file done. in {0}ms. {1:F3} MB/s", sw.Elapsed.TotalMilliseconds, 1e-6 * bytes.Length / sw.Elapsed.TotalSeconds);
+        
       }
       Thread.Sleep(10);
       c1.Disconnect();
@@ -568,17 +627,21 @@ namespace Udpc.Share.Test
         //Console.WriteLine("Time spent: {0}", sw.Elapsed);
         //return;
 
-        TestCircularSum();
+        
         //gitSuperPatch();
-      
 
-      GitInterop();
-      TestUtils();
+
+        GitInterop();
+        
       }
-      var trd = new Thread(runServer) { IsBackground = true};
-      trd.Start();
-      Thread.Sleep(500);
+      TestCircularSum();
+      TestUtils();
 
+      var trd = new Thread(runServer) {IsBackground = true};
+      trd.Start();
+
+      Thread.Sleep(500);
+      UdpcLatencyTest();
       //UdpcBasicInterop();
 
       UdpcAbstractTest();

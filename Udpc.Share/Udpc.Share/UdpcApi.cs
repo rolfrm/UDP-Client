@@ -2,32 +2,19 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Security.Cryptography.X509Certificates;
-using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
-using System.Threading.Tasks.Dataflow;
-using Microsoft.VisualBasic.CompilerServices;
 
 namespace Udpc.Share
 {
-  class UdpcApi2 {
+  static class UdpcApi2 {
     static UdpcApi2()
     {
-      dlopen("./libudpc_net.so", RTLD_NOW + RTLD_GLOBAL);
+      udpc_init();
     }
-    [DllImport("libdl.so")]
-    public static extern IntPtr dlopen(string filename, int flags);
-
-    [DllImport("libdl.so")]
-    public static extern IntPtr dlsym(IntPtr handle, string symbol);
-
-    const int RTLD_NOW = 2; // for dlopen's flags [DllImport("libdl.so")]
-    const int RTLD_GLOBAL = 0x00100;
-
-    [DllImport("libudpc_net.so")]
-    public static extern void udpc_net_load();
-
+    
+    [DllImport("libudpc.so")]
+    static extern IntPtr udpc_init();
+    
     [DllImport("libudpc.so")]
     public static extern IntPtr udpc_login(string service);
     
@@ -70,15 +57,16 @@ namespace Udpc.Share
 
   class TraceDi : IDisposable
   {
-    private string _thing;
-    public TraceDi(string thing)
+    string thing;
+
+    TraceDi(string thing)
     {
-      Console.WriteLine("Start {0}", thing);
-      _thing = thing;
+      //Console.WriteLine("Start {0}", thing);
+      this.thing = thing;
     }
     public void Dispose()
     {
-      Console.WriteLine("Stop {0}", _thing);
+      //Console.WriteLine("Stop {0}", thing);
     }
 
     public static TraceDi Log(string thing)
@@ -87,11 +75,12 @@ namespace Udpc.Share
     }
   }
 
-  public class UdpcApi 
+  public static class UdpcApi
   {
+    static object udpclock = new object();
     public static void udpc_net_load()
     {
-      UdpcApi2.udpc_net_load();
+      //UdpcApi2.udpc_net_load();
     }
 
     public static IntPtr udpc_login(string service)
@@ -114,8 +103,8 @@ namespace Udpc.Share
 
     public static IntPtr udpc_connect(string service)
     {
-      using(TraceDi.Log(nameof(udpc_connect)))
-      return UdpcApi2.udpc_connect(service);
+      using (TraceDi.Log(nameof(udpc_connect)))
+        return UdpcApi2.udpc_connect(service);
     }
 
     public static void udpc_close(IntPtr service)
@@ -176,21 +165,19 @@ namespace Udpc.Share
 
   public static class Udpc
   {
-    public static Client Connect(string connectionString)
+    public static IClient Connect(string connectionString)
     {
       IntPtr cli = UdpcApi.udpc_connect(connectionString);
-      if (cli == IntPtr.Zero) return null;
-      return new UdpcClient(cli);
+      return cli == IntPtr.Zero ? null : new UdpcClient(cli);
     }
 
-    public static Server Login(string connection)
+    public static IServer Login(string connection)
     {
       var con = UdpcApi.udpc_login(connection);
-      if (con == IntPtr.Zero) return null;
-      return new UdpcServer(con);
+      return con == IntPtr.Zero ? null : new UdpcServer(con);
     }
 
-    public interface Client
+    public interface IClient
     {
       void Write(byte[] data, int length);
       int Read(byte[] buffer, int length);
@@ -200,16 +187,16 @@ namespace Udpc.Share
       int TimeoutUs { get; set; }
     }
 
-    public interface Server
+    public interface IServer
     {
       void Disconnect();
-      Client Listen();
+      IClient Listen();
     }
   }
 
-  class UdpcClient : Udpc.Client
+  class UdpcClient : Udpc.IClient
   {
-    IntPtr con;
+    readonly IntPtr con;
 
     public UdpcClient(IntPtr con)
     {
@@ -243,12 +230,12 @@ namespace Udpc.Share
 
     public int TimeoutUs
     {
-      get { return UdpcApi.udpc_get_timeout(con); }
-      set {UdpcApi.udpc_set_timeout(con, value);}
+      get => UdpcApi.udpc_get_timeout(con);
+      set => UdpcApi.udpc_set_timeout(con, value);
     }
   }
 
-  class UdpcServer : Udpc.Server
+  class UdpcServer : Udpc.IServer
   {
 
     IntPtr con;
@@ -265,7 +252,7 @@ namespace Udpc.Share
       con = IntPtr.Zero;
     }
 
-    public Udpc.Client Listen()
+    public Udpc.IClient Listen()
     {
       if(con == IntPtr.Zero)
         throw new InvalidOperationException("UDPC server is disconnected");
@@ -279,9 +266,9 @@ namespace Udpc.Share
   {
     int conversationId = 0xF0;
 
-    public Udpc.Client cli;
-    bool isServer = false;
-    public ConversationManager(Udpc.Client cli, bool isServer)
+    readonly Udpc.IClient cli;
+    readonly bool isServer;
+    public ConversationManager(Udpc.IClient cli, bool isServer)
     {
       this.cli = cli;
       this.cli.TimeoutUs = 10000;
@@ -297,33 +284,33 @@ namespace Udpc.Share
       return conversationId += 2;
     }
 
-    Dictionary<int, Conversation> Conversations = new Dictionary<int, Conversation>();
-    Dictionary<Conversation, int> ConversationIds = new Dictionary<Conversation, int>();
+    readonly Dictionary<int, IConversation> conversations = new Dictionary<int, IConversation>();
+    readonly Dictionary<IConversation, int> conversationIds = new Dictionary<IConversation, int>();
+    readonly Dictionary<IConversation, int> conversationTicks = new Dictionary<IConversation, int>();
 
-    public int GetConversationId(Conversation conv)
+    public int GetConversationId(IConversation conv)
     {
-      int id;
-      if (ConversationIds.TryGetValue(conv, out id))
+      if (conversationIds.TryGetValue(conv, out int id))
         return id;
       return -1;
 
     }
 
-    public int StartConversation(Conversation conv)
+    public int StartConversation(IConversation conv)
     {
       var convId = newConversationId();
       previousConversations.Add(convId);
-      Conversations[convId] = conv;
-      ConversationIds[conv] = convId;
+      conversations[convId] = conv;
+      conversationIds[conv] = convId;
+      conversationTicks[conv] = 0;
 
       return convId;
     }
 
-    public Func<byte[], Conversation> NewConversation = (bytes)
+    public Func<byte[], IConversation> NewConversation = (bytes)
       => throw new InvalidOperationException("Manager cannot create new conversations!");
 
     byte[] buffer = new byte[4];
-    object bufferlock = new object();
     public bool Process()
     {
       int l = cli.Peek(buffer, 4);
@@ -338,13 +325,11 @@ namespace Udpc.Share
         Array.Resize(ref buffer, l);
 
 
-      ticks = 0;
-
       int convId = BitConverter.ToInt32(buffer, 0);
       if(convId == 0 || convId == -1)
         throw new InvalidOperationException($"Invalid conversation ID: {convId}.");
-      Conversation conv;
-      if (!Conversations.TryGetValue(convId, out conv))
+       
+      if (!conversations.TryGetValue(convId, out IConversation conv))
       {
         int mod = convId % 2;
         if ((isServer && mod == 0) || (!isServer && mod == 1))
@@ -358,23 +343,21 @@ namespace Udpc.Share
 
           conv = NewConversation(buffer);
 
-          Conversations[convId] = conv;
-          ConversationIds[conv] = convId;
+          conversations[convId] = conv;
+          conversationIds[conv] = convId;
           previousConversations.Add(convId);
-
-
+          
         }
         else
         {
           if(previousConversations.Contains(convId) == false)
             throw new InvalidOperationException($"Conversation ID '{convId}' does not exist.");
-          else
-          {
             // conversation was already closed.
-            return false;
-          }
+          return false;
+          
         }
       }
+      conversationTicks[conv] = 0;
 
       cli.Read(buffer, buffer.Length);
       byte[] newbuffer = new byte[l - 4];
@@ -383,55 +366,52 @@ namespace Udpc.Share
       return true;
     }
 
-    HashSet<int> previousConversations = new HashSet<int>();
-
-    int ticks = 0;
+    readonly HashSet<int> previousConversations = new HashSet<int>();
 
     public void Update()
     {
-      ticks++;
-      foreach (var con in Conversations.Values.Where(x => x.ConversationFinished).ToArray())
+      foreach (var con in conversations.Values.Where(x => x.ConversationFinished).ToArray())
       {
-        Conversations.Remove(ConversationIds[con]);
-        ConversationIds.Remove(con);
+        conversations.Remove(conversationIds[con]);
+        conversationIds.Remove(con);
       }
 
-      foreach (var con in Conversations.Values)
+      foreach (var conv in conversationTicks.Keys.ToArray())
+      {
+        conversationTicks[conv]++;
+      }
+      
+      foreach (var con in conversations.Values)
       {
         con.Update();
       }
 
-      if (Conversations.Values.Count == 0)
-        Thread.Sleep(10);
+      if (conversations.Values.Count == 0)
+        Thread.Sleep(1);
     }
 
-    public bool ConversationsActive
-    {
-      get
-      {
-        return (cli.Pending() > 0) || (ticks < 10);
-      }
-    }
+    public bool ConversationsActive  => (cli.Pending() > 0) || (conversationTicks.Values.Any( x => x < 10));
 
     byte[] sendBuffer = new byte[1024];
 
-    public void SendMessage(Conversation conv, byte[] message, int count = -1)
+    public void SendMessage(IConversation conv, byte[] message, int count = -1)
     {
-      ticks = 0;
+      
       if (count == -1) count = message.Length;
       if(count > message.Length) throw new InvalidOperationException("Count cannot be larger than message.Length");
-      int id;
-      if(!ConversationIds.TryGetValue(conv, out id))
+      
+      if(!conversationIds.TryGetValue(conv, out int id))
         throw new InvalidOperationException($"Unknown conversation");
       if(count + 4 > sendBuffer.Length)
         Array.Resize(ref sendBuffer, count + 4);
       Internal.Utils.IntToByteArray(id, sendBuffer, 0);
       Array.Copy(message, 0, sendBuffer, 4, count);
       cli.Write(sendBuffer, count + 4);
+      conversationTicks[conv] = 0;
     }
   }
 
-  public interface Conversation
+  public interface IConversation
   {
     void HandleMessage(byte[] data);
     bool ConversationFinished { get; }

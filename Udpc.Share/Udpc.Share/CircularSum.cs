@@ -1,34 +1,30 @@
-﻿namespace Udpc.Share
+﻿using System;
+
+namespace Udpc.Share
 {
     
     public class CircularSum
     {
         public double Sum;
         readonly double[] buffer;
+        public int Count => count;
         int count;
-        int front;
+        int front = -1;
         public CircularSum(int count)
         {
             buffer = new double[count];
         }
 
-        int getTruePosition(int offset)
+        public double Last()
         {
-            offset += front;
-            if (offset >= count)
-                offset -= count;
-            return offset;
+            return buffer[front];
         }
 
         public double First()
         {
-            int pos = getTruePosition(1);
-            return buffer[pos];
-        }
-
-        public double Last()
-        {
-            int pos = getTruePosition(0);
+            int pos = front + 1;
+            if (pos == count)
+                pos = 0;
             return buffer[pos];
         }
 
@@ -46,10 +42,12 @@
                 front = front + 1;
                 if (front >= count)
                     front = 0;
-                Sum = Sum - buffer[front] + (buffer[front] = value);
+                Sum = Sum - buffer[front];
+                buffer[front] = value;
+                Sum += value;
             }
-            
-        }
-        
+
+            //Console.WriteLine("-- {0}", front);
+        }        
     }
 }
