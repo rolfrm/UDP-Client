@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Udpc.Share.Page2", "Udpc.Sh
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Updc.Share.Cli", "Updc.Share.Cli\Updc.Share.Cli.csproj", "{25DE69A5-875B-44E8-94FE-E2293BAF2B06}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Udpc.Share.Gui", "Udpc.Share.Gui\Udpc.Share.Gui.csproj", "{520CF7B6-AF6A-43B5-9A0A-1C8076F52B6A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -39,6 +41,10 @@ Global
 		{25DE69A5-875B-44E8-94FE-E2293BAF2B06}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{25DE69A5-875B-44E8-94FE-E2293BAF2B06}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{25DE69A5-875B-44E8-94FE-E2293BAF2B06}.Release|Any CPU.Build.0 = Release|Any CPU
+		{520CF7B6-AF6A-43B5-9A0A-1C8076F52B6A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{520CF7B6-AF6A-43B5-9A0A-1C8076F52B6A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{520CF7B6-AF6A-43B5-9A0A-1C8076F52B6A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{520CF7B6-AF6A-43B5-9A0A-1C8076F52B6A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
