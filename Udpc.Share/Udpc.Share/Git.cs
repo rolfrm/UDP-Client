@@ -92,8 +92,10 @@ namespace Udpc.Share
           newitem = new GitItem(snd, GitItemStatus.Modified);
         else if(fst.Contains("D"))
           newitem = new GitItem(snd, GitItemStatus.Deleted);
-
-        gitstatus.Items.Add(newitem);
+        
+        
+        if(!newitem.Name.StartsWith('.'))
+          gitstatus.Items.Add(newitem);
       }
 
       return gitstatus;
@@ -134,12 +136,13 @@ namespace Udpc.Share
 
     public string GetPatch(string baseCommit = null)
     {
+      var fname = $".patch.{Guid.NewGuid()}.bin";
       if (baseCommit != null)
-        runProcess("git", "bundle", "create", ".patch.bin", "master", $"^{baseCommit}");
+        runProcess("git", "bundle", "create", fname, "master", $"^{baseCommit}");
       else
-        runProcess("git", "bundle", "create", ".patch.bin", "master");
+        runProcess("git", "bundle", "create", fname, "master");
 
-      return Path.GetFullPath(Path.Combine(DirPath, ".patch.bin"));
+      return Path.GetFullPath(Path.Combine(DirPath, fname));
     }
 
     public void ApplyPatch(string patchfile)

@@ -1,7 +1,10 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.IO;
+using System.Linq;
+using System.Net;
 using System.Runtime.ExceptionServices;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Threading;
@@ -17,7 +20,7 @@ namespace Udpc.Share
         bool shutdown;
         public string Service { get; private set; }
         public string DataFolder { get; private set; }
-        List<ConversationManager> conversations = new List<ConversationManager>();
+        readonly List<ConversationManager> conversations = new List<ConversationManager>();
         Git git;
         
         public static FileShare Create(string service, string dataFolder)
@@ -88,9 +91,12 @@ namespace Udpc.Share
                 }
 
                 foreach (var conv in conversations.ToArray())
+                {
                     conv.Process();
-                Thread.Sleep(10);
-                
+                    conv.Update();
+                }
+
+                Thread.Sleep(1);
             }
             
             serv.Disconnect();
@@ -112,60 +118,52 @@ namespace Udpc.Share
         {
             var connectionManager = new ConversationManager(con, isServer);
 
-            IConversation newConv(byte[] data)
+            IConversation newConv(byte header)
             {
-                if (data[4] == 0)
-                {
-                    Guid id = Guid.NewGuid();
-                    var file = File.OpenWrite(".gitChunk" + id);
-                    var conv = new ReceiveMessageConversation(connectionManager, file);
-                    conv.Completed += (s, e) =>
-                    {
-                        go(() =>
-                        {
-                            git.ApplyPatch(file.Name);
-                        });
-                    };
-                    return conv;
-                }
-                else if(data[4] == 1)
+                if (header == AnyObjectSend.Header2)
                 {
                     var str = new MemoryStream();
-                    var conv = new ReceiveMessageConversation(connectionManager, str);
+                    var conv = new ReceiveMessageConversation(str);
                     conv.Completed += (s, e) =>
                     {
-                        str.Seek(1, SeekOrigin.Begin);
+                        str.Seek(0, SeekOrigin.Begin);
                         var bf = new BinaryFormatter();
                         object thing = bf.Deserialize(str);
                         str.Dispose();
                         go(() => handleThing(connectionManager, thing));
-                        
                     };
                     return conv;
                 }
-                return null;
+
+                Guid id = Guid.NewGuid();
+                var file = File.OpenWrite(".gitChunk" + id);
+                var conv2 = new ReceiveMessageConversation(file);
+                conv2.Completed += (s, e) => { go(() =>
+                {
+                    var fname = file.Name;
+                    file.Close(); 
+                    git.ApplyPatch(fname);
+                    File.Delete(fname);
+                    
+                }); };
+                return conv2;
             }
 
             connectionManager.NewConversation = newConv;
-                
             conversations.Add(connectionManager);
-            //CreateFileManager(connectionManager);
-            //git.CommitAll();
-            //var log = git.GetLog();
-            //connectionManager.SendMessage(log);
         }
 
         public void UpdateIfNeeded()
         {
-            if (git.GetGitStatus().Items.Count > 0)
+            //if (git.GetGitStatus().Items.Count > 0)
             {
                 go(() =>
                 {
                     git.CommitAll();
                     var log = git.GetLog();
-                    foreach (var conv in this.conversations)
+                    foreach (var conv in conversations)
                     {
-                        conv.SendMessage(new GitUpdate{Data =  log});
+                        conv.SendMessage(new GitUpdate{Data = log});
                     }
                 });
             }
@@ -176,49 +174,30 @@ namespace Udpc.Share
             switch (thing)
             {
                 case GitUpdate upd:
-                    Console.WriteLine("...");
-                    string b = Git.GetCommonBase(upd.Data, git.GetLog());
+                    var local = git.GetLog();
+                    if (upd.Data.SequenceEqual(local))
+                        break;
+                    string b = Git.GetCommonBase(upd.Data, local);
                     conv.SendMessage(new SendMeDiff(){CommonCommit = b});
                     break;
                 case SendMeDiff diff:
+                    var local2 = git.GetLog();
+                    if (local2.FirstOrDefault() == diff.CommonCommit)
+                        break;
                     var f = git.GetPatch(diff.CommonCommit);
                     var fstr = File.OpenRead(f);
-                    new SendMessageConversation(conv, fstr, null);
+                    var c = new SendMessageConversation(fstr, null);
+                    c.Completed += (s, e) =>
+                    {
+                        fstr.Close();
+                        File.Delete(f);
+                    };
+                        
+                    conv.StartConversation(c);
                     break;
                 default:
                     throw new InvalidOperationException();
             }
-        }
-
-        const byte header = 0xF1;
-
-        enum ConversationKinds : byte
-        {
-            CheckUpdates = 0x12,
-            FetchPatch = 0x21
-        }
-        
-        public void CreateFileManager(ConversationManager conv)
-        {
-            IConversation newConversation(byte[] bytes)
-            {
-                if (bytes[0] != header)
-                    throw new InvalidOperationException("Unexpected data in start of conversation.");
-                ConversationKinds kind = (ConversationKinds) bytes[1];
-                switch (kind)
-                {
-                    case ConversationKinds.CheckUpdates:
-                        throw new NotImplementedException();//return new GetCheckUpdatesConversation
-                        
-                }
-                return null;
-            }
-
-            conv.NewConversation = newConversation;
-            go(() =>
-            {
-                
-            });
         }
     }
 
@@ -230,16 +209,17 @@ namespace Udpc.Share
         {
             var bf = new BinaryFormatter();
             var memstr = new MemoryStream();
-            memstr.WriteByte(1);
             bf.Serialize(memstr, obj);
             memstr.Seek(0, SeekOrigin.Begin);
                 
             return memstr;
         }
+
+        public const byte Header2 = 11;
         
-        public AnyObjectSend(ConversationManager manager, object anyThing) : base(manager, getObjectStream(anyThing), "")
+        public AnyObjectSend(ConversationManager manager, object anyThing) : base(getObjectStream(anyThing), "")
         {
-            
+            Header = Header2;
         }
         
         
@@ -249,7 +229,7 @@ namespace Udpc.Share
     {
         public static void SendMessage<T>(this ConversationManager man, T obj)
         {
-           new AnyObjectSend(man, obj);
+           man.StartConversation(new AnyObjectSend(man, obj));
         }
     }
 }

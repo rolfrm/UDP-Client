@@ -442,12 +442,8 @@ namespace Udpc.Share.Test
 
     class TestConversation : IConversation
     {
-      readonly ConversationManager manager;
-      public TestConversation(ConversationManager manager)
-      {
-        this.manager = manager;
-      }
-
+      ConversationManager manager;
+      
       public void HandleMessage(byte[] data)
       {
         int value = BitConverter.ToInt32(data, 0) + 1;
@@ -463,6 +459,12 @@ namespace Udpc.Share.Test
 
       }
 
+      public byte Header => 2;
+      public void Start(ConversationManager manager)
+      {
+        this.manager = manager;
+      }
+
       public void Start()
       {
         var data = new byte[4];
@@ -476,18 +478,15 @@ namespace Udpc.Share.Test
       TestClient.CreateConnectionTest(out var c1, out var c2, 0);
 
       var con1 = new ConversationManager(c1, true);
-      con1.NewConversation = b => new TestConversation(con1);
+      con1.NewConversation = b => new TestConversation();
       var con2 = new ConversationManager(c2, false);
-      con2.NewConversation = b => new TestConversation(con2);
+      con2.NewConversation = b => new TestConversation();
 
-      var conv = new TestConversation(con1);
+      var conv = new TestConversation();
       con1.StartConversation(conv);
 
-      conv.Start();
-
-      var conv2 = new TestConversation(con2);
+      var conv2 = new TestConversation();
       con2.StartConversation(conv2);
-      conv2.Start();
 
       for(int i = 0; i < 100; i++)
       {
@@ -546,7 +545,15 @@ namespace Udpc.Share.Test
       var con1 = new ConversationManager(c1, true);
       //con1.NewConversation = b => new ReceiveMessageConversation(con1);
       var con2 = new ConversationManager(c2, false);
-      con2.NewConversation = b => rcv = new ReceiveMessageConversation(con2);
+
+      bool wasReceived1 = false, wasReceived2 = false;
+      
+      con2.NewConversation = b =>
+      {
+        rcv = new ReceiveMessageConversation();
+        rcv.Completed += (s, e) => wasReceived1 = true; 
+        return rcv;
+      };
 
 
       for (int _i = 0; _i < 3; _i++)
@@ -558,12 +565,12 @@ namespace Udpc.Share.Test
         for (int i = 0; i < bytes.Length; i++)
           bytes[i] = (byte) (i % 3);
         var memstr = new MemoryStream(bytes);
-        var snd = new SendMessageConversation(con1, memstr, "TestFile");
-
+        var snd = new SendMessageConversation(memstr, "TestFile");
+        snd.Completed += (s, e) => wasReceived2 = true;
 
         Thread.Sleep(50);
-        //con1.StartConversation(snd);
-        //snd.Start();
+        con1.StartConversation(snd);
+        
         Thread.Sleep(50);
         var sw = Stopwatch.StartNew();
         con1.Process();
@@ -610,6 +617,8 @@ namespace Udpc.Share.Test
         }
 
         Console.WriteLine("Download file done. in {0}ms. {1:F3} MB/s", sw.Elapsed.TotalMilliseconds, 1e-6 * bytes.Length / sw.Elapsed.TotalSeconds);
+        if(!(wasReceived1 && wasReceived2))
+          throw new InvalidOperationException();
         
       }
       Thread.Sleep(10);
@@ -648,13 +657,21 @@ namespace Udpc.Share.Test
       var fs2 = FileShare.Create("test3@0.0.0.0:share1", "myData2");
       Thread.Sleep(500);
       fs.ConnectTo(fs2.Service);
+      Thread.Sleep(500);
       fs2.ConnectTo(fs.Service);
+      
 
       File.WriteAllBytes("myData/testfile", new byte[]{1,2,3,4,5,6});
-      Thread.Sleep(500);
-      fs.UpdateIfNeeded();
-      Thread.Sleep(500);
-      fs2.UpdateIfNeeded();
+      
+      while (true)
+      {
+        
+        fs.UpdateIfNeeded();
+        Thread.Sleep(2000);
+        fs2.UpdateIfNeeded();
+        Thread.Sleep(2000);
+      }
+      
       
       Thread.Sleep(1000000);
       fs.Stop();

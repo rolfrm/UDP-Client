@@ -29,7 +29,6 @@ namespace Udpc.Share
 
         readonly Dictionary<int, IConversation> conversations = new Dictionary<int, IConversation>();
         readonly Dictionary<IConversation, int> conversationIds = new Dictionary<IConversation, int>();
-        readonly Dictionary<IConversation, int> conversationTicks = new Dictionary<IConversation, int>();
 
         public int StartConversation(IConversation conv)
         {
@@ -37,19 +36,18 @@ namespace Udpc.Share
             previousConversations.Add(convId);
             conversations[convId] = conv;
             conversationIds[conv] = convId;
-            conversationTicks[conv] = 0;
-            
+            conv.Start(this);
 
             return convId;
         }
 
-        public Func<byte[], IConversation> NewConversation = (bytes)
+        public Func<byte, IConversation> NewConversation = (bytes)
             => throw new InvalidOperationException("Manager cannot create new conversations!");
 
         byte[] buffer = new byte[8];
         public bool Process()
         {
-            int l = cli.Peek(buffer, 8);
+            int l = cli.Peek(buffer, 5);
 
             if(l < 4)
                 if (l <= 0)
@@ -64,7 +62,8 @@ namespace Udpc.Share
             int convId = BitConverter.ToInt32(buffer, 0);
             if(convId == 0 || convId == -1)
                 throw new InvalidOperationException($"Invalid conversation ID: {convId}.");
-       
+
+            int offset = 4;
             if (!conversations.TryGetValue(convId, out IConversation conv))
             {
                 int mod = convId % 2;
@@ -74,15 +73,15 @@ namespace Udpc.Share
                     {
                         cli.Read(buffer, buffer.Length);
                         return false;
-
                     }
 
-                    conv = NewConversation(buffer);
-
+                    conv = NewConversation(buffer[4]);
+                    
                     conversations[convId] = conv;
                     conversationIds[conv] = convId;
                     previousConversations.Add(convId);
-          
+                    conv.Start(this);
+                    offset = 5;
                 }
                 else
                 {
@@ -93,11 +92,10 @@ namespace Udpc.Share
           
                 }
             }
-            conversationTicks[conv] = 0;
 
             cli.Read(buffer, buffer.Length);
-            byte[] newbuffer = new byte[l - 4];
-            Array.Copy(buffer, 4, newbuffer, 0, l - 4);
+            byte[] newbuffer = new byte[l - offset];
+            Array.Copy(buffer, offset, newbuffer, 0, l - offset);
             conv.HandleMessage(newbuffer);
             return true;
         }
@@ -112,10 +110,6 @@ namespace Udpc.Share
                 conversationIds.Remove(con);
             }
 
-            foreach (var conv in conversationTicks.Keys.ToArray())
-            {
-                conversationTicks[conv]++;
-            }
       
             foreach (var con in conversations.Values)
             {
@@ -126,24 +120,33 @@ namespace Udpc.Share
                 Thread.Sleep(1);
         }
 
-        public bool ConversationsActive  => (cli.Pending() > 0) || (conversationTicks.Values.Any( x => x < 10));
+        public bool ConversationsActive  => (cli.Pending() > 0) || (conversations.Values.Any( ));
 
         byte[] sendBuffer = new byte[1024];
 
-        public void SendMessage(IConversation conv, byte[] message, int count = -1)
+        public void SendMessage(IConversation conv, byte[] message, int count = -1, bool isStart = false)
         {
       
             if (count == -1) count = message.Length;
             if(count > message.Length) throw new InvalidOperationException("Count cannot be larger than message.Length");
       
             if(!conversationIds.TryGetValue(conv, out int id))
-                throw new InvalidOperationException($"Unknown conversation");
+                throw new InvalidOperationException($"Unknown conversation {conv}");
             if(count + 4 > sendBuffer.Length)
-                Array.Resize(ref sendBuffer, count + 4);
+                Array.Resize(ref sendBuffer, count + 4 + 1);
             Internal.Utils.IntToByteArray(id, sendBuffer, 0);
-            Array.Copy(message, 0, sendBuffer, 4, count);
-            cli.Write(sendBuffer, count + 4);
-            conversationTicks[conv] = 0;
+            
+            if (isStart)
+            {
+                Array.Copy(message, 0, sendBuffer, 5, count);
+                sendBuffer[4] = conv.Header;
+                cli.Write(sendBuffer, count + 5);
+            }
+            else
+            {
+                Array.Copy(message, 0, sendBuffer, 4, count);
+                cli.Write(sendBuffer, count + 4);
+            }
         }
     }
 }

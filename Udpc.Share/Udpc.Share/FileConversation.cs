@@ -16,13 +16,19 @@ namespace Udpc.Share
         /// <summary>
         /// In bytes per second.
         /// </summary>
-        public double TargetRate { get; set; } = 100e7;
+        public double TargetRate { get; set; } = 1e5;
 
         // Circular buffers/sums to keep track of amount of data sent and when.
         const int windowSize = 100;
         readonly CircularSum windowTransferred = new CircularSum(windowSize);
         readonly CircularSum windowStart = new CircularSum(windowSize);
         static readonly Stopwatch rateTimer = Stopwatch.StartNew();
+        public byte Header { get; set; } = 5;
+        
+        public virtual void Start(ConversationManager manager)
+        {
+            this.manager = manager;
+        }
 
         public const int CHUNK_SIZE = 1500; 
         
@@ -31,17 +37,16 @@ namespace Udpc.Share
         /// </summary>
         public double CurrentRate { get; private set; }
 
-        readonly ConversationManager manager;
+        ConversationManager manager;
 
-        public FileConversation(ConversationManager manager)
+        public FileConversation()
         {
-            this.manager = manager;
             bf = new BinaryFormatter();
             ms = new MemoryStream();
             windowStart.Add(rateTimer.ElapsedTicks);
         }
 
-        protected void Send(byte[] data, int length = -1)
+        protected void Send(byte[] data, int length = -1, bool isStart = false)
         {
             {   // Ensure that we are below the target transfer rate.
                 checkTransferRate:
@@ -50,37 +55,34 @@ namespace Udpc.Share
                 var start = windowStart.First();
                 double ts = (timenow - start) / Stopwatch.Frequency;
                 CurrentRate = windowTransferred.Sum / ts;
-                //
-                if (windowStart.Count == windowSize)
+                if (windowStart.Count > 5)
                 {
                     
                     if (CurrentRate > TargetRate)
                     {
-                        //Console.WriteLine("------");
-                        Thread.Sleep(1);
-                        
+                        Thread.Sleep(1);   
                         goto checkTransferRate;
                     }
                 }
-                //Console.WriteLine("Current Rate {0}  /  {1}    /    {2}     / {3}", (int) CurrentRate, (int) TargetRate, windowTransferred.Sum, ts);
                 windowStart.Add(timenow);
                 windowTransferred.Add(length);
             }
 
-            manager.SendMessage(this, data, length);
+            manager.SendMessage(this, data, length, isStart);
 
         }
 
         readonly BinaryFormatter bf;
         readonly MemoryStream ms;
-        protected void Send(object obj)
+        protected void Send(object obj, bool isStart = false)
         {
             ms.Seek(0, SeekOrigin.Begin);
             ms.SetLength(0);
             ms.WriteByte(1);
+            
             bf.Serialize(ms, obj);
             var buf = ms.GetBuffer();
-            Send(buf, (int)ms.Length);
+            Send(buf, (int)ms.Length, isStart);
         }
 
         protected object ReadObject(byte[] data)
@@ -92,14 +94,31 @@ namespace Udpc.Share
                 ms2.Seek(1, SeekOrigin.Begin);
                 return bf.Deserialize(ms2);
             }
-
         }
         public virtual void HandleMessage(byte[] data)
         {
 
         }
 
-        public bool ConversationFinished { get; protected set; }
+        bool finished = false;
+        public bool ConversationFinished
+        {
+            get => finished;
+            protected set
+            {
+                if (finished != value)
+                {
+                    if(value == false) throw new InvalidOperationException("Conversation cannot be un-finished.");
+                    finished = true;
+                    if(Completed != null)
+                        Completed(this, new EventArgs());
+                }
+
+            }
+        }
+
+        public event EventHandler Completed;
+        
         public virtual void Update()
         {
 
@@ -141,32 +160,31 @@ namespace Udpc.Share
         readonly Stream file;
         readonly string fileName;
         readonly Stopwatch sw = new Stopwatch();
-        bool isStarted = false;
+        bool isStarted;
 
 
-        public SendMessageConversation(ConversationManager manager, Stream fileToSend, string fileName) : base(manager)
+        public SendMessageConversation(Stream fileToSend, string fileName)
         {
             file = fileToSend;
             this.fileName = fileName;
-            manager.StartConversation(this);
-            Start();
         }
 
-        public void Start()
+        public override void Start(ConversationManager conv) 
         {
+            base.Start(conv);
             var fsinfo = new FileSendInfo
             {
                 ChunkSize =  CHUNK_SIZE - 5,
                 FileName = fileName,
                 Length = file.Length
             };
-            Send(fsinfo);
+            Send(fsinfo, isStart: true);
         }
 
         public override void Update()
         {
-            if (sw.ElapsedMilliseconds > 500)
-                ConversationFinished = true;
+            //if (sw.ElapsedMilliseconds > 500)
+            //    ConversationFinished = true;
         }
 
         public override void HandleMessage(byte[] data)
@@ -174,7 +192,7 @@ namespace Udpc.Share
             sw.Reset();
             base.HandleMessage(data);
             var obj = ReadObject(data);
-            if (obj == null) throw new InvalidOperationException("Un expected message from target.");
+            if (obj == null) throw new InvalidOperationException("Unexpected message from target.");
             byte[] buffer = new byte[CHUNK_SIZE];
             switch (obj)
             {
@@ -225,7 +243,7 @@ namespace Udpc.Share
 
             sw.Start();
         }
-
+        
     }
 
     public class ReceiveMessageConversation : FileConversation
@@ -234,15 +252,21 @@ namespace Udpc.Share
         string tmpFilePath;
         Stream outStream;
         bool[] chunksToReceive;
-        int chunksLeft;
+        int chunksLeft = -1;
 
         int finishedIndex = -1;
         bool unfinishedData = false;
-        readonly Stopwatch sw = new Stopwatch();
+        readonly Stopwatch sw = Stopwatch.StartNew();
         public override void Update()
         {
             base.Update();
+            if (ConversationFinished) return;
+            if (chunksLeft == 0)
+                Stop();
+
             if (!unfinishedData || sw.ElapsedMilliseconds <= 100) return;
+            
+            
             List<int> indexes = new List<int>();
 
             void sendIndexes()
@@ -271,7 +295,6 @@ namespace Udpc.Share
 
         public override void HandleMessage(byte[] data)
         {
-
             if (data[0] == 2)
             {
                 if(sendInfo == null)
@@ -296,14 +319,10 @@ namespace Udpc.Share
                             sw.Start();
                     }
                 }
-
                 if (chunksLeft == 0)
-                {
                     Stop();
-                    ConversationFinished = true;
-                    Send(new ReceiveFinished());
-                    Completed?.Invoke(this, new EventArgs());
-                }
+
+                
             }
             else if (data[0] == 1)
             {
@@ -330,17 +349,22 @@ namespace Udpc.Share
                             throw new InvalidOperationException("Unknown object type");
                 }
             }
+
         }
+        
 
         readonly Stream streamOverride;
-        public event EventHandler Completed;
-        public ReceiveMessageConversation(ConversationManager manager, Stream outStream = null) : base(manager)
+        public ReceiveMessageConversation(Stream outStream = null)
         {
             streamOverride = outStream;
+            Header = 10;
         }
 
         public void Stop()
         {
+            if (ConversationFinished) return;
+            Send(new ReceiveFinished());
+            ConversationFinished = true;
             if(streamOverride == null)
                 outStream?.Close();
         }

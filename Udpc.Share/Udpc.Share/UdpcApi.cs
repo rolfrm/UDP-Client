@@ -264,5 +264,7 @@ namespace Udpc.Share
     void HandleMessage(byte[] data);
     bool ConversationFinished { get; }
     void Update();
+    byte Header { get; }
+    void Start(ConversationManager manager);
   }
 }
