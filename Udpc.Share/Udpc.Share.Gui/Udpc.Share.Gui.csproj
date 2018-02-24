@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>netcoreapp2.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="App.xaml">
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="0.6.1" />
+    <PackageReference Include="Avalonia.Gtk3" Version="0.6.1" />
+    <PackageReference Include="Avalonia.ReactiveUI" Version="0.6.1" />
+    <PackageReference Include="Avalonia.Skia" Version="0.6.1" />
+    <PackageReference Include="Avalonia.Skia.Linux.Natives" Version="1.57.1.4" />
+    <PackageReference Include="Portable.Xaml" Version="0.21.0" />
+    <PackageReference Include="ReactiveUI" Version="8.0.0-alpha0117" />
+    <PackageReference Include="SkiaSharp" Version="1.57.1" />
+    <PackageReference Include="Sprache" Version="2.1.2" />
+    <PackageReference Include="System.Reactive.Core" Version="3.1.1" />
+    <PackageReference Include="System.Reactive.Interfaces" Version="3.1.1" />
+    <PackageReference Include="System.Reactive.Linq" Version="3.1.1" />
+    <PackageReference Include="System.Reactive.PlatformServices" Version="3.1.1" />
+  </ItemGroup>
+</Project>
