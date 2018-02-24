@@ -26,8 +26,8 @@ clean:
 libudpc_net: $(LIB_OBJECTS) udpc_net.o
 	$(CC) $(LDFLAGS) $(LIB_OBJECTS) udpc_net.o $(LIBS) -liron --shared -o libudpc_net.so 
 
-server: $(TARGET) main.o
-	$(CC) $(LDFLAGS) $(LIBS) main.o -ludpc -Wl,-rpath,. -o server
+server: $(TARGET) src/main.o
+	$(CC) $(LDFLAGS) $(LIBS) src/main.o -ludpc -Wl,-rpath,. -o server
 
 rpc: $(TARGET) udpc_get.o
 	$(CC) $(LDFLAGS) $(LIBS) udpc_get.o -ludpc -Wl,-rpath,. -o rpc

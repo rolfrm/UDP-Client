@@ -1,14 +1,11 @@
-﻿using System;
-
-namespace Udpc.Share
+﻿namespace Udpc.Share
 {
-    
     public class CircularSum
     {
         public double Sum;
         readonly double[] buffer;
-        public int Count => count;
-        int count;
+        public int Count { get; private set; }
+
         int front = -1;
         public CircularSum(int count)
         {
@@ -23,31 +20,29 @@ namespace Udpc.Share
         public double First()
         {
             int pos = front + 1;
-            if (pos == count)
+            if (pos == Count)
                 pos = 0;
             return buffer[pos];
         }
 
         public void Add(double value)
         {
-            if (count < buffer.Length)
+            if (Count < buffer.Length)
             {
-                buffer[count] = value;
-                count += 1;
+                buffer[Count] = value;
+                Count += 1;
                 front += 1;
                 Sum += value;
             }
             else
             {
                 front = front + 1;
-                if (front >= count)
+                if (front >= Count)
                     front = 0;
                 Sum = Sum - buffer[front];
                 buffer[front] = value;
                 Sum += value;
             }
-
-            //Console.WriteLine("-- {0}", front);
         }        
     }
 }

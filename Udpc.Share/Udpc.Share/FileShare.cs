@@ -27,6 +27,16 @@ namespace Udpc.Share
         {
             dataFolder = Path.GetFullPath(dataFolder);
             Utils.EnsureDirectoryExists(dataFolder);
+            Console.WriteLine("----");
+            Console.WriteLine("Connecting {1} to {0}", service, dataFolder);
+            var serv = Udpc.Login(service);
+            while (serv == null)
+            {
+                Thread.Sleep(1000);
+                Console.WriteLine("Connecting {0}", service);
+                serv = Udpc.Login(service);
+                
+            }
 
             var share = new FileShare {serv = Udpc.Login(service)};
             share.shareThread = new Thread(share.runShare);

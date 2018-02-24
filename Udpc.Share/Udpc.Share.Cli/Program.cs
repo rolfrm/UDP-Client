@@ -1,8 +1,8 @@
 ﻿using System;
+using System.IO;
 using System.Threading;
-using Udpc.Share;
 
-namespace Updc.Share.Cli
+namespace Udpc.Share.Cli
 {
     class Program
     {
@@ -23,6 +23,7 @@ namespace Updc.Share.Cli
 
             while (true)
             {
+                Console.WriteLine("Update..");
                 Thread.Sleep(500);
                 fs.UpdateIfNeeded();
             }

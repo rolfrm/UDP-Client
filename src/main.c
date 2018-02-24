@@ -7,6 +7,9 @@
 #include "service_descriptor.h"
 #include <iron/log.h>
 
+void log_print(const char * data,...){
+  printf("%s", data);
+}
 
 void _error(const char * file, int line, const char * msg, ...){
   char buffer[1000];  
