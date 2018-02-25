@@ -13,16 +13,7 @@ namespace Udpc.Share
     /// </summary>
     public class FileConversation : IConversation
     {
-        /// <summary>
-        /// In bytes per second.
-        /// </summary>
-        public double TargetRate { get; set; } = 1e5;
 
-        // Circular buffers/sums to keep track of amount of data sent and when.
-        const int windowSize = 100;
-        readonly CircularSum windowTransferred = new CircularSum(windowSize);
-        readonly CircularSum windowStart = new CircularSum(windowSize);
-        static readonly Stopwatch rateTimer = Stopwatch.StartNew();
         public byte Header { get; set; } = 5;
         
         public virtual void Start(ConversationManager manager)
@@ -30,44 +21,20 @@ namespace Udpc.Share
             this.manager = manager;
         }
 
-        public const int CHUNK_SIZE = 1500; 
+        public const int CHUNK_SIZE = 10000; 
         
-        /// <summary>
-        /// In bytes per second.
-        /// </summary>
-        public double CurrentRate { get; private set; }
-
         ConversationManager manager;
 
         public FileConversation()
         {
             bf = new BinaryFormatter();
             ms = new MemoryStream();
-            windowStart.Add(rateTimer.ElapsedTicks);
+            
         }
 
         protected void Send(byte[] data, int length = -1, bool isStart = false)
         {
-            {   // Ensure that we are below the target transfer rate.
-                checkTransferRate:
-
-                var timenow = rateTimer.ElapsedTicks;
-                var start = windowStart.First();
-                double ts = (timenow - start) / Stopwatch.Frequency;
-                CurrentRate = windowTransferred.Sum / ts;
-                if (windowStart.Count > 5)
-                {
-                    
-                    if (CurrentRate > TargetRate)
-                    {
-                        Thread.Sleep(1);   
-                        goto checkTransferRate;
-                    }
-                }
-                windowStart.Add(timenow);
-                windowTransferred.Add(length);
-            }
-
+ 
             manager.SendMessage(this, data, length, isStart);
 
         }

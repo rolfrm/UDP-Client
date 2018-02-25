@@ -6,4 +6,10 @@
   <ItemGroup>
     <ProjectReference Include="..\Udpc.Share\Udpc.Share.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\libudpc.so">
+      <Link>libudpc.so</Link>
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
 </Project>

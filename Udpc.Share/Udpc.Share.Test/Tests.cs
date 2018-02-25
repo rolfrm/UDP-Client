@@ -3,6 +3,8 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Numerics;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Udpc.Share.Internal;
@@ -313,6 +315,8 @@ namespace Udpc.Share.Test
 
     class TestClient : Udpc.IClient
     {
+      
+      
       readonly ConcurrentQueue<byte[]> readBuffer = new ConcurrentQueue<byte[]>();
       // the general propability of loosing a packet.
       public double LossPropability = 0.0;
@@ -438,6 +442,23 @@ namespace Udpc.Share.Test
       }
 
       public int TimeoutUs { get; set; }
+      public Udpc.IClient WaitReads(Udpc.IClient[] clients, int timeoutms)
+      {
+        var sw = Stopwatch.StartNew();
+        while (sw.ElapsedMilliseconds > timeoutms)
+        {
+
+          foreach (TestClient cli in clients)
+          {
+            if (cli.readBuffer.Any())
+            {
+              return cli;
+            }
+          }
+          Thread.Sleep(10);
+        }
+        return null;
+      }
     }
 
     class TestConversation : IConversation
@@ -561,7 +582,7 @@ namespace Udpc.Share.Test
         
         restart:
         rcv = null;
-        byte[] bytes = new byte[100000];
+        byte[] bytes = new byte[100000000];
         for (int i = 0; i < bytes.Length; i++)
           bytes[i] = (byte) (i % 3);
         var memstr = new MemoryStream(bytes);
@@ -573,28 +594,38 @@ namespace Udpc.Share.Test
         
         Thread.Sleep(50);
         var sw = Stopwatch.StartNew();
-        con1.Process();
-        con2.Process();
-
+        
         void runProcessing(ConversationManager con, string name)
         {
           while (con.ConversationsActive)
           {
-            if (con.Process())
-            {
-              //sw.Restart();}
-            }
-            else
-            {
-              con.Update();
-            }
+            if(!con.Update())
+              Thread.Sleep(1);
           }
         }
 
+        bool done = false;
+        void runProcessing2(ConversationManager con, string name)
+        {
+          while (!done)
+          {
+            con.Process();
+          }
+        }
+        
+        var t3 = Task.Factory.StartNew(() => runProcessing2(con1, "Send_Process"));
+        var t4 = Task.Factory.StartNew(() => runProcessing2(con2, "Receive_Process"));
+        Thread.Sleep(100);
+
         var t1 = Task.Factory.StartNew(() => runProcessing(con1, "Send"));
         var t2 = Task.Factory.StartNew(() => runProcessing(con2, "Receive"));
+        
+        
         t1.Wait();
         t2.Wait();
+        done = true;
+        t3.Wait();
+        t4.Wait();
         if (rcv == null)
           goto restart;
         rcv.Stop();
@@ -657,27 +688,70 @@ namespace Udpc.Share.Test
       var fs2 = FileShare.Create("test3@0.0.0.0:share1", "myData2");
       Thread.Sleep(500);
       fs.ConnectTo(fs2.Service);
-      Thread.Sleep(500);
-      fs2.ConnectTo(fs.Service);
+      //Thread.Sleep(500);
+      //fs2.ConnectTo(fs.Service);
       
-
-      File.WriteAllBytes("myData/testfile", new byte[]{1,2,3,4,5,6});
-      
-      while (true)
+      void updateFileShares()
       {
+        while (true)
+        {
         
-        fs.UpdateIfNeeded();
-        Thread.Sleep(2000);
-        fs2.UpdateIfNeeded();
-        Thread.Sleep(2000);
+          fs.UpdateIfNeeded();
+          fs.WaitForProcessing();
+          Thread.Sleep(200);
+          fs2.UpdateIfNeeded();
+          fs2.WaitForProcessing();
+          Thread.Sleep(200);
+        }
       }
       
+      var trd = new Thread(updateFileShares);
+      trd.Start();
       
-      Thread.Sleep(1000000);
+      StringBuilder textdata = new StringBuilder();
+      
+      
+      void iterate(string dir)
+      {
+        var filename = Guid.NewGuid().ToString();
+        textdata.Append(filename);
+        File.WriteAllText(Path.Combine(dir,filename), textdata.ToString());  
+      }
+      
+      iterate(fs.DataFolder);
+      Thread.Sleep(500);
+      for (int i = 0; i < 500; i++)
+      {
+        iterate(i%2 == 0 ? fs.DataFolder : fs2.DataFolder);
+        Thread.Sleep(50);
+      }
+
+      bool condition()
+      {
+        var d1 = Directory.GetFiles(fs.DataFolder);
+        var d2 = Directory.GetFiles(fs2.DataFolder);
+        return d1.Length == d2.Length;
+      }
+
+      var sw = Stopwatch.StartNew();
+      while (condition() == false)
+      {
+        //if(sw.ElapsedMilliseconds > 20000)
+        //  throw new InvalidOperationException("test timed out");
+        Thread.Sleep(1000);
+      }
+      Thread.Sleep(100);
+
+      GC.Collect();  
+      var chunkCount = Directory.GetFiles(".").Count(x => x.Contains(".gitChunk"));
+      while (chunkCount > 0)
+      {
+        chunkCount = Directory.GetFiles(".").Count(x => x.Contains(".gitChunk"));
+        Thread.Sleep(100);
+        //throw new InvalidOperationException("missing clean up");
+      }
+
       fs.Stop();
-      
-      
-      
       fs2.Stop();
 
     }
@@ -707,7 +781,7 @@ namespace Udpc.Share.Test
       trd.Start();
 
       
-      Thread.Sleep(500);
+      Thread.Sleep(200);
       TestFileShare();
       return;
       UdpcLatencyTest();

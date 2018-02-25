@@ -223,7 +223,7 @@ namespace Udpc.Share
         proc.BeginOutputReadLine();
         proc.WaitForExit();
 
-        Console.WriteLine("{0}", output.ToString());
+        //Console.WriteLine("{0}", output.ToString());
 
         if(proc.ExitCode != 0 && !ignoreErrors)
           throw new InvalidOperationException(string.Format("program exited with error '{0}'", erroroutput.ToString()));

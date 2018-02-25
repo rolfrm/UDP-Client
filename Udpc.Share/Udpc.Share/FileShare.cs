@@ -20,7 +20,7 @@ namespace Udpc.Share
         bool shutdown;
         public string Service { get; private set; }
         public string DataFolder { get; private set; }
-        readonly List<ConversationManager> conversations = new List<ConversationManager>();
+        public readonly List<ConversationManager> conversations = new List<ConversationManager>();
         Git git;
         
         public static FileShare Create(string service, string dataFolder)
@@ -40,9 +40,13 @@ namespace Udpc.Share
 
             var share = new FileShare {serv = Udpc.Login(service)};
             share.shareThread = new Thread(share.runShare);
+            share.processThread = new Thread(share.runProcess);
+            
             share.Service = service;
             share.DataFolder = dataFolder;
             share.shareThread.Start();
+            share.processThread.Start();
+            
             share.git = new Git(dataFolder);
             
             void runListen()
@@ -90,27 +94,51 @@ namespace Udpc.Share
         } 
             
         Thread listenThread;
+        Thread processThread;
+
         void runShare()
         {
             
             while (!shutdown)
             {
+                bool anyUpdates = false;
                 if (dispatcherQueue.TryDequeue(out Action result))
                 {
                     result();
+                    anyUpdates = true;
                 }
 
                 foreach (var conv in conversations.ToArray())
                 {
-                    conv.Process();
-                    conv.Update();
+                    if (conv.Update())
+                        anyUpdates = true;
                 }
-
-                Thread.Sleep(1);
+                if(!anyUpdates)
+                    Thread.Sleep(1);
             }
             
             serv.Disconnect();
         }
+
+        void runProcess()
+        {
+            while (!shutdown)
+            {
+                if (conversations.Count == 0)
+                {
+                    Thread.Sleep(10);
+                    continue;
+                }
+
+                var cm = ConversationManager.MultiplexWait(conversations, 100);
+                if (cm != null)
+                {
+                    cm.Process();
+                }
+            }
+
+        }
+        
 
         [Serializable]
         public class GitUpdate
@@ -151,16 +179,30 @@ namespace Udpc.Share
                 conv2.Completed += (s, e) => { go(() =>
                 {
                     var fname = file.Name;
-                    file.Close(); 
-                    git.ApplyPatch(fname);
-                    File.Delete(fname);
-                    
+                    try
+                    {
+                        file.Close();
+                        git.ApplyPatch(fname);
+                    }
+                    finally
+                    {
+                        File.Delete(fname);
+                    }
+
                 }); };
                 return conv2;
             }
 
             connectionManager.NewConversation = newConv;
             conversations.Add(connectionManager);
+        }
+
+        public void WaitForProcessing()
+        {
+            while (dispatcherQueue.Count > 0)
+            {
+                Thread.Sleep(100);
+            }
         }
 
         public void UpdateIfNeeded()
@@ -231,8 +273,6 @@ namespace Udpc.Share
         {
             Header = Header2;
         }
-        
-        
     }
 
     public static class ConnectionExt

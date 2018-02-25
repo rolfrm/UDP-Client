@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
@@ -23,6 +24,15 @@ namespace Udpc.Share.Gui
         }
     }
 
+    public class ObjectContainer
+    {
+        public object Value;
+        public override string ToString()
+        {
+            return string.Format("{0}", Value);
+        }
+    }
+
     public class MainWindow : Window
     {
         public MainWindow()
@@ -36,6 +46,11 @@ namespace Udpc.Share.Gui
                 btn.Click += OnClicked;
                 stk.Children.Add(btn);
             }
+
+            var lst = new ListBox();
+            lst.Items = new byte[] {1, 2, 34, 5,5,5,5,5, 6, 7, 8, 9, 9, 8, 7, 6, 5, 4}.Select(x => new ObjectContainer(){Value =  x}).ToList();
+            
+            stk.Children.Add(lst);
 
             scrl.Content = stk;
 
