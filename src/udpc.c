@@ -312,6 +312,29 @@ void udpc_close(udpc_connection * con){
   free(con);
 }
 
+int udpc_wait_reads(udpc_connection ** clients, int count, int timeout_ms){
+
+  fd_set rfds;
+  FD_ZERO(&rfds);
+  int bfd = 0;
+  for(int i = 0; i < count; i++){
+    FD_SET(clients[i]->fd, &rfds);
+    if(clients[i]->fd > bfd)
+      bfd = clients[i]->fd;
+  }
+  struct timeval timeout;
+  timeout.tv_sec = timeout_ms / 1000;
+  timeout.tv_usec = (timeout_ms % 1000) * 1000;
+  
+  int i = select(bfd + 1, &rfds, NULL, NULL, &timeout);
+  for(int i = 0; i < count; i++)
+    if(!FD_ISSET(clients[i]->fd, &rfds))
+      clients[i] = NULL;
+  FD_ZERO(&rfds);
+  return i;
+
+}
+
 typedef struct{
   struct sockaddr_storage client_addr;
   service_descriptor desc;

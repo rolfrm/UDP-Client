@@ -45,5 +45,8 @@ void udpc_push_error(const char * error);
 // Pops an error from the error stack. It has to be freed by the caller.
 char * udpc_pop_error();
 
+// Wait for data to be come ready on either of the clients. returns the index of the client.
+int udpc_wait_reads(udpc_connection ** clients, int count, int timeout_ms);
+
 // Server APx
 void udpc_start_server(const char * local_address);
