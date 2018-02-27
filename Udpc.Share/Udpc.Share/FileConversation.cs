@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.Serialization.Formatters.Binary;
-using System.Threading;
 using Udpc.Share.Internal;
 
 namespace Udpc.Share
@@ -14,11 +13,11 @@ namespace Udpc.Share
     public class FileConversation : IConversation
     {
 
-        public byte Header { get; set; } = 5;
+        public byte Header { get; protected set; } = 5;
         
-        public virtual void Start(ConversationManager manager)
+        public virtual void Start(ConversationManager inmanager)
         {
-            this.manager = manager;
+            manager = inmanager;
         }
 
         public const int CHUNK_SIZE = 10000; 
@@ -28,15 +27,12 @@ namespace Udpc.Share
         public FileConversation()
         {
             bf = new BinaryFormatter();
-            ms = new MemoryStream();
-            
+            ms = new MemoryStream();    
         }
 
         protected void Send(byte[] data, int length = -1, bool isStart = false)
         {
- 
             manager.SendMessage(this, data, length, isStart);
-
         }
 
         readonly BinaryFormatter bf;
@@ -67,20 +63,16 @@ namespace Udpc.Share
 
         }
 
-        bool finished = false;
+        bool finished;
         public bool ConversationFinished
         {
             get => finished;
             protected set
             {
-                if (finished != value)
-                {
-                    if(value == false) throw new InvalidOperationException("Conversation cannot be un-finished.");
-                    finished = true;
-                    if(Completed != null)
-                        Completed(this, new EventArgs());
-                }
-
+                if (finished == value) return;
+                if (value == false) throw new InvalidOperationException("Conversation cannot be un-finished.");
+                finished = true;
+                Completed?.Invoke(this, new EventArgs());
             }
         }
 
@@ -222,7 +214,7 @@ namespace Udpc.Share
         int chunksLeft = -1;
 
         int finishedIndex = -1;
-        bool unfinishedData = false;
+        bool unfinishedData;
         readonly Stopwatch sw = Stopwatch.StartNew();
         public override void Update()
         {

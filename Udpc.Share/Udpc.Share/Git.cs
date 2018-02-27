@@ -18,8 +18,8 @@ namespace Udpc.Share
   {
     public GitItem(string name, GitItemStatus status)
     {
-      this.Name = name;
-      this.Status = status;
+      Name = name;
+      Status = status;
     }
 
     public readonly string Name;
@@ -113,7 +113,7 @@ namespace Udpc.Share
     }
 
 
-    int commits = 0;
+    int commits;
 
     public bool CommitAll()
     {

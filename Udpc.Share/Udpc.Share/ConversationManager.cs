@@ -60,7 +60,7 @@ namespace Udpc.Share
             => throw new InvalidOperationException("Manager cannot create new conversations!");
 
         DateTime lastUpdate = DateTime.MinValue;
-        TimeSpan Latency = TimeSpan.Zero;
+        TimeSpan latency = TimeSpan.Zero;
         byte[] buffer = new byte[8];
         
         public bool Process()
@@ -88,8 +88,8 @@ namespace Udpc.Share
             { // special ping message
               // calculate latency
                 cli.Read(buffer, buffer.Length);
-                Latency = DateTime.Now - lastUpdate;
-                Console.WriteLine("Calculated latency {0}ms", Latency.TotalMilliseconds);
+                latency = DateTime.Now - lastUpdate;
+                Console.WriteLine("Calculated latency {0}ms", latency.TotalMilliseconds);
                 return true;
                 //goto processAgain;
             }
@@ -139,14 +139,13 @@ namespace Udpc.Share
             if (DateTime.Now - lastUpdate > TimeSpan.FromMilliseconds(500))
             {
                 lastUpdate = DateTime.Now;
-                
                 SendMessage(null, BitConverter.GetBytes((int)  (isServer ? -2 : -3)));
             }
             
             return true;
         }
         
-        Queue<Action> processingItems = new Queue<Action>();
+        readonly Queue<Action> processingItems = new Queue<Action>();
         
 
         readonly HashSet<int> previousConversations = new HashSet<int>();
@@ -156,12 +155,11 @@ namespace Udpc.Share
             bool thingsHappened = false;
             while (true)
             {
-                Action proc = null;
+                Action proc;
                 lock (processingItems)
                     if (!processingItems.TryDequeue(out proc))
                         break;
-                if(proc != null)
-                    proc();
+                proc?.Invoke();
                 thingsHappened = true;
             }
             
@@ -182,19 +180,11 @@ namespace Udpc.Share
 
         [ThreadStatic]
         static byte[] ssendBuffer;
-        
-        ManualResetEvent evt = new ManualResetEvent(false);
 
         public void SendMessage(IConversation conv, byte[] message, int count = -1, bool isStart = false)
         {
             if (count == -1) count = message.Length;
             if(count > message.Length) throw new InvalidOperationException("Count cannot be larger than message.Length");
-            
-            if (conv == null)
-            {
-                cli.Write(message, count);
-                return;
-            }
             
             var sendBuffer = ssendBuffer ?? new byte[1024];
             
@@ -205,12 +195,12 @@ namespace Udpc.Share
                 var timenow = rateTimer.ElapsedTicks;
                 var start = windowStart.First();
                 double ts = (timenow - start) / Stopwatch.Frequency;
-                CurrentRate = (windowTransferred.Sum + message.Length) / ts;
+                currentRate = (windowTransferred.Sum + message.Length) / ts;
                 if (windowStart.Count > 5)
                 {
-                    if (CurrentRate > TargetRate)
+                    if (currentRate > targetRate)
                     {
-                        var waitTime = (windowTransferred.Sum + message.Length) / TargetRate - ts;
+                        var waitTime = (windowTransferred.Sum + message.Length) / targetRate - ts;
                         var ticks = (long)(waitTime * TimeSpan.TicksPerSecond);
                         
                         if (waitTime > 0.001)
@@ -228,6 +218,12 @@ namespace Udpc.Share
                 }
                 windowStart.Add(timenow);
                 windowTransferred.Add(count + 4);
+            }
+            
+            if (conv == null)
+            {
+                cli.Write(message, count);
+                return;
             }
             
             if(!conversationIds.TryGetValue(conv, out int id))
@@ -254,7 +250,7 @@ namespace Udpc.Share
         /// <summary>
         /// In bytes per second.
         /// </summary>
-        public double TargetRate { get; set; } = 5e7;
+        double targetRate { get; } = 5e7;
         
         // Circular buffers/sums to keep track of amount of data sent and when.
         const int windowSize = 100;
@@ -265,6 +261,6 @@ namespace Udpc.Share
         /// <summary>
         /// In bytes per second.
         /// </summary>
-        public double CurrentRate { get; private set; }
+        double currentRate { get; set; }
     }
 }

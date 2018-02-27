@@ -1,11 +1,8 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
 using System.IO;
 using System.Linq;
-using System.Net;
-using System.Runtime.ExceptionServices;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,10 +14,11 @@ namespace Udpc.Share
     {
         Thread shareThread;
         Udpc.IServer serv;
-        bool shutdown;
         public string Service { get; private set; }
         public string DataFolder { get; private set; }
-        public readonly List<ConversationManager> conversations = new List<ConversationManager>();
+        public bool ShutdownPending { get; private set; }
+
+        readonly List<ConversationManager> conversations = new List<ConversationManager>();
         Git git;
         
         public static FileShare Create(string service, string dataFolder)
@@ -56,7 +54,7 @@ namespace Udpc.Share
                     share.git.Init();
                     share.git.CommitAll();
                 });
-                while (!share.shutdown)
+                while (!share.ShutdownPending)
                 {
                     var con = share.serv.Listen();
                     if (con != null)
@@ -74,7 +72,7 @@ namespace Udpc.Share
 
         public void Stop()
         {
-            shutdown = true;
+            ShutdownPending = true;
         }
 
         public void ConnectTo(string service)
@@ -99,7 +97,7 @@ namespace Udpc.Share
         void runShare()
         {
             
-            while (!shutdown)
+            while (!ShutdownPending)
             {
                 bool anyUpdates = false;
                 if (dispatcherQueue.TryDequeue(out Action result))
@@ -122,7 +120,7 @@ namespace Udpc.Share
 
         void runProcess()
         {
-            while (!shutdown)
+            while (!ShutdownPending)
             {
                 if (conversations.Count == 0)
                 {
@@ -131,10 +129,7 @@ namespace Udpc.Share
                 }
 
                 var cm = ConversationManager.MultiplexWait(conversations, 100);
-                if (cm != null)
-                {
-                    cm.Process();
-                }
+                cm?.Process();
             }
 
         }
@@ -199,7 +194,7 @@ namespace Udpc.Share
 
         public void WaitForProcessing()
         {
-            while (dispatcherQueue.Count > 0)
+            while (!ShutdownPending && dispatcherQueue.Count > 0)
             {
                 Thread.Sleep(100);
             }
@@ -207,6 +202,7 @@ namespace Udpc.Share
 
         public void UpdateIfNeeded()
         {
+            if (ShutdownPending) return;
             //if (git.GetGitStatus().Items.Count > 0)
             {
                 go(() =>

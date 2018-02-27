@@ -693,9 +693,8 @@ namespace Udpc.Share.Test
       
       void updateFileShares()
       {
-        while (true)
+        while (!fs.ShutdownPending && !fs2.ShutdownPending)
         {
-        
           fs.UpdateIfNeeded();
           fs.WaitForProcessing();
           Thread.Sleep(200);
@@ -720,10 +719,10 @@ namespace Udpc.Share.Test
       
       iterate(fs.DataFolder);
       Thread.Sleep(500);
-      for (int i = 0; i < 500; i++)
+      for (int i = 0; i < 100; i++)
       {
         iterate(i%2 == 0 ? fs.DataFolder : fs2.DataFolder);
-        Thread.Sleep(50);
+        Thread.Sleep(100);
       }
 
       bool condition()
@@ -753,6 +752,7 @@ namespace Udpc.Share.Test
 
       fs.Stop();
       fs2.Stop();
+      trd.Join();
 
     }
 
