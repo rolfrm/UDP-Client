@@ -45,13 +45,13 @@ namespace Udpc.Share
             share.shareThread.Start();
             share.processThread.Start();
             
-            share.git = new Git(dataFolder);
+            share.git = new Git();
             
             void runListen()
             {
                 var gitUpdate = Task.Factory.StartNew( () =>
                 {
-                    share.git.Init();
+                    share.git.Init(share.DataFolder);
                     share.git.CommitAll();
                 });
                 while (!share.ShutdownPending)

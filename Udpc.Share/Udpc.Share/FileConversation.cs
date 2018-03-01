@@ -20,7 +20,7 @@ namespace Udpc.Share
             manager = inmanager;
         }
 
-        public const int CHUNK_SIZE = 10000; 
+        public const int CHUNK_SIZE = 12000; 
         
         ConversationManager manager;
 
@@ -252,6 +252,8 @@ namespace Udpc.Share
             sw.Restart();
         }
 
+        long currentWritePos = 0;
+
         public override void HandleMessage(byte[] data)
         {
             if (data[0] == 2)
@@ -262,8 +264,10 @@ namespace Udpc.Share
                 if (chunksToReceive[index] == false)
                 {
                     chunksToReceive[index] = true;
-                    outStream.Seek(index * sendInfo.ChunkSize, SeekOrigin.Begin);
+                    if(currentWritePos != index * sendInfo.ChunkSize)
+                        outStream.Seek(index * sendInfo.ChunkSize, SeekOrigin.Begin);
                     outStream.Write(data, 5, data.Length - 5);
+                    currentWritePos = (index + 1)* sendInfo.ChunkSize;
                     chunksToReceive[index] = true;
                     chunksLeft--;
                     if (sw.IsRunning)

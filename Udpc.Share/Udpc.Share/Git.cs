@@ -52,22 +52,70 @@ namespace Udpc.Share
     public string BTop;
   }
 
-  public class Git
+  public interface ISyncObject
   {
-    public readonly string DirPath;
+    
+  }
 
-    public Git(string dirPath)
-    {
-      DirPath = dirPath;
-    }
+  public interface IFileShare<T> where T: ISyncObject
+  {
+    void Init(string Directory);
+    void Commit();
+    T GetSyncData();
+    T GetSyncDiff(T remoteSync);
+    Stream GetSyncStream(T syncdata);
+  }
 
-    public void Init()
+  [Serializable]
+  public class GitSync : ISyncObject
+  {
+    public List<string> Log;
+    public string BaseCommit;
+
+  }
+  
+  
+
+  public class Git : IFileShare<GitSync>
+  {
+    public string DirPath { get; private set; }
+
+    public void Init(string directory)
     {
+      if(DirPath != null) throw new InvalidOperationException();
+      DirPath = directory;
       var dir = new DirectoryInfo(Path.Combine(DirPath, ".git"));
       if (!dir.Exists)
       {
         runProcess("git", "init");
       }
+    }
+
+    public void Commit()
+    {
+      CommitAll();
+    }
+
+    public GitSync GetSyncData()
+    {
+      return new GitSync() {Log = GetLog()};
+    }
+
+    public GitSync GetSyncDiff(GitSync remoteSync)
+    {
+      var sync = GetSyncData();
+      var diff = GetCommonBase(sync.Log, remoteSync.Log);
+      return new GitSync() {BaseCommit = diff};
+    }
+
+    public Stream GetSyncStream(GitSync syncdata)
+    {
+      var file = GetPatch(syncdata.BaseCommit);
+      var fstr = File.OpenRead(file);
+      return new EventWrappedStream(fstr)
+      {
+        OnClosed = () => File.Delete(file)
+      };
     }
 
     public GitStatus GetGitStatus()

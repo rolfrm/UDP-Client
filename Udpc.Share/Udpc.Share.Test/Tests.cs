@@ -27,8 +27,8 @@ namespace Udpc.Share.Test
       File.WriteAllText("sync_1/test1", "Hello world");
       File.WriteAllText("sync_1/test2", "Hello world");
 
-      var git1 = new Git("sync_1");
-      git1.Init();
+      var git1 = new Git();
+      git1.Init("sync_1");
       var status = git1.GetGitStatus();
       git1.CommitAll();
       File.WriteAllText("sync_1/test1", "Hello world 222");
@@ -62,8 +62,8 @@ namespace Udpc.Share.Test
       }
 
       Directory.CreateDirectory("sync_2");
-      var git2 = new Git("sync_2");
-      git2.Init();
+      var git2 = new Git();
+      git2.Init("sync_2");
 
       var commonBase = Git.GetCommonBase(git1, git2);
 
@@ -137,8 +137,8 @@ namespace Udpc.Share.Test
         }
 
         Directory.CreateDirectory(dir);
-        var git2 = new Git(dir);
-        git2.Init();
+        var git2 = new Git();
+        git2.Init(dir);
         gits[idx] = git2;
         idx++;
       }
@@ -582,7 +582,7 @@ namespace Udpc.Share.Test
         
         restart:
         rcv = null;
-        byte[] bytes = new byte[100000000];
+        byte[] bytes = new byte[1000000];
         for (int i = 0; i < bytes.Length; i++)
           bytes[i] = (byte) (i % 3);
         var memstr = new MemoryStream(bytes);

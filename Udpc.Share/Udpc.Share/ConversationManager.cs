@@ -250,7 +250,7 @@ namespace Udpc.Share
         /// <summary>
         /// In bytes per second.
         /// </summary>
-        double targetRate { get; } = 5e7;
+        double targetRate { get; } = 10e7;
         
         // Circular buffers/sums to keep track of amount of data sent and when.
         const int windowSize = 100;
