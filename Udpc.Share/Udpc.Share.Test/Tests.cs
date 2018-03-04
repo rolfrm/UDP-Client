@@ -888,6 +888,7 @@ namespace Udpc.Share.Test
       var dl = new DataLog("Downloads", datafile);
       dl.Update();
       
+      dl.Update();
       DataLog.Unpack("Downloads2", DataLog.ReadFromFile(datafile));
       return;
       

@@ -24,11 +24,12 @@ namespace Udpc.Share
             FileId = id;
         }
     }
-    
+
     [Serializable]
     public class NewFileLogItem : DataLogItem
     {
         public DateTime LastEdit;
+
         public NewFileLogItem(DateTime lastEdit) : this(Guid.NewGuid(), lastEdit)
         {
         }
@@ -37,7 +38,6 @@ namespace Udpc.Share
         {
             this.LastEdit = lastEdit;
         }
-        
     }
 
     [Serializable]
@@ -52,6 +52,7 @@ namespace Udpc.Share
     public class FileNameLogItem : DataLogItem
     {
         public readonly string FileName;
+
         public FileNameLogItem(Guid itemid, string filename) : base(itemid)
         {
             FileName = filename;
@@ -68,6 +69,7 @@ namespace Udpc.Share
     {
         readonly public byte[] Content;
         readonly public long Offset;
+
         public FileDataItem(Guid itemid, byte[] content, long offset) : base(itemid)
         {
             Content = content;
@@ -85,19 +87,18 @@ namespace Udpc.Share
     {
         public DeletedFileItem(Guid id) : base(id)
         {
-            
         }
     }
-    
-    
-    
+
+
     public class DataLog
     {
         readonly string directory;
         readonly string datafile;
         readonly Dictionary<Guid, RegFile> file = new Dictionary<Guid, RegFile>();
-        readonly Dictionary<string,Guid> fileNameToGuid = new Dictionary<string, Guid>();
+        readonly Dictionary<string, Guid> fileNameToGuid = new Dictionary<string, Guid>();
         bool isInitialized;
+
         public DataLog(string directory, string datafile)
         {
             this.directory = directory.TrimEnd('\\').TrimEnd('/');
@@ -111,7 +112,7 @@ namespace Udpc.Share
                 BinaryFormatter bf = new BinaryFormatter();
                 while (fstr.Position < fstr.Length)
                 {
-                    var item = (DataLogItem)bf.Deserialize(fstr);
+                    var item = (DataLogItem) bf.Deserialize(fstr);
                     yield return item;
                 }
             }
@@ -120,14 +121,15 @@ namespace Udpc.Share
         public static void Unpack(string place, IEnumerable<DataLogItem> items)
         {
             Utils.EnsureDirectoryExists(place);
+
             string translate(string path)
             {
                 return Path.Combine(place, path);
             }
-            
-            
+
+
             Dictionary<Guid, RegFile> filenames = new Dictionary<Guid, RegFile>();
-            
+
             foreach (var item in items)
             {
                 switch (item)
@@ -151,7 +153,7 @@ namespace Udpc.Share
                         if (filenames[f.FileId].Name != null)
                             File.Move(translate(filenames[f.FileId].Name), translate(f.FileName));
                         filenames[f.FileId].Name = f.FileName;
-                        if(filenames[f.FileId].IsDirectory)
+                        if (filenames[f.FileId].IsDirectory)
                             Utils.EnsureDirectoryExists(translate(f.FileName));
                         break;
                     case FileDataItem f:
@@ -164,17 +166,20 @@ namespace Udpc.Share
 
                         break;
                     case DeletedFileItem f:
-                        File.Delete(filenames[f.FileId].Name);
+                        File.Delete(translate(filenames[f.FileId].Name));
                         break;
                     default:
                         throw new NotImplementedException();
                 }
             }
-            
         }
+
+        int iteration = 0;
 
         public void Update()
         {
+            BinaryFormatter bf = new BinaryFormatter();
+            iteration += 1;
             if (!isInitialized)
             {
                 isInitialized = true;
@@ -183,10 +188,10 @@ namespace Udpc.Share
                     Utils.EnsureDirectoryExists(Path.GetDirectoryName(datafile));
                     using (var fstr = File.OpenWrite(datafile))
                     {
-                        var bf = new BinaryFormatter();
                         foreach (var item in Generate())
                         {
                             bf.Serialize(fstr, item);
+                            register(item);
                         }
                     }
 
@@ -200,22 +205,23 @@ namespace Udpc.Share
                     }
                 }
             }
-
-            foreach (var item in Directory.EnumerateFileSystemEntries(directory, "*", SearchOption.AllDirectories))
+            
+            using (var fstr = File.Open(datafile, FileMode.Append, FileAccess.Write, System.IO.FileShare.Read))
             {
-                var f =  new FileInfo(item);
-
-                Guid id;
-                if (!fileNameToGuid.TryGetValue(f.FullName, out id))
-                    id = Guid.Empty;
-                else if (this.file[id].LastEdit > f.LastWriteTime)
+                foreach (var item in Directory.EnumerateFileSystemEntries(directory, "*", SearchOption.AllDirectories))
                 {
-                    continue;
-                }
+                    var f = new FileInfo(item);
 
-                using (var fstr = File.Open(datafile, FileMode.Append, FileAccess.Write, System.IO.FileShare.Read))
-                {
-                    BinaryFormatter bf = new BinaryFormatter();
+                    Guid id;
+                    if (!fileNameToGuid.TryGetValue(f.FullName, out id))
+                        id = Guid.Empty;
+                    else if (this.file[id].LastEdit >= f.LastWriteTime)
+                    {
+                        this.file[id].Iteration = iteration;
+                        continue;
+                    }
+
+                    
                     IEnumerable<DataLogItem> logitems;
 
                     if (id == Guid.Empty)
@@ -228,7 +234,6 @@ namespace Udpc.Share
                     Console.WriteLine("POS: {0}", fstr.Position);
                     try
                     {
-
                         foreach (var x in logitems)
                         {
                             bf.Serialize(fstr, x);
@@ -240,8 +245,23 @@ namespace Udpc.Share
                         fstr.Position = pos;
                         fstr.SetLength(pos);
                     }
-                        
+
+                    this.file[itemsToRegister[0].FileId].Iteration = iteration;
                     itemsToRegister.ForEach(register);
+                }
+
+                foreach (var x in file)
+                {
+                    if (x.Value.Iteration != iteration)
+                    {
+                        if (x.Value.IsDeleted == false)
+                        {
+                            x.Value.IsDeleted = true;
+                            bf.Serialize(fstr, new DeletedFileItem(x.Key));
+                        }
+
+                        x.Value.Iteration = iteration;
+                    }
                 }
             }
         }
@@ -251,9 +271,10 @@ namespace Udpc.Share
             public string Name;
             public bool IsFile;
             public bool IsDirectory;
+            public bool IsDeleted;
             public DateTime LastEdit;
+            public int Iteration;
         }
-        
 
 
         void register(DataLogItem item)
@@ -267,8 +288,8 @@ namespace Udpc.Share
                     file[f.FileId] = new RegFile {IsDirectory = true};
                     break;
                 case FileNameLogItem f:
-                    file[f.FileId].Name = Path.GetFullPath(f.FileName);
-                    fileNameToGuid[Path.GetFullPath(f.FileName)] = f.FileId;
+                    file[f.FileId].Name = Path.GetFullPath(Path.Combine(directory, f.FileName));
+                    fileNameToGuid[file[f.FileId].Name] = f.FileId;
                     break;
                 default:
                     break;
@@ -323,6 +344,6 @@ namespace Udpc.Share
                 foreach (var x in GenerateFromFile(item))
                     yield return x;
             }
-        }   
+        }
     }
 }
