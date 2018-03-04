@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace Udpc.Share
@@ -57,13 +58,14 @@ namespace Udpc.Share
     
   }
 
-  public interface IFileShare<T> where T: ISyncObject
+  public interface IFileShare
   {
     void Init(string Directory);
     void Commit();
-    T GetSyncData();
-    T GetSyncDiff(T remoteSync);
-    Stream GetSyncStream(T syncdata);
+    object GetSyncData();
+    object GetSyncDiff(object remoteSync);
+    Stream GetSyncStream(object syncdata);
+    void UnpackSyncStream(Stream syncStream);
   }
 
   [Serializable]
@@ -74,11 +76,10 @@ namespace Udpc.Share
 
   }
   
-  
-
-  public class Git : IFileShare<GitSync>
+  public class Git : IFileShare
   {
     public string DirPath { get; private set; }
+    public bool IsBare = false;
 
     public void Init(string directory)
     {
@@ -87,7 +88,15 @@ namespace Udpc.Share
       var dir = new DirectoryInfo(Path.Combine(DirPath, ".git"));
       if (!dir.Exists)
       {
-        runProcess("git", "init");
+        if (IsBare)
+        {
+          runProcess("git", "--bare", "init");
+        }
+
+        else
+        {
+          runProcess("git", "init");
+        }
       }
     }
 
@@ -96,26 +105,43 @@ namespace Udpc.Share
       CommitAll();
     }
 
-    public GitSync GetSyncData()
+    public object GetSyncData()
     {
       return new GitSync() {Log = GetLog()};
     }
 
-    public GitSync GetSyncDiff(GitSync remoteSync)
+    public object GetSyncDiff(object _remoteSync)
     {
-      var sync = GetSyncData();
+      var remoteSync = (GitSync) _remoteSync;
+      var sync = (GitSync)GetSyncData();
       var diff = GetCommonBase(sync.Log, remoteSync.Log);
       return new GitSync() {BaseCommit = diff};
     }
 
-    public Stream GetSyncStream(GitSync syncdata)
+    public Stream GetSyncStream(object _syncdata)
     {
+      var syncdata = (GitSync) _syncdata;
       var file = GetPatch(syncdata.BaseCommit);
       var fstr = File.OpenRead(file);
       return new EventWrappedStream(fstr)
       {
         OnClosed = () => File.Delete(file)
       };
+    }
+
+    public void UnpackSyncStream(Stream syncStream)
+    {
+      var fname1 = Guid.NewGuid().ToString();
+      var filename = Path.Combine(DirPath, fname1);
+      using (var f = File.OpenWrite(filename))
+      {
+        syncStream.CopyTo(f);
+        syncStream.Flush();
+      }
+      syncStream.Close();
+      
+      ApplyPatch(fname1);
+      File.Delete(filename);
     }
 
     public GitStatus GetGitStatus()

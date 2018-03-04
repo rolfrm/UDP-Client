@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.Serialization.Formatters.Binary;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -120,6 +121,122 @@ namespace Udpc.Share.Test
       var log8 = git1.GetLog();
       var log9 = git2.GetLog();
     }
+
+    void testFileShare(IFileShare git1, IFileShare git2)
+    {
+      
+      try
+      {
+        Directory.Delete("sync_1", true);
+      }
+      catch
+      {
+      }
+
+      Directory.CreateDirectory("sync_1");
+      File.WriteAllText("sync_1/test1", "Hello world");
+      File.WriteAllText("sync_1/test2", "Hello world");
+
+      try
+      {
+        Directory.Delete("sync_2", true);
+      }
+      catch
+      {
+      }
+
+      Directory.CreateDirectory("sync_2");
+      
+      git1.Init("sync_1");
+      git1.Commit();
+      File.WriteAllText("sync_1/test1", "Hello world 222");
+      git1.Commit();
+
+      Directory.CreateDirectory("sync_1/test dir/");
+      File.WriteAllText("sync_1/test dir/file.x", "hello");
+
+      git1.Commit();
+
+      File.WriteAllText("sync_1/test dir/file.x", "hello");
+
+      git1.Commit();
+
+      Directory.Delete("sync_1/test dir", true);
+
+      git1.Commit();
+
+      var log = git1.GetSyncData();
+
+      
+      git2.Init("sync_2");
+
+      var commonBase = git2.GetSyncDiff(git1.GetSyncData());
+
+      using (var patchfile = git1.GetSyncStream(commonBase))
+      {
+        var read = new StreamReader(patchfile).ReadToEnd();
+        // transfer file.
+        git2.UnpackSyncStream(patchfile);
+      }
+
+      File.WriteAllText("sync_1/test2", "Hello world\nHello world\nHello world\n");
+      git1.Commit();
+
+      commonBase = git1.GetSyncDiff(git2.GetSyncData());
+
+      using (var patchfile = git1.GetSyncStream(commonBase))
+      {
+        // transfer file.
+
+        git2.UnpackSyncStream(patchfile);
+      }
+
+
+      File.WriteAllText("sync_2/test2", "Hello world");
+      git2.Commit();
+
+      commonBase = git1.GetSyncDiff(git2.GetSyncData());
+
+      using (var patchfile = git2.GetSyncStream(git1.GetSyncData()))
+      {
+        git2.UnpackSyncStream(patchfile);
+      }
+
+      // test simultaneous edits
+      File.WriteAllText("sync_2/test2", "Hello world 2");
+      File.WriteAllText("sync_1/test1", "Hello world 5");
+
+      git2.Commit();
+      git1.Commit();
+
+      commonBase = git1.GetSyncDiff(git2.GetSyncData());
+      using (var patchfile1 = git1.GetSyncStream(commonBase))
+      {
+        git2.UnpackSyncStream(patchfile1);
+      }
+
+      using (var patchfile2 = git2.GetSyncStream(commonBase))
+      {
+        git1.UnpackSyncStream(patchfile2);
+      }
+    }
+
+    void GitInterop2()
+    {
+      
+      IFileShare git2 = new Git();
+      IFileShare git1 = new Git();
+      testFileShare(git1, git2);
+    }
+    
+    void GitInterop3()
+    {
+      
+      IFileShare git2 = new NaiveFileShare();
+      IFileShare git1 = new NaiveFileShare();
+      testFileShare(git1, git2);
+    }
+    
 
     void gitSuperPatch()
     {
@@ -756,8 +873,60 @@ namespace Udpc.Share.Test
 
     }
 
+
+    public void TestDataLog()
+    {
+      string datafile = "/tmp/rolf/datalog/datafile.bin";
+      try
+      {
+        File.Delete(datafile);
+      }
+      catch
+      {
+        
+      }
+      var dl = new DataLog("Downloads", datafile);
+      dl.Update();
+      
+      DataLog.Unpack("Downloads2", DataLog.ReadFromFile(datafile));
+      return;
+      
+      while (true)
+      {
+        dl.Update();
+        Thread.Sleep(1000);
+      }
+
+
+      BinaryFormatter bf = new BinaryFormatter();
+      var mem = new MemoryStream();
+
+      byte[] somedata = new byte[1024];
+      
+      bf.Serialize(mem, somedata);
+
+      mem.Position = 0;
+      
+      foreach (var item in dl.Generate())
+      {
+        bf.Serialize(mem, item);
+      }
+      
+      Console.WriteLine("Total Data: {0}", mem.Position);
+      mem.Position = 0;
+      while (mem.Position < mem.Length)
+      {
+        var item2 = bf.Deserialize(mem);
+        Console.WriteLine(item2.ToString());
+      }
+      
+    }
+
     public void RunTests()
     {
+      
+      TestDataLog();
+      return;
       //for (int i = 0; i < 3; i++)
       //  w  TestFileConversation(false);
       if (false)
@@ -771,17 +940,22 @@ namespace Udpc.Share.Test
         
         //gitSuperPatch();
 
-        GitInterop();
+        
         
       }
+      
+      //GitInterop();
+      //GitInterop2();
+      GitInterop3();
+      return;
       TestCircularSum();
       TestUtils();
 
       var trd = new Thread(runServer) {IsBackground = true};
       trd.Start();
 
-      
       Thread.Sleep(200);
+      
       TestFileShare();
       return;
       UdpcLatencyTest();
