@@ -885,10 +885,30 @@ namespace Udpc.Share.Test
       {
         
       }
-      var dl = new DataLog("Downloads", datafile);
+      
+      string commits = "/tmp/rolf/datalog/datafile.bin.commits";
+      try
+      {
+        File.Delete(commits);
+      }
+      catch
+      {
+      }
+
+
+
+      var dl = new DataLog("Downloads", datafile, commits);
       dl.Update();
       
       dl.Update();
+      dl.Dispose();
+
+      foreach (var x in DataLog.ReadFromFile(datafile))
+      {
+        Console.WriteLine("{0}", x);
+      }
+      
+      
       DataLog.Unpack("Downloads2", DataLog.ReadFromFile(datafile));
       return;
       
