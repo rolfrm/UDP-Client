@@ -895,21 +895,69 @@ namespace Udpc.Share.Test
       {
       }
 
+      string datafile2 = "/tmp/rolf/datalog/datafile.2.bin";
+      try
+      {
+        File.Delete(datafile2);
+      }
+      catch
+      {
+        
+      }
+      
+      string commits2 = "/tmp/rolf/datalog/datafile.bin.2.commits";
+      try
+      {
+        File.Delete(commits2);
+      }
+      catch
+      {
 
+      }
 
       var dl = new DataLog("Downloads", datafile, commits);
       dl.Update();
       
       dl.Update();
-      dl.Dispose();
+      dl.Flush();
+      //dl.Dispose();
 
+      
+      
       foreach (var x in DataLog.ReadFromFile(datafile))
       {
         Console.WriteLine("{0}", x);
       }
+
+      try
+      {
+        Directory.Delete("Downloads2", true);
+
+      }
+      catch
+      {
+        
+      }
+      
+      var dl2 = new DataLog("Downloads2", datafile2, commits2);
+      dl2.Update();
+      
+      dl2.Unpack(DataLog.ReadFromFile(datafile));
+      File.WriteAllText("Downloads2/testfile.2", "asdasd");
+      dl2.Flush();
+      dl2.Update();
+
+      foreach (var x in dl2.ReadCommitHashes())
+      {
+        Console.WriteLine("{0} {1}", x[0] , x[1]);
+      }
       
       
-      DataLog.Unpack("Downloads2", DataLog.ReadFromFile(datafile));
+      dl2.Dispose();
+      dl.Dispose();
+      
+      
+      
       return;
       
       while (true)
@@ -917,30 +965,6 @@ namespace Udpc.Share.Test
         dl.Update();
         Thread.Sleep(1000);
       }
-
-
-      BinaryFormatter bf = new BinaryFormatter();
-      var mem = new MemoryStream();
-
-      byte[] somedata = new byte[1024];
-      
-      bf.Serialize(mem, somedata);
-
-      mem.Position = 0;
-      
-      foreach (var item in dl.Generate())
-      {
-        bf.Serialize(mem, item);
-      }
-      
-      Console.WriteLine("Total Data: {0}", mem.Position);
-      mem.Position = 0;
-      while (mem.Position < mem.Length)
-      {
-        var item2 = bf.Deserialize(mem);
-        Console.WriteLine(item2.ToString());
-      }
-      
     }
 
     public void RunTests()
