@@ -914,12 +914,24 @@ namespace Udpc.Share.Test
       {
 
       }
-
+      var asm = System.Reflection.Assembly.LoadFrom("Blake2Sharp.dll");
       var dl = new DataLog("Downloads", datafile, commits);
       dl.Update();
       
       dl.Update();
       dl.Flush();
+
+      var hashes = dl.LogFile.ReadCommitHashes().ToArray();
+      
+      foreach (var x in dl.LogFile.ReadCommitHashes().Distinct())
+      {
+        if (hashes.Count(y => y.Equals(x)) > 1)
+        {
+          throw new InvalidOperationException();
+        }
+        Console.WriteLine("{0}", x);
+      }
+      
       //dl.Dispose();
 
       
@@ -938,6 +950,7 @@ namespace Udpc.Share.Test
       {
         
       }
+
       
       var dl2 = new DataLog("Downloads2", datafile2, commits2);
       dl2.Update();
@@ -946,12 +959,13 @@ namespace Udpc.Share.Test
       File.WriteAllText("Downloads2/testfile.2", "asdasd");
       dl2.Flush();
       dl2.Update();
-
-      foreach (var x in dl2.ReadCommitHashes())
+      dl2.Flush();
+      foreach (var x in dl2.LogFile.ReadCommitHashes())
       {
-        Console.WriteLine("{0} {1}", x[0] , x[1]);
+        Console.WriteLine("{0}", x);
       }
-      
+
+      DataLogMerge.MergeDataLogs(dl, dl2, 20);
       
       dl2.Dispose();
       dl.Dispose();

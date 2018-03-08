@@ -1,8 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Runtime.InteropServices;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Security.Cryptography;
+using Blake2Sharp;
 using Udpc.Share.Internal;
 
 namespace Udpc.Share
@@ -84,31 +87,151 @@ namespace Udpc.Share
     }
 
 
+    public struct DataLogFilePosition
+    {
+        public long DataPos;
+        public long CommitPos;
+    }
+
+    public class DataLogFile : IDisposable
+    {
+        public readonly string DataFile;
+        public readonly string CommitsFile;
+        
+        FileStream dataStream;
+        FileStream commitStream;
+        readonly BinaryFormatter bf = new BinaryFormatter();
+        readonly MemoryStream mmstr = new MemoryStream();
+
+        readonly Hasher hasher = Blake2B.Create();
+        byte[] prevHash;
+        
+        //readonly SHA256 sha = new SHA256CryptoServiceProvider();
+
+        public DataLogFile(string dataFile, string commitsFile)
+        {
+            this.DataFile = dataFile;
+            this.CommitsFile = commitsFile;
+        }
+        
+        public void writeItem(DataLogItem item)
+        {
+            mmstr.Position = 0;
+            mmstr.SetLength(0);
+            bf.Serialize(mmstr, item);
+            mmstr.Position = 0;
+            hasher.Init();
+            Console.WriteLine("PRE HASH: {0} {1} {2} {3}",prevHash[0],prevHash[1],prevHash[2],prevHash[3]);
+            hasher.Update(prevHash,0, 32);
+            hasher.Update(mmstr.GetBuffer(),0, (int)mmstr.Length);
+            mmstr.Position = 0;
+            mmstr.CopyTo(dataStream);
+            prevHash = hasher.Finish();
+            Console.WriteLine("HASH: {0} {1} {2} {3}",prevHash[0],prevHash[1],prevHash[2],prevHash[3]);
+            commitStream.Write(prevHash, 0, 32);
+            byte[] lenbytes = BitConverter.GetBytes(mmstr.Length);
+            commitStream.Write(lenbytes, 0, lenbytes.Length);
+        }
+
+        public DataLogFilePosition GetCurrentPosition()
+        {
+            return new DataLogFilePosition() {CommitPos = commitStream.Position, DataPos = dataStream.Position};
+        }
+
+        public void RestorePosition(DataLogFilePosition position)
+        {
+            dataStream.Position = position.DataPos;
+            dataStream.SetLength(position.DataPos);
+
+            commitStream.Position = position.CommitPos;
+            commitStream.SetLength(position.CommitPos);
+            
+        }
+        public void Flush()
+        {
+            dataStream.Flush();
+            commitStream.Flush();
+        }
+        
+        public void Open()
+        {
+            Utils.EnsureDirectoryExists(Path.GetDirectoryName(DataFile));
+            dataStream = File.Open(DataFile, FileMode.OpenOrCreate, FileAccess.ReadWrite, System.IO.FileShare.Read);
+            commitStream = File.Open(this.CommitsFile, FileMode.OpenOrCreate, FileAccess.ReadWrite, System.IO.FileShare.Read);
+            if (commitStream.Length > 0)
+            {
+                var hsh = ReadCommitHashes().First();
+                prevHash = hsh.GetHash();
+            }
+            else
+            {
+                prevHash = new byte[8 * 4];
+            }
+        }
+        
+        public IEnumerable<DataLogHash> ReadCommitHashes()
+        {
+            int offset = 1;
+
+            
+            ulong[] conv = new ulong[5];
+            var buffer = new byte[conv.Length * 8];
+            using (var read = File.OpenRead(CommitsFile))
+            {
+                while (true)
+                {
+                    read.Seek(-offset * buffer.Length, SeekOrigin.End);
+                    offset += 1;
+                    bool dobreak = read.Position == 0;
+                    
+                    read.Read(buffer, 0, buffer.Length);
+                    Buffer.BlockCopy(buffer,0,conv,0, buffer.Length);
+                    
+                    yield return new DataLogHash{A = conv[0], B = conv[1], C = conv[2], D = conv[3], Length = conv[4]};
+
+                    if (dobreak)
+                        break;
+                }
+            }
+        }
+
+        public bool IsEmpty => dataStream.Length == 0;
+
+        public void Dispose()
+        {
+            dataStream?.Dispose();
+            commitStream?.Dispose();
+            mmstr?.Dispose();
+        }
+    }
+    
     public class DataLog : IDisposable
     {
         readonly string directory;
-        readonly string dataFile;
-        readonly string commitsFile;
+        public DataLogFile LogFile;
 
-        readonly SHA256 sha = new SHA256CryptoServiceProvider();
-
+        
         readonly Dictionary<Guid, RegFile> file = new Dictionary<Guid, RegFile>();
         readonly Dictionary<string, Guid> fileNameToGuid = new Dictionary<string, Guid>();
         bool isInitialized;
         int iteration = 0;
 
-        FileStream dataStream;
-        FileStream commitStream;
-        readonly BinaryFormatter bf = new BinaryFormatter();
-        readonly MemoryStream mmstr = new MemoryStream();
-        
-
         public DataLog(string directory, string dataFile, string commitsFile)
         {
             this.directory = directory.TrimEnd('\\').TrimEnd('/');
-            this.dataFile = dataFile;
-            this.commitsFile = commitsFile;
+            LogFile = new DataLogFile(dataFile, commitsFile);
         }
+
+        public void PushPos()
+        {
+            
+        }
+
+        public void PopPos(bool revert)
+        {
+            
+        }
+
 
         public static IEnumerable<DataLogItem> ReadFromFile(string filepath)
         {
@@ -179,7 +302,7 @@ namespace Udpc.Share
                     default:
                         throw new NotImplementedException();
                 }
-                writeItem(item);
+                LogFile.writeItem(item);
                 //register(item);
             }
 
@@ -191,42 +314,22 @@ namespace Udpc.Share
             }
         }
 
-
-
-        void writeItem(DataLogItem item)
-        {
-            mmstr.Position = 0;
-            mmstr.SetLength(0);
-            bf.Serialize(mmstr, item);
-            mmstr.Position = 0;
-            sha.ComputeHash(mmstr);
-            mmstr.Position = 0;
-            mmstr.CopyTo(dataStream);
-            commitStream.Write(sha.Hash, 0, sha.Hash.Length);
-        }
-
-        public void Flush()
-        {
-            dataStream.Flush();
-            commitStream.Flush();
-        }
+        
 
         public void Update()
         {
             iteration += 1;
             if (!isInitialized)
             {
+                
                 isInitialized = true;
                 Utils.EnsureDirectoryExists(directory);
-                Utils.EnsureDirectoryExists(Path.GetDirectoryName(dataFile));
-                dataStream = File.Open(dataFile, FileMode.OpenOrCreate, FileAccess.ReadWrite, System.IO.FileShare.Read);
-                commitStream = File.Open(this.commitsFile, FileMode.OpenOrCreate, FileAccess.ReadWrite, System.IO.FileShare.Read);
-
-                if (dataStream.Length == 0)
+                LogFile.Open();
+                if (LogFile.IsEmpty)
                 {
                     foreach (var item in Generate(directory))
                     {
-                        writeItem(item);
+                        LogFile.writeItem(item);
                         register(item);
                     }
 
@@ -234,7 +337,7 @@ namespace Udpc.Share
                 }
                 else
                 {
-                    foreach (var item in ReadFromFile(dataFile))
+                    foreach (var item in ReadFromFile(LogFile.DataFile))
                     {
                         register(item);
                     }
@@ -263,14 +366,13 @@ namespace Udpc.Share
                     logitems = GenerateFileData(f.FullName, id);
                 List<DataLogItem> itemsToRegister = new List<DataLogItem>();
 
-                var pos = dataStream.Position;
-                var mpos = commitStream.Position;
-                Console.WriteLine("POS: {0}", mpos);
+                var pos = LogFile.GetCurrentPosition();
+                
                 try
                 {
                     foreach (var x in logitems)
                     {
-                        writeItem(x);
+                        LogFile.writeItem(x);
                         itemsToRegister.Add(x);
                     }
                     itemsToRegister.ForEach(register);
@@ -279,10 +381,7 @@ namespace Udpc.Share
                 }
                 catch
                 {
-                    dataStream.Position = pos;
-                    dataStream.SetLength(pos);
-                    commitStream.Position = mpos;
-                    commitStream.SetLength(mpos);
+                    LogFile.RestorePosition(pos);
                 }
             }
 
@@ -293,7 +392,7 @@ namespace Udpc.Share
                     if (x.Value.IsDeleted == false)
                     {
                         x.Value.IsDeleted = true;
-                        writeItem(new DeletedFileItem(x.Key));
+                        LogFile.writeItem(new DeletedFileItem(x.Key));
                     }
 
                     x.Value.Iteration = iteration;
@@ -385,41 +484,68 @@ namespace Udpc.Share
             }
         }
 
-        public IEnumerable<byte[]> ReadCommitHashes()
+        public IEnumerable<DataLogItem> GetItemsUntil(DataLogHash hash)
         {
-            int offset = 1;
-
-            using (var read = File.OpenRead(this.commitsFile))
-            {
-                while (true)
-                {
-                    read.Seek(-offset * 32, SeekOrigin.End);
-                    offset += 1;
-                    bool dobreak = read.Position == 0;
-                    var buffer = new byte[32];
-                    read.Read(buffer, 0, 32);
-                    yield return buffer;
-
-                    if (dobreak)
-                        break;
-                }
-            }
+             throw new NotImplementedException();   
         }
+
 
         public void Dispose()
         {
-            sha?.Dispose();
-            dataStream?.Dispose();
-            commitStream?.Dispose();
-            mmstr?.Dispose();
+            LogFile.Dispose();
+        }
+
+        public void Flush()
+        {
+            LogFile.Flush();
         }
     }
 
+    public struct DataLogHash
+    {
+        public ulong A, B, C, D; //32 bytes.
+        public ulong Length;
+
+        public override string ToString()
+        {
+            return string.Format("#{0:X}{1:X}{2:X}{3:X} ({4} bytes)", A, B, C, D, Length);
+        }
+
+        public byte[] GetHash()
+        {
+            byte[] hash = new byte[8 * 4];
+            ulong[] src = new ulong[4] {A, B, C, D};
+            Buffer.BlockCopy(src, 0, hash, 0, src.Length);
+            return hash;
+        }
+    }
+
+    
     public class DataLogMerge
     {
-        public void MergeDataLogs(DataLog log1, DataLog log2)
+        
+        static public bool MergeDataLogs(DataLog dest, DataLog src, int count)
         {
-            
+            var dest_hashes = dest.LogFile.ReadCommitHashes().Take(count).ToList();
+            var src_hashes = src.LogFile.ReadCommitHashes().Take(count).ToList();
+            int idx = -1;
+            foreach (var h in src_hashes)
+            {
+                idx = dest_hashes.IndexOf(h);
+                if (idx != -1)
+                    break;
+            }
+
+            if (idx <= 0)
+            {
+                //0: nothing new in src. -1: count is not enough.
+                return count == 0;
+            }
+
+            var commonhash = dest_hashes[idx];
+            return true;
+            //src.GetItemsUntil(commonhash);
+
         }
     }
     
