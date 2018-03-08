@@ -936,7 +936,7 @@ namespace Udpc.Share.Test
 
       
       
-      foreach (var x in DataLog.ReadFromFile(datafile))
+      foreach (var x in DataLogFile.ReadFromFile(datafile))
       {
         Console.WriteLine("{0}", x);
       }
@@ -955,7 +955,7 @@ namespace Udpc.Share.Test
       var dl2 = new DataLog("Downloads2", datafile2, commits2);
       dl2.Update();
       
-      dl2.Unpack(DataLog.ReadFromFile(datafile));
+      dl2.Unpack(DataLogFile.ReadFromFile(datafile));
       File.WriteAllText("Downloads2/testfile.2", "asdasd");
       dl2.Flush();
       dl2.Update();
@@ -965,7 +965,18 @@ namespace Udpc.Share.Test
         Console.WriteLine("{0}", x);
       }
 
+      DataLogMerge.MergeDataLogs(dl2, dl, 20);
       DataLogMerge.MergeDataLogs(dl, dl2, 20);
+      int dlc = dl.LogFile.ReadCommitHashes().Count();
+      int dl2c = dl2.LogFile.ReadCommitHashes().Count();
+      
+      
+      
+      foreach (var x in dl.LogFile.ReadCommitHashes().Distinct())
+      {
+      
+        Console.WriteLine("{0}", x);
+      }
       
       dl2.Dispose();
       dl.Dispose();

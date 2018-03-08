@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -10,6 +11,42 @@ using Udpc.Share.Internal;
 
 namespace Udpc.Share
 {
+    public class StreamEnumerator<T> : IEnumerable<T>, IDisposable
+    {
+        readonly IEnumerable<T> data;
+        Stream dataStream;
+        
+        public StreamEnumerator(Stream dataStream, IEnumerable<T> data)
+        {
+            this.data = data;
+            this.dataStream = dataStream;
+        }
+
+        public IEnumerator<T> GetEnumerator()
+        {
+            if (dataStream == null) throw new ObjectDisposedException("StreamEnumerator");
+            return data.GetEnumerator();
+        }
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
+        }
+
+        public void Dispose()
+        {
+            if (dataStream == null) throw new ObjectDisposedException("StreamEnumerator");
+            dataStream.Dispose();
+            dataStream = null;
+        }
+
+        ~StreamEnumerator()
+        {
+            if(dataStream != null)
+                Dispose();
+        }
+    }
+    
     [Serializable]
     public class DataLogItem
     {
@@ -168,31 +205,36 @@ namespace Udpc.Share
                 prevHash = new byte[8 * 4];
             }
         }
-        
-        public IEnumerable<DataLogHash> ReadCommitHashes()
+
+        public IEnumerable<DataLogHash> ReadCommitHashes(Stream read)
         {
             int offset = 1;
 
-            
+
             ulong[] conv = new ulong[5];
             var buffer = new byte[conv.Length * 8];
-            using (var read = File.OpenRead(CommitsFile))
+            while (true)
             {
-                while (true)
-                {
-                    read.Seek(-offset * buffer.Length, SeekOrigin.End);
-                    offset += 1;
-                    bool dobreak = read.Position == 0;
-                    
-                    read.Read(buffer, 0, buffer.Length);
-                    Buffer.BlockCopy(buffer,0,conv,0, buffer.Length);
-                    
-                    yield return new DataLogHash{A = conv[0], B = conv[1], C = conv[2], D = conv[3], Length = conv[4]};
+                read.Seek(-offset * buffer.Length, SeekOrigin.End);
+                offset += 1;
+                bool dobreak = read.Position == 0;
 
-                    if (dobreak)
-                        break;
-                }
+                read.Read(buffer, 0, buffer.Length);
+                Buffer.BlockCopy(buffer, 0, conv, 0, buffer.Length);
+
+                yield return new DataLogHash {A = conv[0], B = conv[1], C = conv[2], D = conv[3], Length = conv[4]};
+
+                if (dobreak)
+                    break;
             }
+        }
+        
+        
+        public StreamEnumerator<DataLogHash> ReadCommitHashes()
+        {
+            var read = File.OpenRead(CommitsFile);
+            return new StreamEnumerator<DataLogHash>(read, ReadCommitHashes(read));
+            
         }
 
         public bool IsEmpty => dataStream.Length == 0;
@@ -203,6 +245,34 @@ namespace Udpc.Share
             commitStream?.Dispose();
             mmstr?.Dispose();
         }
+
+        public IEnumerable<DataLogItem> GetCommitsSince(DataLogHash hash)
+        {
+            var lst = ReadCommitHashes().TakeWhile(x => x.Equals(hash) == false).ToList();
+            var length = lst.Select(x => (long)x.Length).Sum();
+            dataStream.Position -= length;
+            return ReadFrom(dataStream);
+        }
+
+        public static IEnumerable<DataLogItem> ReadFrom(Stream fstr)
+        {
+            BinaryFormatter bf = new BinaryFormatter();
+            long pos = fstr.Position;
+            while (pos < fstr.Length)
+            {
+                fstr.Seek(pos, SeekOrigin.Begin);
+                var item = (DataLogItem) bf.Deserialize(fstr);
+                pos = fstr.Position;
+                yield return item;
+            }
+        }
+        
+        public static StreamEnumerator<DataLogItem> ReadFromFile(string filepath)
+        {
+            var fstr = File.OpenRead(filepath);
+            return new StreamEnumerator<DataLogItem>(fstr, ReadFrom(fstr));
+        }
+        
     }
     
     public class DataLog : IDisposable
@@ -233,18 +303,7 @@ namespace Udpc.Share
         }
 
 
-        public static IEnumerable<DataLogItem> ReadFromFile(string filepath)
-        {
-            using (var fstr = File.OpenRead(filepath))
-            {
-                BinaryFormatter bf = new BinaryFormatter();
-                while (fstr.Position < fstr.Length)
-                {
-                    var item = (DataLogItem) bf.Deserialize(fstr);
-                    yield return item;
-                }
-            }
-        }
+        
 
         public void Unpack(IEnumerable<DataLogItem> items)
         {
@@ -337,7 +396,7 @@ namespace Udpc.Share
                 }
                 else
                 {
-                    foreach (var item in ReadFromFile(LogFile.DataFile))
+                    foreach (var item in DataLogFile.ReadFromFile(LogFile.DataFile))
                     {
                         register(item);
                     }
@@ -486,7 +545,7 @@ namespace Udpc.Share
 
         public IEnumerable<DataLogItem> GetItemsUntil(DataLogHash hash)
         {
-             throw new NotImplementedException();   
+            return LogFile.GetCommitsSince(hash);
         }
 
 
@@ -528,23 +587,39 @@ namespace Udpc.Share
         {
             var dest_hashes = dest.LogFile.ReadCommitHashes().Take(count).ToList();
             var src_hashes = src.LogFile.ReadCommitHashes().Take(count).ToList();
-            int idx = -1;
-            foreach (var h in src_hashes)
+            int srcIdx = -1;
+            int destIdx = 0;
+            foreach (var h in dest_hashes)
             {
-                idx = dest_hashes.IndexOf(h);
-                if (idx != -1)
+                srcIdx = src_hashes.IndexOf(h);
+                if (srcIdx != -1)
                     break;
+                destIdx++;
             }
 
-            if (idx <= 0)
+            if (srcIdx <= 0)
             {
                 //0: nothing new in src. -1: count is not enough.
                 return count == 0;
             }
+            
+            
 
-            var commonhash = dest_hashes[idx];
-            return true;
-            //src.GetItemsUntil(commonhash);
+            var commonhash = src_hashes[srcIdx];
+
+
+            var items = src.GetItemsUntil(commonhash);
+            {
+
+                if (destIdx > 0)
+                {
+                    throw new NotImplementedException();
+                }
+
+                dest.Unpack(items);
+            }
+
+            throw new InvalidOperationException();
 
         }
     }
