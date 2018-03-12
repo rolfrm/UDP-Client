@@ -969,7 +969,8 @@ namespace Udpc.Share.Test
       DataLogMerge.MergeDataLogs(dl, dl2, 20);
       int dlc = dl.LogFile.ReadCommitHashes().Count();
       int dl2c = dl2.LogFile.ReadCommitHashes().Count();
-      
+      dl2.Flush();
+      dl.Flush();
       
       
       foreach (var x in dl.LogFile.ReadCommitHashes().Distinct())
@@ -977,10 +978,15 @@ namespace Udpc.Share.Test
       
         Console.WriteLine("{0}", x);
       }
+      var hashes1 = dl.LogFile.ReadCommitHashes().ToArray();
+      var hashes2 = dl2.LogFile.ReadCommitHashes().ToArray();
       
       dl2.Dispose();
       dl.Dispose();
-      
+
+      if(hashes1.SequenceEqual(hashes2) == false)
+        throw new InvalidOperationException();
+
       
       
       return;

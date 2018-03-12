@@ -292,19 +292,6 @@ namespace Udpc.Share
             LogFile = new DataLogFile(dataFile, commitsFile);
         }
 
-        public void PushPos()
-        {
-            
-        }
-
-        public void PopPos(bool revert)
-        {
-            
-        }
-
-
-        
-
         public void Unpack(IEnumerable<DataLogItem> items)
         {
             if(!isInitialized) throw new InvalidOperationException("DataLog is not initialized.");
@@ -330,12 +317,12 @@ namespace Udpc.Share
                         }
                         else
                         {
-                            file[f.FileId] = new RegFile() {IsFile = true, LastEdit = f.LastEdit};
+                            file[f.FileId] = new RegFile {IsFile = true, LastEdit = f.LastEdit};
                         }
 
                         break;
                     case NewDirectoryLogItem f:
-                        file[f.FileId] = new RegFile() {IsDirectory = true};
+                        file[f.FileId] = new RegFile {IsDirectory = true};
                         break;
                     case FileNameLogItem f:
                         if (file[f.FileId].Name != null)
@@ -496,6 +483,7 @@ namespace Udpc.Share
         static public IEnumerable<DataLogItem> GenerateFromFile(string directory, string item)
         {
             DataLogItem baseitem = null;
+            var dstr = new DirectoryInfo(directory);
             var fstr = new FileInfo(item);
             if (fstr.Attributes.HasFlag(FileAttributes.Directory))
             {
@@ -509,7 +497,7 @@ namespace Udpc.Share
             }
 
             if (baseitem == null) yield break;
-            yield return new FileNameLogItem(baseitem.FileId, item.Substring(directory.Length + 1));
+            yield return new FileNameLogItem(baseitem.FileId, fstr.FullName.Substring(dstr.FullName.Length + 1));
             if (baseitem is NewFileLogItem)
             {
                 foreach (var item2 in GenerateFileData(item, baseitem.FileId))
@@ -618,9 +606,7 @@ namespace Udpc.Share
 
                 dest.Unpack(items);
             }
-
-            throw new InvalidOperationException();
-
+            return true;
         }
     }
     
