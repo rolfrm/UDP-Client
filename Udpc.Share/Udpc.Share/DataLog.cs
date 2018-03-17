@@ -496,6 +496,7 @@ namespace Udpc.Share
                             if(file[f.FileId].Name != null)
                                 File.Delete(translate(file[f.FileId].Name));
                             file[f.FileId].LastEdit = f.LastEdit;
+                            file[f.FileId].Size = f.Size;
                         }
                         else
                         {
@@ -589,12 +590,16 @@ namespace Udpc.Share
                         file[id].Iteration = iteration;
                         continue;
                     }
+                }else if (f.Attributes.HasFlag(FileAttributes.Directory))
+                {
+                    file[id].Iteration = iteration;
+                    continue;
                 }
 
 
                 IEnumerable<DataLogItem> logitems;
 
-                if (id == Guid.Empty)
+                if (id == Guid.Empty || f.Attributes.HasFlag(FileAttributes.Directory))
                     logitems = GenerateFromFile(directory, f.FullName);
                 else
                     logitems = GenerateFileData(f.FullName, id);
@@ -759,7 +764,7 @@ namespace Udpc.Share
         {
             byte[] hash = new byte[8 * 4];
             ulong[] src = new ulong[4] {A, B, C, D};
-            Buffer.BlockCopy(src, 0, hash, 0, src.Length);
+            Buffer.BlockCopy(src, 0, hash, 0, hash.Length);
             return hash;
         }
     }
@@ -812,7 +817,6 @@ namespace Udpc.Share
                     dest.Unpack(items);
                 }
             }
-            return true;
         }
     }
     

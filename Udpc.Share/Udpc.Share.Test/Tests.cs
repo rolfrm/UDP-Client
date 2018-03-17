@@ -948,6 +948,7 @@ namespace Udpc.Share.Test
       
       //File.WriteAllText("Downloads2/testtest", "kijdwoahdopwaj;dwah;sda;hdio;wasd");
       File.WriteAllText("Downloads/testtest.3124.jwidah", "kijdwoahdopwaj;dwah;sda;hdio;wasd");
+      Directory.CreateDirectory("Downloads/testdir");
       
       dl2.Update();
       dl1.Update();
@@ -955,6 +956,8 @@ namespace Udpc.Share.Test
       dl2.Unpack(DataLogFile.ReadFromFile(datafile));
       for (int i = 0; i < 6; i++)
       {
+        if (i == 3)
+          ;
         string file;
         if (i % 2 == 1)
           file = "Downloads/test.1.bin";
@@ -963,7 +966,7 @@ namespace Udpc.Share.Test
 
         File.WriteAllText(file, "asdasd" + new string('x', i));
         
-        //if (i == 3) continue;
+        
         var p11_hashes1 = dl1.LogFile.ReadCommitHashes().ToArray();
         var p11_hashes2 = dl2.LogFile.ReadCommitHashes().ToArray();
         dl2.Update();
@@ -980,16 +983,14 @@ namespace Udpc.Share.Test
         if(p12_hashes2.Length > p11_hashes2.Length && (i%2 == 1))
           throw new Exception();
         
-        if (false && i == 4)
-        {
-          if(p11_hashes1.Length != p11_hashes2.Length || p11_hashes1.First().Equals(p11_hashes2.First()))
-            throw new InvalidOperationException();
-        }
+        if (i == 3) 
+          continue;
         
         DataLogMerge.MergeDataLogs(dl2, dl1, 1000);
         
         
         var items11 = dl1.LogFile.GetCommitsSince(p11_hashes1.Last()).ToArray();
+        var hashes2_ = dl2.LogFile.ReadCommitHashes().ToArray();
         
         DataLogMerge.MergeDataLogs(dl1, dl2, 1000);
         var hashes1 = dl1.LogFile.ReadCommitHashes().ToArray();
@@ -1013,13 +1014,13 @@ namespace Udpc.Share.Test
       }
 
       return;
-      
+
       while (true)
       {
+        Thread.Sleep(500);
         dl1.Update();
-        Thread.Sleep(500);
         dl2.Update();
-        Thread.Sleep(500);
+        
         DataLogMerge.MergeDataLogs(dl2, dl1, 1000);
         DataLogMerge.MergeDataLogs(dl1, dl2, 1000);
         var hashes1 = dl1.LogFile.ReadCommitHashes().ToArray();
@@ -1033,7 +1034,7 @@ namespace Udpc.Share.Test
 
     public void RunTests()
     {
-      for(int i = 0; i < 2; i++)
+      for(int i = 0; i < 5; i++)
         TestDataLog();
       return;
       //for (int i = 0; i < 3; i++)
