@@ -15,11 +15,6 @@ namespace Udpc.Share
         readonly IEnumerable<T> data;
         Stream dataStream;
 
-        public static StreamEnumerator<T> Empty()
-        {
-            return new StreamEnumerator<T>(null, null);
-        }
-        
         public StreamEnumerator(Stream dataStream, IEnumerable<T> data)
         {
             this.data = data;
@@ -57,7 +52,7 @@ namespace Udpc.Share
     {
         public Guid FileId { get; private set; }
 
-        public DataLogItem(Guid id)
+        protected DataLogItem(Guid id)
         {
             FileId = id;
         }
@@ -95,7 +90,7 @@ namespace Udpc.Share
 
         public static DataLogItem FromStream(Stream str)
         {
-            int typeid = (int)str.ReadByte();
+            int typeid = str.ReadByte();
             var type = types[typeid - 1];
             var obj = (DataLogItem)FormatterServices.GetUninitializedObject(type);
             obj.FileId = new Guid(str.ReadBytes(16));
@@ -116,8 +111,8 @@ namespace Udpc.Share
 
         public NewFileLogItem(Guid id, DateTime lastEdit, long size) : base(id)
         {
-            this.LastEdit = lastEdit;
-            this.Size = size;
+            LastEdit = lastEdit;
+            Size = size;
         }
 
         public override void Write(Stream stream)
@@ -251,7 +246,7 @@ namespace Udpc.Share
     public class DataLogFile : IDisposable
     {
         public readonly string DataFile;
-        public readonly string CommitsFile;
+        readonly string commitsFile;
         
         FileStream dataStream;
         FileStream commitStream;
@@ -265,7 +260,7 @@ namespace Udpc.Share
         public DataLogFile(string dataFile, string commitsFile)
         {
             DataFile = dataFile;
-            CommitsFile = commitsFile;
+            this.commitsFile = commitsFile;
         }
         
         public void writeItem(DataLogItem item)
@@ -310,7 +305,7 @@ namespace Udpc.Share
                 throw new InvalidOperationException("DataLog is already open.");
             Utils.EnsureDirectoryExists(Path.GetDirectoryName(DataFile));
             dataStream = File.Open(DataFile, FileMode.OpenOrCreate, FileAccess.ReadWrite, System.IO.FileShare.Read);
-            commitStream = File.Open(CommitsFile, FileMode.OpenOrCreate, FileAccess.ReadWrite, System.IO.FileShare.Read);
+            commitStream = File.Open(commitsFile, FileMode.OpenOrCreate, FileAccess.ReadWrite, System.IO.FileShare.Read);
             if (commitStream.Length > 0)
             {
                 var hsh = ReadCommitHashes(0, 10).First();
@@ -347,7 +342,7 @@ namespace Udpc.Share
         }
         public void ReadCommitHashes(long offset, long count, List<DataLogHash> list)
         {
-            using (var read = File.OpenRead(CommitsFile))
+            using (var read = File.OpenRead(commitsFile))
                 ReadCommitHashes(read, offset, count, list);
         }
         
@@ -451,7 +446,7 @@ namespace Udpc.Share
             dataStream.SetLength(dataStream.Length - length);
             commitStream.Position -= commits * 5 * 8;
             commitStream.SetLength(commitStream.Length - commits * 5 * 8);
-            this.prevHash = point.GetHash();
+            prevHash = point.GetHash();
             return tmp;
         }
         
@@ -460,13 +455,13 @@ namespace Udpc.Share
     public class DataLog : IDisposable
     {
         readonly string directory;
-        public DataLogFile LogFile;
+        public readonly DataLogFile LogFile;
 
         
         readonly Dictionary<Guid, RegFile> file = new Dictionary<Guid, RegFile>();
         readonly Dictionary<string, Guid> fileNameToGuid = new Dictionary<string, Guid>();
         bool isInitialized;
-        int iteration = 0;
+        int iteration;
 
         public DataLog(string directory, string dataFile, string commitsFile)
         {
@@ -517,6 +512,8 @@ namespace Udpc.Share
                         break;
                     case FileDataItem f:
                         guids.Add(f.FileId);
+                        if(file[f.FileId].IsFile == false)
+                            throw new InvalidOperationException();
                         var name = file[f.FileId].Name;
                         using (var fstr = File.Open(translate(name), FileMode.OpenOrCreate, FileAccess.Write))
                         {
@@ -526,9 +523,15 @@ namespace Udpc.Share
 
                         break;
                     case DeletedFileLogItem f:
-                        File.Delete(translate(file[f.FileId].Name));
+                        if(file[f.FileId].IsFile == false)
+                            File.Delete(translate(file[f.FileId].Name));
+                        else
+                        {
+                            if(file[f.FileId].IsDirectory)
+                                Directory.Delete(translate(file[f.FileId].Name), true);
+                        }
                         break;
-                    case NullFileLogItem f:
+                    case NullFileLogItem _:
                         continue;
                     default:
                         throw new NotImplementedException();
@@ -539,8 +542,7 @@ namespace Udpc.Share
             foreach (var id in guids)
             {
                 var item = file[id];
-                var finfo = new FileInfo(translate(item.Name));
-                finfo.LastWriteTimeUtc = item.LastEdit;
+                File.SetLastWriteTimeUtc(translate(item.Name), item.LastEdit);
             }
             Flush();
         }
@@ -580,8 +582,7 @@ namespace Udpc.Share
             {
                 var f = new FileInfo(item);
 
-                Guid id;
-                if (!fileNameToGuid.TryGetValue(f.FullName, out id))
+                if (!fileNameToGuid.TryGetValue(f.FullName, out var id))
                     id = Guid.Empty;
                 else if (file[id].LastEdit >= f.LastWriteTimeUtc)
                 {
@@ -615,7 +616,7 @@ namespace Udpc.Share
                         itemsToRegister.Add(x);
                     }
                     itemsToRegister.ForEach(register);
-                    this.file[itemsToRegister[0].FileId].Iteration = iteration;
+                    file[itemsToRegister[0].FileId].Iteration = iteration;
                     
                 }
                 catch
@@ -757,31 +758,31 @@ namespace Udpc.Share
 
         public override string ToString()
         {
-            return string.Format("#{0:X}{1:X}{2:X}{3:X} ({4} bytes)", A, B, C, D, Length);
+            return $"#{A:X}{B:X}{C:X}{D:X} ({Length} bytes)";
         }
 
         public byte[] GetHash()
         {
             byte[] hash = new byte[8 * 4];
-            ulong[] src = new ulong[4] {A, B, C, D};
+            ulong[] src = {A, B, C, D};
             Buffer.BlockCopy(src, 0, hash, 0, hash.Length);
             return hash;
         }
     }
 
     
-    public class DataLogMerge
+    public static class DataLogMerge
     {
         
-        static public bool MergeDataLogs(DataLog dest, DataLog src, int count)
+        static public void MergeDataLogs(DataLog dest, DataLog src, int count)
         {
-            var dest_hashes = dest.LogFile.ReadCommitHashes(0, count);
-            var src_hashes = src.LogFile.ReadCommitHashes(0, count);
+            var destHashes = dest.LogFile.ReadCommitHashes(0, count);
+            var srcHashes = src.LogFile.ReadCommitHashes(0, count);
             int srcIdx = -1;
             int destIdx = 0;
-            foreach (var h in dest_hashes)
+            foreach (var h in destHashes)
             {
-                srcIdx = src_hashes.IndexOf(h);
+                srcIdx = srcHashes.IndexOf(h);
                 if (srcIdx != -1)
                     break;
                 destIdx++;
@@ -790,12 +791,12 @@ namespace Udpc.Share
             if (srcIdx <= 0)
             {
                 //0: nothing new in src. -1: count is not enough.
-                return count == 0;
+                return;
             }
             
             
 
-            var commonhash = src_hashes[srcIdx];
+            var commonhash = srcHashes[srcIdx];
 
 
             var items = src.GetItemsUntil(commonhash);

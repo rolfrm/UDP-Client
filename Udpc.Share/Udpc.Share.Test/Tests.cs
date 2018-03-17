@@ -3,8 +3,6 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Numerics;
-using System.Runtime.Serialization.Formatters.Binary;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -956,8 +954,6 @@ namespace Udpc.Share.Test
       dl2.Unpack(DataLogFile.ReadFromFile(datafile));
       for (int i = 0; i < 6; i++)
       {
-        if (i == 3)
-          ;
         string file;
         if (i % 2 == 1)
           file = "Downloads/test.1.bin";
