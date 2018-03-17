@@ -170,7 +170,7 @@ namespace Udpc.Share.Test
 
       var commonBase = git2.GetSyncDiff(git1.GetSyncData());
 
-      using (var patchfile = git1.GetSyncStream(commonBase))
+      using (var patchfile = git1.OpenSyncStream(commonBase))
       {
         var read = new StreamReader(patchfile).ReadToEnd();
         // transfer file.
@@ -182,7 +182,7 @@ namespace Udpc.Share.Test
 
       commonBase = git1.GetSyncDiff(git2.GetSyncData());
 
-      using (var patchfile = git1.GetSyncStream(commonBase))
+      using (var patchfile = git1.OpenSyncStream(commonBase))
       {
         // transfer file.
 
@@ -195,7 +195,7 @@ namespace Udpc.Share.Test
 
       commonBase = git1.GetSyncDiff(git2.GetSyncData());
 
-      using (var patchfile = git2.GetSyncStream(git1.GetSyncData()))
+      using (var patchfile = git2.OpenSyncStream(git1.GetSyncData()))
       {
         git2.UnpackSyncStream(patchfile);
       }
@@ -208,12 +208,12 @@ namespace Udpc.Share.Test
       git1.Commit();
 
       commonBase = git1.GetSyncDiff(git2.GetSyncData());
-      using (var patchfile1 = git1.GetSyncStream(commonBase))
+      using (var patchfile1 = git1.OpenSyncStream(commonBase))
       {
         git2.UnpackSyncStream(patchfile1);
       }
 
-      using (var patchfile2 = git2.GetSyncStream(commonBase))
+      using (var patchfile2 = git2.OpenSyncStream(commonBase))
       {
         git1.UnpackSyncStream(patchfile2);
       }
@@ -230,9 +230,8 @@ namespace Udpc.Share.Test
     void GitInterop3()
     {
       
-      IFileShare git2 = new NaiveFileShare();
-      IFileShare git1 = new NaiveFileShare();
-      testFileShare(git1, git2);
+      
+      //testFileShare(git1, git2);
     }
     
 
@@ -951,7 +950,7 @@ namespace Udpc.Share.Test
       dl2.Update();
       dl1.Update();
       
-      dl2.Unpack(DataLogFile.ReadFromFile(datafile));
+      dl2.Unpack(DataLogCore.ReadFromFile(datafile));
       for (int i = 0; i < 6; i++)
       {
         string file;
@@ -963,12 +962,16 @@ namespace Udpc.Share.Test
         File.WriteAllText(file, "asdasd" + new string('x', i));
         
         
-        var p11_hashes1 = dl1.LogFile.ReadCommitHashes().ToArray();
-        var p11_hashes2 = dl2.LogFile.ReadCommitHashes().ToArray();
+        var p11_hashes1 = dl1.LogCore.ReadCommitHashes().ToArray();
+        var p11_hashes2 = dl2.LogCore.ReadCommitHashes().ToArray();
+        if(p11_hashes1.Length != dl1.LogCore.CommitsCount)
+          throw new Exception();
+        if(p11_hashes2.Length != dl2.LogCore.CommitsCount)
+          throw new Exception();
         dl2.Update();
         dl1.Update();
-        var p12_hashes1 = dl1.LogFile.ReadCommitHashes().ToArray();
-        var p12_hashes2 = dl2.LogFile.ReadCommitHashes().ToArray();
+        var p12_hashes1 = dl1.LogCore.ReadCommitHashes().ToArray();
+        var p12_hashes2 = dl2.LogCore.ReadCommitHashes().ToArray();
         
         if(p12_hashes1.Length <= p11_hashes1.Length && (i%2 == 1))
           throw new Exception();
@@ -983,25 +986,15 @@ namespace Udpc.Share.Test
           continue;
         
         DataLogMerge.MergeDataLogs(dl2, dl1, 1000);
-        
-        
-        var items11 = dl1.LogFile.GetCommitsSince(p11_hashes1.Last()).ToArray();
-        var hashes2_ = dl2.LogFile.ReadCommitHashes().ToArray();
-        
         DataLogMerge.MergeDataLogs(dl1, dl2, 1000);
-        var hashes1 = dl1.LogFile.ReadCommitHashes().ToArray();
-        var items1 = dl1.LogFile.GetCommitsSince(p11_hashes1.Last()).ToArray();
-        var hashes2 = dl2.LogFile.ReadCommitHashes().ToArray();
-        var items2 = dl2.LogFile.GetCommitsSince(p11_hashes1.Last()).ToArray();
+        var hashes1 = dl1.LogCore.ReadCommitHashes().ToArray();
+        var hashes2 = dl2.LogCore.ReadCommitHashes().ToArray();
         
         for (int j = 0; j < hashes1.Length; j++)
         {
 
           if (hashes1[j].Equals(hashes2[j]) == false)
           {
-            var item1 = items1[items1.Length - j - 1];
-            var item2 = items2[items2.Length - j - 1];
-            
             throw new InvalidOperationException();
           }
         }
@@ -1019,8 +1012,8 @@ namespace Udpc.Share.Test
         
         DataLogMerge.MergeDataLogs(dl2, dl1, 1000);
         DataLogMerge.MergeDataLogs(dl1, dl2, 1000);
-        var hashes1 = dl1.LogFile.ReadCommitHashes().ToArray();
-        var hashes2 = dl2.LogFile.ReadCommitHashes().ToArray();
+        var hashes1 = dl1.LogCore.ReadCommitHashes().ToArray();
+        var hashes2 = dl2.LogCore.ReadCommitHashes().ToArray();
         Console.WriteLine("---");
       }
       dl2.Dispose();
@@ -1032,7 +1025,7 @@ namespace Udpc.Share.Test
     {
       for(int i = 0; i < 5; i++)
         TestDataLog();
-      return;
+      
       //for (int i = 0; i < 3; i++)
       //  w  TestFileConversation(false);
       if (false)
@@ -1052,8 +1045,8 @@ namespace Udpc.Share.Test
       
       //GitInterop();
       //GitInterop2();
-      GitInterop3();
-      return;
+      //GitInterop3();
+      
       TestCircularSum();
       TestUtils();
 

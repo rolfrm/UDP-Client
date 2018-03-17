@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.Serialization.Formatters.Binary;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Udpc.Share.Internal;
@@ -19,7 +20,7 @@ namespace Udpc.Share
         public bool ShutdownPending { get; private set; }
 
         readonly List<ConversationManager> conversations = new List<ConversationManager>();
-        Git git;
+        DataLog log;
         
         public static FileShare Create(string service, string dataFolder)
         {
@@ -44,22 +45,22 @@ namespace Udpc.Share
             share.DataFolder = dataFolder;
             share.shareThread.Start();
             share.processThread.Start();
-            
-            share.git = new Git();
-            
+
+            var basefile = Convert.ToBase64String(Encoding.UTF8.GetBytes(Path.GetFullPath(dataFolder)));
+            var binfile = Path.Combine(Path.GetTempPath(), "Datalog", basefile + ".bin");
+            var cfile = Path.Combine(Path.GetTempPath(), "Datalog", basefile + ".commits");
+
+            share.log = new DataLog(dataFolder, binfile, cfile);
+            var logUpdate = Task.Factory.StartNew(share.log.Update);
             void runListen()
             {
-                var gitUpdate = Task.Factory.StartNew( () =>
-                {
-                    share.git.Init(share.DataFolder);
-                    share.git.CommitAll();
-                });
+                
                 while (!share.ShutdownPending)
                 {
                     var con = share.serv.Listen();
                     if (con != null)
                     {
-                        gitUpdate.Wait();
+                        logUpdate.Wait();
                         share.go(() => share.onConnected(con, true));
                     }
                 }
@@ -136,9 +137,9 @@ namespace Udpc.Share
         
 
         [Serializable]
-        public class GitUpdate
+        public class DataLogUpdate
         {
-            public List<string> Data { get; set; }
+            public DataLogHash LastHash;
         }
         
         [Serializable]
@@ -146,6 +147,34 @@ namespace Udpc.Share
         {
             public string CommonCommit { get; set; }
         }
+
+        [Serializable]
+        public class SendMeCommits
+        {
+            public long Offset;
+            public long Count;
+        }
+
+        [Serializable]
+        public class CommitResponse
+        {
+            public long Offset;
+            public List<DataLogHash> Hashes;
+        }
+        
+        [Serializable]
+        public class SendMeStatus
+        {
+            
+        }
+
+        [Serializable]
+        public class StatusResponse
+        {
+            public long CommitCount;
+            public DataLogHash LatestCommit;
+        }
+        
 
         void onConnected(Udpc.IClient con, bool isServer)
         {
@@ -177,7 +206,8 @@ namespace Udpc.Share
                     try
                     {
                         file.Close();
-                        git.ApplyPatch(fname);
+                        throw new NotImplementedException();
+                        //git.ApplyPatch(fname);
                     }
                     finally
                     {
@@ -200,6 +230,8 @@ namespace Udpc.Share
             }
         }
 
+        //DataLogHash lastHash = new DataLogHash();
+
         public void UpdateIfNeeded()
         {
             if (ShutdownPending) return;
@@ -207,11 +239,10 @@ namespace Udpc.Share
             {
                 go(() =>
                 {
-                    git.CommitAll();
-                    var log = git.GetLog();
+                    log.Update();
                     foreach (var conv in conversations)
                     {
-                        conv.SendMessage(new GitUpdate{Data = log});
+                        conv.SendMessage(new SendMeStatus());
                     }
                 });
             }
@@ -221,27 +252,27 @@ namespace Udpc.Share
         {
             switch (thing)
             {
-                case GitUpdate upd:
-                    var local = git.GetLog();
-                    if (upd.Data.SequenceEqual(local))
-                        break;
-                    string b = Git.GetCommonBase(upd.Data, local);
-                    conv.SendMessage(new SendMeDiff(){CommonCommit = b});
+                case SendMeStatus _:
+                {
+                    var hash = log.LogCore.ReadCommitHashes(0, 1).FirstOrDefault();
+                    var count = log.LogCore.CommitsCount;
+
+                    conv.SendMessage(new StatusResponse {CommitCount = count, LatestCommit = hash});
                     break;
-                case SendMeDiff diff:
-                    var local2 = git.GetLog();
-                    if (local2.FirstOrDefault() == diff.CommonCommit)
-                        break;
-                    var f = git.GetPatch(diff.CommonCommit);
-                    var fstr = File.OpenRead(f);
-                    var c = new SendMessageConversation(fstr, null);
-                    c.Completed += (s, e) =>
-                    {
-                        fstr.Close();
-                        File.Delete(f);
-                    };
-                        
-                    conv.StartConversation(c);
+                }
+                case StatusResponse upd:
+                {
+                    Console.WriteLine("{0} {1}", upd.CommitCount, upd.LatestCommit);
+                    var hash = log.LogCore.ReadCommitHashes(0, 1).FirstOrDefault();
+                    if (hash.Equals(upd.LatestCommit)) return;
+                    conv.SendMessage(new SendMeCommits(){Count = 10, Offset = upd.CommitCount});
+
+                    break;
+                }
+                case SendMeCommits diff:
+                    
+                    
+                    
                     break;
                 default:
                     throw new InvalidOperationException();

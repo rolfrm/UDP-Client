@@ -241,23 +241,22 @@ namespace Udpc.Share
     {
         public long DataPos;
         public long CommitPos;
+        public long CommitsCount;
     }
 
-    public class DataLogFile : IDisposable
+    public class DataLogCore : IDisposable
     {
         public readonly string DataFile;
         readonly string commitsFile;
-        
+        public long CommitsCount { get; private set; }
         FileStream dataStream;
         FileStream commitStream;
         readonly MemoryStream mmstr = new MemoryStream();
 
         readonly Hasher hasher = Blake2B.Create();
         byte[] prevHash;
-        
-        //readonly SHA256 sha = new SHA256CryptoServiceProvider();
 
-        public DataLogFile(string dataFile, string commitsFile)
+        public DataLogCore(string dataFile, string commitsFile)
         {
             DataFile = dataFile;
             this.commitsFile = commitsFile;
@@ -277,11 +276,12 @@ namespace Udpc.Share
             prevHash = hasher.Finish();
             commitStream.Write(prevHash, 0, 32);
             commitStream.WriteLong(mmstr.Length);
+            CommitsCount += 1;
         }
 
         public DataLogFilePosition GetCurrentPosition()
         {
-            return new DataLogFilePosition() {CommitPos = commitStream.Position, DataPos = dataStream.Position};
+            return new DataLogFilePosition {CommitPos = commitStream.Position, DataPos = dataStream.Position, CommitsCount =  CommitsCount};
         }
 
         public void RestorePosition(DataLogFilePosition position)
@@ -291,7 +291,7 @@ namespace Udpc.Share
 
             commitStream.Position = position.CommitPos;
             commitStream.SetLength(position.CommitPos);
-            
+            CommitsCount = position.CommitsCount;
         }
         public void Flush()
         {
@@ -310,6 +310,7 @@ namespace Udpc.Share
             {
                 var hsh = ReadCommitHashes(0, 10).First();
                 prevHash = hsh.GetHash();
+                CommitsCount = commitStream.Length / (8 * 5);
             }
             else
             {
@@ -317,7 +318,7 @@ namespace Udpc.Share
             }
         }
 
-        public void ReadCommitHashes(Stream read, long offset, long count, List<DataLogHash> output)
+        public void ReadCommitHashes(Stream read, long offset, long count, List<DataLogHash> output, bool reverse)
         {
             if (read.Length == 0)
                 return;
@@ -346,10 +347,10 @@ namespace Udpc.Share
                 ReadCommitHashes(read, offset, count, list);
         }
         
-        public List<DataLogHash> ReadCommitHashes(long offset, long count)
+        public List<DataLogHash> ReadCommitHashes(long offset, long count, bool reverse = false)
         {
             var list = new List<DataLogHash>();
-            ReadCommitHashes(offset, count, list);
+            ReadCommitHashes(offset, count, list, reverse);
             return list;
         }
 
@@ -415,7 +416,7 @@ namespace Udpc.Share
             return new StreamEnumerator<DataLogItem>(fstr, ReadFrom(fstr));
         }
 
-        public string CreatePatch(DataLogHash point)
+        public string CreatePatch(DataLogHash point, bool rewind)
         {
             long length = 0;
             bool foundsome = false;
@@ -442,11 +443,17 @@ namespace Udpc.Share
                 dataStream.CopyTo(f);
                 dataStream.Flush();
             }
-            dataStream.Position -= length;
-            dataStream.SetLength(dataStream.Length - length);
-            commitStream.Position -= commits * 5 * 8;
-            commitStream.SetLength(commitStream.Length - commits * 5 * 8);
-            prevHash = point.GetHash();
+
+            if (rewind)
+            {
+                dataStream.Position -= length;
+                dataStream.SetLength(dataStream.Length - length);
+                commitStream.Position -= commits * 5 * 8;
+                commitStream.SetLength(commitStream.Length - commits * 5 * 8);
+                prevHash = point.GetHash();
+                CommitsCount -= commits;
+            }
+
             return tmp;
         }
         
@@ -455,8 +462,7 @@ namespace Udpc.Share
     public class DataLog : IDisposable
     {
         readonly string directory;
-        public readonly DataLogFile LogFile;
-
+        public readonly DataLogCore LogCore;
         
         readonly Dictionary<Guid, RegFile> file = new Dictionary<Guid, RegFile>();
         readonly Dictionary<string, Guid> fileNameToGuid = new Dictionary<string, Guid>();
@@ -466,7 +472,7 @@ namespace Udpc.Share
         public DataLog(string directory, string dataFile, string commitsFile)
         {
             this.directory = directory.TrimEnd('\\').TrimEnd('/');
-            LogFile = new DataLogFile(dataFile, commitsFile);
+            LogCore = new DataLogCore(dataFile, commitsFile);
         }
 
         public void Unpack(IEnumerable<DataLogItem> items)
@@ -536,7 +542,7 @@ namespace Udpc.Share
                     default:
                         throw new NotImplementedException();
                 }
-                LogFile.writeItem(item);
+                LogCore.writeItem(item);
             }
 
             foreach (var id in guids)
@@ -557,12 +563,12 @@ namespace Udpc.Share
                 
                 isInitialized = true;
                 Utils.EnsureDirectoryExists(directory);
-                LogFile.Open();
-                if (LogFile.IsEmpty)
+                LogCore.Open();
+                if (LogCore.IsEmpty)
                 {
                     foreach (var item in Generate(directory))
                     {
-                        LogFile.writeItem(item);
+                        LogCore.writeItem(item);
                         register(item);
                     }
                     Flush();
@@ -571,7 +577,7 @@ namespace Udpc.Share
                 }
                 else
                 {
-                    foreach (var item in DataLogFile.ReadFromFile(LogFile.DataFile))
+                    foreach (var item in DataLogCore.ReadFromFile(LogCore.DataFile))
                     {
                         register(item);
                     }
@@ -606,13 +612,13 @@ namespace Udpc.Share
                     logitems = GenerateFileData(f.FullName, id);
                 List<DataLogItem> itemsToRegister = new List<DataLogItem>();
 
-                var pos = LogFile.GetCurrentPosition();
+                var pos = LogCore.GetCurrentPosition();
                 
                 try
                 {
                     foreach (var x in logitems)
                     {
-                        LogFile.writeItem(x);
+                        LogCore.writeItem(x);
                         itemsToRegister.Add(x);
                     }
                     itemsToRegister.ForEach(register);
@@ -621,7 +627,7 @@ namespace Udpc.Share
                 }
                 catch
                 {
-                    LogFile.RestorePosition(pos);
+                    LogCore.RestorePosition(pos);
                 }
             }
 
@@ -632,7 +638,7 @@ namespace Udpc.Share
                     if (x.Value.IsDeleted == false && x.Key != Guid.Empty)
                     {
                         x.Value.IsDeleted = true;
-                        LogFile.writeItem(new DeletedFileLogItem(x.Key));
+                        LogCore.writeItem(new DeletedFileLogItem(x.Key));
                     }
 
                     x.Value.Iteration = iteration;
@@ -735,22 +741,23 @@ namespace Udpc.Share
 
         public IEnumerable<DataLogItem> GetItemsUntil(DataLogHash hash)
         {
-            return LogFile.GetCommitsSince(hash);
+            return LogCore.GetCommitsSince(hash);
         }
 
 
         public void Dispose()
         {
             Flush();
-            LogFile.Dispose();
+            LogCore.Dispose();
         }
 
         public void Flush()
         {
-            LogFile.Flush();
+            LogCore.Flush();
         }
     }
 
+    [Serializable]
     public struct DataLogHash
     {
         public ulong A, B, C, D; //32 bytes.
@@ -776,8 +783,8 @@ namespace Udpc.Share
         
         static public void MergeDataLogs(DataLog dest, DataLog src, int count)
         {
-            var destHashes = dest.LogFile.ReadCommitHashes(0, count);
-            var srcHashes = src.LogFile.ReadCommitHashes(0, count);
+            var destHashes = dest.LogCore.ReadCommitHashes(0, count);
+            var srcHashes = src.LogCore.ReadCommitHashes(0, count);
             int srcIdx = -1;
             int destIdx = 0;
             foreach (var h in destHashes)
@@ -804,9 +811,9 @@ namespace Udpc.Share
 
                 if (destIdx > 0)
                 {
-                    var patchfile = dest.LogFile.CreatePatch(commonhash);
+                    var patchfile = dest.LogCore.CreatePatch(commonhash, true);
                     dest.Unpack(items);
-                    using (var pkg = DataLogFile.ReadFromFile(patchfile))
+                    using (var pkg = DataLogCore.ReadFromFile(patchfile))
                     {
                         dest.Unpack(pkg);
                     }
@@ -820,5 +827,4 @@ namespace Udpc.Share
             }
         }
     }
-    
 }

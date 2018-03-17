@@ -1,9 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
+using System.IO;
 using System.Text;
 
 namespace Udpc.Share
@@ -64,7 +63,8 @@ namespace Udpc.Share
     void Commit();
     object GetSyncData();
     object GetSyncDiff(object remoteSync);
-    Stream GetSyncStream(object syncdata);
+    Stream OpenSyncStream(object remoteHashes);
+    void CloseSyncStream(Stream stream);
     void UnpackSyncStream(Stream syncStream);
   }
 
@@ -118,15 +118,20 @@ namespace Udpc.Share
       return new GitSync() {BaseCommit = diff};
     }
 
-    public Stream GetSyncStream(object _syncdata)
+    public Stream OpenSyncStream(object remoteHashes)
     {
-      var syncdata = (GitSync) _syncdata;
+      var syncdata = (GitSync) remoteHashes;
       var file = GetPatch(syncdata.BaseCommit);
       var fstr = File.OpenRead(file);
       return new EventWrappedStream(fstr)
       {
         OnClosed = () => File.Delete(file)
       };
+    }
+
+    public void CloseSyncStream(Stream stream)
+    {
+      throw new NotImplementedException();
     }
 
     public void UnpackSyncStream(Stream syncStream)
