@@ -1,4 +1,5 @@
-﻿using System.IO;
+﻿using System;
+using System.IO;
 
 namespace Udpc.Share.Internal
 {
@@ -16,5 +17,39 @@ namespace Udpc.Share.Internal
         {
             Directory.CreateDirectory(dataFolder);
         }
+    }
+
+    public static class Helpers
+    {
+        public static void Write(this Stream stream, byte[] data)
+        {
+            stream.Write(data, 0, data.Length);
+        }
+
+        public static void WriteLong(this Stream stream, long value)
+        {
+            stream.Write(BitConverter.GetBytes(value));
+        }
+
+        public static long Read(this Stream stream, byte[] buffer)
+        {
+            return stream.Read(buffer, 0, buffer.Length);
+        }
+
+        public static long ReadLong(this Stream stream)
+        {
+            byte[] data = new byte[8];
+            stream.Read(data, 0, data.Length);
+            return BitConverter.ToInt64(data, 0);
+        }
+
+        public static byte[] ReadBytes(this Stream stream, int count)
+        {
+            byte[] data = new byte[count];
+            if(stream.Read(data, 0, count) != count)
+                throw new InvalidOperationException();
+            return data;
+        }
+        
     }
 }

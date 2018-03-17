@@ -914,35 +914,9 @@ namespace Udpc.Share.Test
       {
 
       }
-      var asm = System.Reflection.Assembly.LoadFrom("Blake2Sharp.dll");
-      var dl = new DataLog("Downloads", datafile, commits);
-      dl.Update();
       
-      dl.Update();
-      dl.Flush();
-
-      var hashes = dl.LogFile.ReadCommitHashes().ToArray();
-      
-      foreach (var x in dl.LogFile.ReadCommitHashes().Distinct())
-      {
-        if (hashes.Count(y => y.Equals(x)) > 1)
-        {
-          throw new InvalidOperationException();
-        }
-        Console.WriteLine("{0}", x);
-      }
-      
-      //dl.Dispose();
-
-      
-      
-      foreach (var x in DataLogFile.ReadFromFile(datafile))
-      {
-        Console.WriteLine("{0}", x);
-      }
-
       try
-      {
+      {  
         Directory.Delete("Downloads2", true);
 
       }
@@ -950,58 +924,117 @@ namespace Udpc.Share.Test
       {
         
       }
+      
+      try
+      {  
+        Directory.Delete("Downloads", true);
 
+      }
+      catch
+      {
+        
+      }
+      
+      
+      System.Reflection.Assembly.LoadFrom("Blake2Sharp.dll");
+      var dl1 = new DataLog("Downloads", datafile, commits);
+      dl1.Update();
+      
+      dl1.Update();
+      dl1.Flush();
       
       var dl2 = new DataLog("Downloads2", datafile2, commits2);
       dl2.Update();
       
-      dl2.Unpack(DataLogFile.ReadFromFile(datafile));
-      File.WriteAllText("Downloads2/testfile.2", "asdasd");
-      dl2.Flush();
+      //File.WriteAllText("Downloads2/testtest", "kijdwoahdopwaj;dwah;sda;hdio;wasd");
+      File.WriteAllText("Downloads/testtest.3124.jwidah", "kijdwoahdopwaj;dwah;sda;hdio;wasd");
+      
       dl2.Update();
-      dl2.Flush();
-      foreach (var x in dl2.LogFile.ReadCommitHashes())
+      dl1.Update();
+      
+      dl2.Unpack(DataLogFile.ReadFromFile(datafile));
+      for (int i = 0; i < 6; i++)
       {
-        Console.WriteLine("{0}", x);
+        string file;
+        if (i % 2 == 1)
+          file = "Downloads/test.1.bin";
+        else
+          file = "Downloads2/test.2.bin";
+
+        File.WriteAllText(file, "asdasd" + new string('x', i));
+        
+        //if (i == 3) continue;
+        var p11_hashes1 = dl1.LogFile.ReadCommitHashes().ToArray();
+        var p11_hashes2 = dl2.LogFile.ReadCommitHashes().ToArray();
+        dl2.Update();
+        dl1.Update();
+        var p12_hashes1 = dl1.LogFile.ReadCommitHashes().ToArray();
+        var p12_hashes2 = dl2.LogFile.ReadCommitHashes().ToArray();
+        
+        if(p12_hashes1.Length <= p11_hashes1.Length && (i%2 == 1))
+          throw new Exception();
+        if(p12_hashes2.Length <= p11_hashes2.Length && (i%2 == 0))
+          throw new Exception();
+        if(p12_hashes1.Length > p11_hashes1.Length && (i%2 == 0))
+          throw new Exception();
+        if(p12_hashes2.Length > p11_hashes2.Length && (i%2 == 1))
+          throw new Exception();
+        
+        if (false && i == 4)
+        {
+          if(p11_hashes1.Length != p11_hashes2.Length || p11_hashes1.First().Equals(p11_hashes2.First()))
+            throw new InvalidOperationException();
+        }
+        
+        DataLogMerge.MergeDataLogs(dl2, dl1, 1000);
+        
+        
+        var items11 = dl1.LogFile.GetCommitsSince(p11_hashes1.Last()).ToArray();
+        
+        DataLogMerge.MergeDataLogs(dl1, dl2, 1000);
+        var hashes1 = dl1.LogFile.ReadCommitHashes().ToArray();
+        var items1 = dl1.LogFile.GetCommitsSince(p11_hashes1.Last()).ToArray();
+        var hashes2 = dl2.LogFile.ReadCommitHashes().ToArray();
+        var items2 = dl2.LogFile.GetCommitsSince(p11_hashes1.Last()).ToArray();
+        
+        for (int j = 0; j < hashes1.Length; j++)
+        {
+
+          if (hashes1[j].Equals(hashes2[j]) == false)
+          {
+            var item1 = items1[items1.Length - j - 1];
+            var item2 = items2[items2.Length - j - 1];
+            
+            throw new InvalidOperationException();
+          }
+        }
+        if(hashes1.SequenceEqual(hashes2) == false)
+          throw new InvalidOperationException();
       }
 
-      DataLogMerge.MergeDataLogs(dl2, dl, 20);
-      DataLogMerge.MergeDataLogs(dl, dl2, 20);
-      int dlc = dl.LogFile.ReadCommitHashes().Count();
-      int dl2c = dl2.LogFile.ReadCommitHashes().Count();
-      dl2.Flush();
-      dl.Flush();
-      
-      
-      foreach (var x in dl.LogFile.ReadCommitHashes().Distinct())
-      {
-      
-        Console.WriteLine("{0}", x);
-      }
-      var hashes1 = dl.LogFile.ReadCommitHashes().ToArray();
-      var hashes2 = dl2.LogFile.ReadCommitHashes().ToArray();
-      
-      dl2.Dispose();
-      dl.Dispose();
-
-      if(hashes1.SequenceEqual(hashes2) == false)
-        throw new InvalidOperationException();
-
-      
-      
       return;
       
       while (true)
       {
-        dl.Update();
-        Thread.Sleep(1000);
+        dl1.Update();
+        Thread.Sleep(500);
+        dl2.Update();
+        Thread.Sleep(500);
+        DataLogMerge.MergeDataLogs(dl2, dl1, 1000);
+        DataLogMerge.MergeDataLogs(dl1, dl2, 1000);
+        var hashes1 = dl1.LogFile.ReadCommitHashes().ToArray();
+        var hashes2 = dl2.LogFile.ReadCommitHashes().ToArray();
+        Console.WriteLine("---");
       }
+      dl2.Dispose();
+      dl1.Dispose();
+
     }
 
     public void RunTests()
     {
-      
-      TestDataLog();
+      for(int i = 0; i < 2; i++)
+        TestDataLog();
       return;
       //for (int i = 0; i < 3; i++)
       //  w  TestFileConversation(false);

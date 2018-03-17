@@ -3,9 +3,8 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
-using System.Runtime.Serialization.Formatters.Binary;
-using System.Security.Cryptography;
+using System.Runtime.Serialization;
+using System.Text;
 using Blake2Sharp;
 using Udpc.Share.Internal;
 
@@ -15,6 +14,11 @@ namespace Udpc.Share
     {
         readonly IEnumerable<T> data;
         Stream dataStream;
+
+        public static StreamEnumerator<T> Empty()
+        {
+            return new StreamEnumerator<T>(null, null);
+        }
         
         public StreamEnumerator(Stream dataStream, IEnumerable<T> data)
         {
@@ -35,6 +39,7 @@ namespace Udpc.Share
 
         public void Dispose()
         {
+            if (data == null) return;
             if (dataStream == null) throw new ObjectDisposedException("StreamEnumerator");
             dataStream.Dispose();
             dataStream = null;
@@ -47,44 +52,107 @@ namespace Udpc.Share
         }
     }
     
-    [Serializable]
-    public class DataLogItem
+    
+    public abstract class DataLogItem
     {
-        public readonly Guid FileId;
+        public Guid FileId { get; private set; }
 
         public DataLogItem(Guid id)
         {
             FileId = id;
         }
+        
+        static readonly Type[] types = {
+            typeof(NewFileLogItem), 
+            typeof(NewDirectoryLogItem),
+            typeof(FileNameLogItem),
+            typeof(FileDataItem),
+            typeof(NullFileLogItem),
+            typeof(DeletedFileLogItem)
+        };
+
+        public abstract void Write(Stream stream);
+
+        public abstract void Read(Stream stream);
+
+        byte getId()
+        {
+            var tp = GetType();
+            for (int i = 0; i < types.Length; i++)
+            {
+                if (types[i] == tp)
+                    return (byte)(i + 1);
+            }
+            throw new InvalidOperationException("Unknown datalog type");
+        }
+        
+        public void ToStream(Stream str)
+        {
+            str.WriteByte(getId());
+            str.Write(FileId.ToByteArray());
+            Write(str);
+        }
+
+        public static DataLogItem FromStream(Stream str)
+        {
+            int typeid = (int)str.ReadByte();
+            var type = types[typeid - 1];
+            var obj = (DataLogItem)FormatterServices.GetUninitializedObject(type);
+            obj.FileId = new Guid(str.ReadBytes(16));
+            obj.Read(str);
+            return obj;
+        }
+
     }
 
-    [Serializable]
     public class NewFileLogItem : DataLogItem
     {
-        public readonly DateTime LastEdit;
+        public DateTime LastEdit { get; private set; }
+        public long Size { get; private set; }
 
-        public NewFileLogItem(DateTime lastEdit) : this(Guid.NewGuid(), lastEdit)
+        public NewFileLogItem(DateTime lastEdit, long size) : this(Guid.NewGuid(), lastEdit, size)
         {
         }
 
-        public NewFileLogItem(Guid id, DateTime lastEdit) : base(id)
+        public NewFileLogItem(Guid id, DateTime lastEdit, long size) : base(id)
         {
             this.LastEdit = lastEdit;
+            this.Size = size;
+        }
+
+        public override void Write(Stream stream)
+        {
+            stream.WriteLong(LastEdit.ToFileTimeUtc());
+            stream.WriteLong(Size);
+        }
+
+        public override void Read(Stream stream)
+        {
+            LastEdit = DateTime.FromFileTimeUtc(stream.ReadLong());
+            Size = stream.ReadLong();
         }
     }
 
-    [Serializable]
     public class NewDirectoryLogItem : DataLogItem
     {
         public NewDirectoryLogItem() : base(Guid.NewGuid())
         {
         }
+
+        public override void Write(Stream stream)
+        {
+            
+        }
+
+        public override void Read(Stream stream)
+        {
+            
+        }
     }
 
-    [Serializable]
     public class FileNameLogItem : DataLogItem
     {
-        public readonly string FileName;
+        public string FileName { get; private set; }
 
         public FileNameLogItem(Guid itemid, string filename) : base(itemid)
         {
@@ -95,13 +163,27 @@ namespace Udpc.Share
         {
             return $"FileNameLogItem {FileName}";
         }
+
+        public override void Write(Stream stream)
+        {
+            var bytes = Encoding.UTF8.GetBytes(FileName);
+            stream.WriteLong(bytes.Length);
+            stream.Write(bytes);
+        }
+
+        public override void Read(Stream stream)
+        {
+            var len = stream.ReadLong();
+            var bytes = new byte[len];
+            stream.Read(bytes);
+            FileName = Encoding.UTF8.GetString(bytes);
+        }
     }
 
-    [Serializable]
     public class FileDataItem : DataLogItem
     {
-        readonly public byte[] Content;
-        readonly public long Offset;
+        public byte[] Content { get; private set; }
+        public long Offset { get; private set; }
 
         public FileDataItem(Guid itemid, byte[] content, long offset) : base(itemid)
         {
@@ -113,12 +195,48 @@ namespace Udpc.Share
         {
             return $"FileData {Offset} {Content.Length}";
         }
+
+        public override void Write(Stream stream)
+        {
+            stream.WriteLong(Offset);
+            stream.WriteLong(Content.Length);
+            stream.Write(Content);
+        }
+
+        public override void Read(Stream stream)
+        {
+            Offset = stream.ReadLong();
+            Content = new byte[stream.ReadLong()];
+            stream.Read(Content, 0, Content.Length);
+        }
     }
 
-    [Serializable]
-    public class DeletedFileItem : DataLogItem
+    public class DeletedFileLogItem : DataLogItem
     {
-        public DeletedFileItem(Guid id) : base(id)
+        public DeletedFileLogItem(Guid id) : base(id)
+        {
+        }
+
+        public override void Write(Stream stream)
+        {
+        }
+
+        public override void Read(Stream stream)
+        {
+        }
+    }
+
+    public class NullFileLogItem : DataLogItem
+    {
+        public NullFileLogItem (Guid id) : base(id)
+        {
+        }
+
+        public override void Write(Stream stream)
+        {
+        }
+
+        public override void Read(Stream stream)
         {
         }
     }
@@ -137,7 +255,6 @@ namespace Udpc.Share
         
         FileStream dataStream;
         FileStream commitStream;
-        readonly BinaryFormatter bf = new BinaryFormatter();
         readonly MemoryStream mmstr = new MemoryStream();
 
         readonly Hasher hasher = Blake2B.Create();
@@ -147,27 +264,24 @@ namespace Udpc.Share
 
         public DataLogFile(string dataFile, string commitsFile)
         {
-            this.DataFile = dataFile;
-            this.CommitsFile = commitsFile;
+            DataFile = dataFile;
+            CommitsFile = commitsFile;
         }
         
         public void writeItem(DataLogItem item)
         {
             mmstr.Position = 0;
             mmstr.SetLength(0);
-            bf.Serialize(mmstr, item);
+            item.ToStream(mmstr);
             mmstr.Position = 0;
             hasher.Init();
-            Console.WriteLine("PRE HASH: {0} {1} {2} {3}",prevHash[0],prevHash[1],prevHash[2],prevHash[3]);
             hasher.Update(prevHash,0, 32);
             hasher.Update(mmstr.GetBuffer(),0, (int)mmstr.Length);
             mmstr.Position = 0;
             mmstr.CopyTo(dataStream);
             prevHash = hasher.Finish();
-            Console.WriteLine("HASH: {0} {1} {2} {3}",prevHash[0],prevHash[1],prevHash[2],prevHash[3]);
             commitStream.Write(prevHash, 0, 32);
-            byte[] lenbytes = BitConverter.GetBytes(mmstr.Length);
-            commitStream.Write(lenbytes, 0, lenbytes.Length);
+            commitStream.WriteLong(mmstr.Length);
         }
 
         public DataLogFilePosition GetCurrentPosition()
@@ -192,12 +306,14 @@ namespace Udpc.Share
         
         public void Open()
         {
+            if(dataStream != null)
+                throw new InvalidOperationException("DataLog is already open.");
             Utils.EnsureDirectoryExists(Path.GetDirectoryName(DataFile));
             dataStream = File.Open(DataFile, FileMode.OpenOrCreate, FileAccess.ReadWrite, System.IO.FileShare.Read);
-            commitStream = File.Open(this.CommitsFile, FileMode.OpenOrCreate, FileAccess.ReadWrite, System.IO.FileShare.Read);
+            commitStream = File.Open(CommitsFile, FileMode.OpenOrCreate, FileAccess.ReadWrite, System.IO.FileShare.Read);
             if (commitStream.Length > 0)
             {
-                var hsh = ReadCommitHashes().First();
+                var hsh = ReadCommitHashes(0, 10).First();
                 prevHash = hsh.GetHash();
             }
             else
@@ -206,35 +322,58 @@ namespace Udpc.Share
             }
         }
 
-        public IEnumerable<DataLogHash> ReadCommitHashes(Stream read)
+        public void ReadCommitHashes(Stream read, long offset, long count, List<DataLogHash> output)
         {
-            int offset = 1;
-
-
+            if (read.Length == 0)
+                return;
+            if(read.Length % (5 * 8) != 0)
+                throw new InvalidOperationException();
             ulong[] conv = new ulong[5];
             var buffer = new byte[conv.Length * 8];
-            while (true)
+   
+            for(long i = 0; i < count; i++)
             {
-                read.Seek(-offset * buffer.Length, SeekOrigin.End);
-                offset += 1;
+                read.Seek(-(offset + i + 1)* buffer.Length, SeekOrigin.End);
                 bool dobreak = read.Position == 0;
 
                 read.Read(buffer, 0, buffer.Length);
                 Buffer.BlockCopy(buffer, 0, conv, 0, buffer.Length);
 
-                yield return new DataLogHash {A = conv[0], B = conv[1], C = conv[2], D = conv[3], Length = conv[4]};
+                output.Add(new DataLogHash {A = conv[0], B = conv[1], C = conv[2], D = conv[3], Length = conv[4]});
 
                 if (dobreak)
                     break;
             }
         }
-        
-        
-        public StreamEnumerator<DataLogHash> ReadCommitHashes()
+        public void ReadCommitHashes(long offset, long count, List<DataLogHash> list)
         {
-            var read = File.OpenRead(CommitsFile);
-            return new StreamEnumerator<DataLogHash>(read, ReadCommitHashes(read));
-            
+            using (var read = File.OpenRead(CommitsFile))
+                ReadCommitHashes(read, offset, count, list);
+        }
+        
+        public List<DataLogHash> ReadCommitHashes(long offset, long count)
+        {
+            var list = new List<DataLogHash>();
+            ReadCommitHashes(offset, count, list);
+            return list;
+        }
+
+        public IEnumerable<DataLogHash> ReadCommitHashes()
+        {
+            Flush();
+            const int batchCount = 20;
+            var list = new List<DataLogHash>();
+            long offset = 0;
+            while (true)
+            {
+                ReadCommitHashes(offset, batchCount, list);
+                foreach (var item in list)
+                    yield return item;
+                if (list.Count < batchCount)
+                    yield break;
+                offset += list.Count;
+                list.Clear();
+            }
         }
 
         public bool IsEmpty => dataStream.Length == 0;
@@ -249,19 +388,27 @@ namespace Udpc.Share
         public IEnumerable<DataLogItem> GetCommitsSince(DataLogHash hash)
         {
             var lst = ReadCommitHashes().TakeWhile(x => x.Equals(hash) == false).ToList();
-            var length = lst.Select(x => (long)x.Length).Sum();
+            var length = lst.Select(x => (long) x.Length).Sum();
             dataStream.Position -= length;
-            return ReadFrom(dataStream);
+            try
+            {
+                return ReadFrom(dataStream).ToArray();
+            }
+            finally
+            {
+                dataStream.Position = dataStream.Length;
+            }
+                
         }
-
+        
         public static IEnumerable<DataLogItem> ReadFrom(Stream fstr)
         {
-            BinaryFormatter bf = new BinaryFormatter();
+            
             long pos = fstr.Position;
             while (pos < fstr.Length)
             {
                 fstr.Seek(pos, SeekOrigin.Begin);
-                var item = (DataLogItem) bf.Deserialize(fstr);
+                var item = DataLogItem.FromStream(fstr);
                 pos = fstr.Position;
                 yield return item;
             }
@@ -271,6 +418,41 @@ namespace Udpc.Share
         {
             var fstr = File.OpenRead(filepath);
             return new StreamEnumerator<DataLogItem>(fstr, ReadFrom(fstr));
+        }
+
+        public string CreatePatch(DataLogHash point)
+        {
+            long length = 0;
+            bool foundsome = false;
+            int commits = 0;
+            foreach(var x in ReadCommitHashes())
+            {
+                if (x.Equals(point))
+                {
+                    foundsome = true;
+                    break;
+                }
+                commits += 1;
+                length += (long)x.Length;
+            }
+
+            if (foundsome == false) return null;
+            
+            dataStream.Position -= length;
+
+            var tmp = Path.GetTempFileName();
+            
+            using (var f = File.Open(tmp, FileMode.Open))
+            {
+                dataStream.CopyTo(f);
+                dataStream.Flush();
+            }
+            dataStream.Position -= length;
+            dataStream.SetLength(dataStream.Length - length);
+            commitStream.Position -= commits * 5 * 8;
+            commitStream.SetLength(commitStream.Length - commits * 5 * 8);
+            this.prevHash = point.GetHash();
+            return tmp;
         }
         
     }
@@ -317,7 +499,7 @@ namespace Udpc.Share
                         }
                         else
                         {
-                            file[f.FileId] = new RegFile {IsFile = true, LastEdit = f.LastEdit};
+                            file[f.FileId] = new RegFile {IsFile = true, LastEdit = f.LastEdit, Size = f.Size};
                         }
 
                         break;
@@ -342,14 +524,15 @@ namespace Udpc.Share
                         }
 
                         break;
-                    case DeletedFileItem f:
+                    case DeletedFileLogItem f:
                         File.Delete(translate(file[f.FileId].Name));
                         break;
+                    case NullFileLogItem f:
+                        continue;
                     default:
                         throw new NotImplementedException();
                 }
                 LogFile.writeItem(item);
-                //register(item);
             }
 
             foreach (var id in guids)
@@ -358,6 +541,7 @@ namespace Udpc.Share
                 var finfo = new FileInfo(translate(item.Name));
                 finfo.LastWriteTimeUtc = item.LastEdit;
             }
+            Flush();
         }
 
         
@@ -378,6 +562,7 @@ namespace Udpc.Share
                         LogFile.writeItem(item);
                         register(item);
                     }
+                    Flush();
 
                     return; // no need to do anything further
                 }
@@ -389,7 +574,7 @@ namespace Udpc.Share
                     }
                 }
             }
-
+            
             foreach (var item in Directory.EnumerateFileSystemEntries(directory, "*", SearchOption.AllDirectories))
             {
                 var f = new FileInfo(item);
@@ -397,10 +582,13 @@ namespace Udpc.Share
                 Guid id;
                 if (!fileNameToGuid.TryGetValue(f.FullName, out id))
                     id = Guid.Empty;
-                else if (this.file[id].LastEdit >= f.LastWriteTimeUtc)
+                else if (file[id].LastEdit >= f.LastWriteTimeUtc)
                 {
-                    this.file[id].Iteration = iteration;
-                    continue;
+                    if (file[id].Size == f.Length)
+                    {
+                        file[id].Iteration = iteration;
+                        continue;
+                    }
                 }
 
 
@@ -435,15 +623,17 @@ namespace Udpc.Share
             {
                 if (x.Value.Iteration != iteration)
                 {
-                    if (x.Value.IsDeleted == false)
+                    if (x.Value.IsDeleted == false && x.Key != Guid.Empty)
                     {
                         x.Value.IsDeleted = true;
-                        LogFile.writeItem(new DeletedFileItem(x.Key));
+                        LogFile.writeItem(new DeletedFileLogItem(x.Key));
                     }
 
                     x.Value.Iteration = iteration;
                 }
             }
+
+            Flush();
         }
 
         class RegFile
@@ -454,6 +644,7 @@ namespace Udpc.Share
             public bool IsDeleted;
             public DateTime LastEdit { get; set; }
             public int Iteration;
+            public long Size { get; set; }
         }
 
 
@@ -464,8 +655,9 @@ namespace Udpc.Share
             {
                 case NewFileLogItem f:
                     if(!file.ContainsKey(f.FileId))
-                        file[f.FileId] = new RegFile {IsFile = true};
+                        file[f.FileId] = new RegFile {IsFile = true, Size = f.Size};
                     file[f.FileId].LastEdit = f.LastEdit;
+                    file[f.FileId].Size = f.Size;
                     break;
                 case NewDirectoryLogItem f:
                     if(!file.ContainsKey(f.FileId))
@@ -474,6 +666,9 @@ namespace Udpc.Share
                 case FileNameLogItem f:
                     file[f.FileId].Name = Path.GetFullPath(Path.Combine(directory, f.FileName));
                     fileNameToGuid[file[f.FileId].Name] = f.FileId;
+                    break;
+                case NullFileLogItem f:
+                    file[f.FileId] = new RegFile();
                     break;
             }
             file[item.FileId].Iteration = iteration;
@@ -492,7 +687,7 @@ namespace Udpc.Share
             }
             else if (fstr.Attributes.HasFlag(FileAttributes.System) == false)
             {
-                baseitem = new NewFileLogItem(fstr.LastWriteTimeUtc);
+                baseitem = new NewFileLogItem(fstr.LastWriteTimeUtc, fstr.Length);
                 yield return baseitem;
             }
 
@@ -510,7 +705,7 @@ namespace Udpc.Share
             var fstr = new FileInfo(item);
             using (var str = fstr.Open(FileMode.Open, FileAccess.Read))
             {
-                yield return new NewFileLogItem(id, fstr.LastWriteTimeUtc);
+                yield return new NewFileLogItem(id, fstr.LastWriteTimeUtc, fstr.Length);
                 while (true)
                 {
                     byte[] chunk = new byte[Math.Max(1024 * 1024, fstr.Length)];
@@ -524,6 +719,7 @@ namespace Udpc.Share
 
         static public IEnumerable<DataLogItem> Generate(string directory)
         {
+            yield return new NullFileLogItem(Guid.Empty);
             foreach (var item in Directory.EnumerateFileSystemEntries(directory, "*", SearchOption.AllDirectories))
             {
                 foreach (var x in GenerateFromFile(directory, item))
@@ -539,6 +735,7 @@ namespace Udpc.Share
 
         public void Dispose()
         {
+            Flush();
             LogFile.Dispose();
         }
 
@@ -573,8 +770,8 @@ namespace Udpc.Share
         
         static public bool MergeDataLogs(DataLog dest, DataLog src, int count)
         {
-            var dest_hashes = dest.LogFile.ReadCommitHashes().Take(count).ToList();
-            var src_hashes = src.LogFile.ReadCommitHashes().Take(count).ToList();
+            var dest_hashes = dest.LogFile.ReadCommitHashes(0, count);
+            var src_hashes = src.LogFile.ReadCommitHashes(0, count);
             int srcIdx = -1;
             int destIdx = 0;
             foreach (var h in dest_hashes)
@@ -601,10 +798,19 @@ namespace Udpc.Share
 
                 if (destIdx > 0)
                 {
-                    throw new NotImplementedException();
+                    var patchfile = dest.LogFile.CreatePatch(commonhash);
+                    dest.Unpack(items);
+                    using (var pkg = DataLogFile.ReadFromFile(patchfile))
+                    {
+                        dest.Unpack(pkg);
+                    }
+                    File.Delete(patchfile);
+                    
                 }
-
-                dest.Unpack(items);
+                else
+                {
+                    dest.Unpack(items);
+                }
             }
             return true;
         }
