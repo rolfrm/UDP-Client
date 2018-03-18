@@ -25,6 +25,15 @@ namespace Udpc.Share
 
         static readonly string tempDir = Path.Combine(Path.GetTempPath(), "Datalog");
         string baseFile;
+
+        public static string[] TmpFileNames(string dataFolder)
+        {
+            var baseFile = Convert.ToBase64String(Encoding.UTF8.GetBytes(Path.GetFullPath(dataFolder)));
+            var binfile = Path.Combine(tempDir, baseFile + ".bin");
+            var cfile = Path.Combine(tempDir, baseFile + ".commits");
+            return new[] {binfile, cfile};
+        }
+        
         public static FileShare Create(string service, string dataFolder)
         {
             dataFolder = Path.GetFullPath(dataFolder);
@@ -218,7 +227,7 @@ namespace Udpc.Share
                 }
 
                 Guid id = Guid.NewGuid();
-                var file = File.OpenWrite(baseFile + "." + id + ".chunk");
+                var file = File.OpenWrite( Path.Combine(tempDir, baseFile + "." + id + ".chunk"));
                 var conv2 = new ReceiveMessageConversation(file);
                 conv2.Completed += (s, e) => { go(() =>
                 {

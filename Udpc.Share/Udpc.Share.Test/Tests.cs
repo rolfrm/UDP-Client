@@ -776,26 +776,33 @@ namespace Udpc.Share.Test
 
     static void TestFileShare()
     {
-      try
+      foreach (var x in new[] {"myData", "myData2"})
       {
-        Directory.Delete("myData", true);
-      }
-      catch
-      {
+        try
+        {
+          Directory.Delete(x, true);
+        }
+        catch
+        {
         
-      }
+        }
 
-      try
-      {
-        Directory.Delete("myData2", true);
-      }
-      catch
-      {
-        
-      }
+        Directory.CreateDirectory(x);
+        foreach (var f in FileShare.TmpFileNames(x))
+        {
+          try
+          {
+            File.Delete(f);
+          }
+          catch
+          {
+            
+          }
+        }
 
-      Directory.CreateDirectory("myData");
-      Directory.CreateDirectory("myData2");
+      }
+      
+      
       
       var fs = FileShare.Create("test2@0.0.0.0:share1", "myData");
       Thread.Sleep(500);
@@ -811,10 +818,10 @@ namespace Udpc.Share.Test
         {
           fs.UpdateIfNeeded();
           fs.WaitForProcessing();
-          Thread.Sleep(1000);
+          Thread.Sleep(100);
           fs2.UpdateIfNeeded();
           fs2.WaitForProcessing();
-          Thread.Sleep(1000);
+          Thread.Sleep(100);
         }
       }
       
@@ -835,10 +842,10 @@ namespace Udpc.Share.Test
       iterate(fs2.DataFolder);
       trd.Start();
       Thread.Sleep(500);
-      for (int i = 0; i < 0; i++)
+      for (int i = 0; i < 100; i++)
       {
         iterate(i%2 == 0 ? fs.DataFolder : fs2.DataFolder);
-        Thread.Sleep(500);
+        Thread.Sleep(50);
       }
 
       bool condition()
@@ -849,7 +856,7 @@ namespace Udpc.Share.Test
       }
 
       var sw = Stopwatch.StartNew();
-      while (condition() == false || true)
+      while (condition() == false)
       {
         //if(sw.ElapsedMilliseconds > 20000)
         //  throw new InvalidOperationException("test timed out");
@@ -1097,8 +1104,8 @@ namespace Udpc.Share.Test
       trd.Start();
 
       Thread.Sleep(200);
-      
-      TestFileShare();
+      for(int i = 0; i < 100; i++)
+        TestFileShare();  
       return;
       UdpcLatencyTest();
       UdpcBasicInterop();
