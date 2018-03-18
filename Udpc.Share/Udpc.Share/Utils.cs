@@ -25,6 +25,20 @@ namespace Udpc.Share.Internal
         {
             stream.Write(data, 0, data.Length);
         }
+        
+        public static void Write(this Stream stream, long[] data)
+        {
+            byte[] bytedata = new byte[data.Length * sizeof(long)];
+            Buffer.BlockCopy(data, 0, bytedata, 0, bytedata.Length);
+            stream.Write(bytedata);
+        }
+        
+        public static void Write(this Stream stream, ulong[] data)
+        {
+            byte[] bytedata = new byte[data.Length * sizeof(ulong)];
+            Buffer.BlockCopy(data, 0, bytedata, 0, bytedata.Length);
+            stream.Write(bytedata);
+        }
 
         public static void WriteLong(this Stream stream, long value)
         {
@@ -35,7 +49,7 @@ namespace Udpc.Share.Internal
         {
             return stream.Read(buffer, 0, buffer.Length);
         }
-
+        
         public static long ReadLong(this Stream stream)
         {
             byte[] data = new byte[8];

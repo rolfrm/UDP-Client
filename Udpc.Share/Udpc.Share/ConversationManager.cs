@@ -113,9 +113,13 @@ namespace Udpc.Share
                         return false;
                     }
                     conv = NewConversation(buffer[4]);
-                    
-                    conversations[convId] = conv;
-                    conversationIds[conv] = convId;
+
+                    lock (conversations)
+                    {
+                        conversations[convId] = conv;
+                        conversationIds[conv] = convId;
+                    }
+
                     previousConversations.Add(convId);
                     conv.Start(this);
                     offset = 5;
@@ -162,11 +166,15 @@ namespace Udpc.Share
                 proc?.Invoke();
                 thingsHappened = true;
             }
-            
-            foreach (var con in conversations.Values.Where(x => x.ConversationFinished).ToArray())
+
+            lock (conversations)
             {
-                conversations.Remove(conversationIds[con]);
-                conversationIds.Remove(con);
+                var items = conversations.Values.Where(x => x.ConversationFinished).ToArray();
+                foreach (var con in items)
+                {
+                    conversations.Remove(conversationIds[con]);
+                    conversationIds.Remove(con);
+                }
             }
 
             foreach (var con in conversations.Values)

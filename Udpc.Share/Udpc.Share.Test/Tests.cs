@@ -802,8 +802,8 @@ namespace Udpc.Share.Test
       var fs2 = FileShare.Create("test3@0.0.0.0:share1", "myData2");
       Thread.Sleep(500);
       fs.ConnectTo(fs2.Service);
-      //Thread.Sleep(500);
-      //fs2.ConnectTo(fs.Service);
+      Thread.Sleep(500);
+      fs2.ConnectTo(fs.Service);
       
       void updateFileShares()
       {
@@ -811,15 +811,15 @@ namespace Udpc.Share.Test
         {
           fs.UpdateIfNeeded();
           fs.WaitForProcessing();
-          Thread.Sleep(200);
+          Thread.Sleep(1000);
           fs2.UpdateIfNeeded();
           fs2.WaitForProcessing();
-          Thread.Sleep(200);
+          Thread.Sleep(1000);
         }
       }
       
       var trd = new Thread(updateFileShares);
-      trd.Start();
+      
       
       StringBuilder textdata = new StringBuilder();
       
@@ -832,11 +832,13 @@ namespace Udpc.Share.Test
       }
       
       iterate(fs.DataFolder);
+      iterate(fs2.DataFolder);
+      trd.Start();
       Thread.Sleep(500);
-      for (int i = 0; i < 100; i++)
+      for (int i = 0; i < 0; i++)
       {
         iterate(i%2 == 0 ? fs.DataFolder : fs2.DataFolder);
-        Thread.Sleep(100);
+        Thread.Sleep(500);
       }
 
       bool condition()
@@ -847,7 +849,7 @@ namespace Udpc.Share.Test
       }
 
       var sw = Stopwatch.StartNew();
-      while (condition() == false)
+      while (condition() == false || true)
       {
         //if(sw.ElapsedMilliseconds > 20000)
         //  throw new InvalidOperationException("test timed out");
@@ -1021,8 +1023,49 @@ namespace Udpc.Share.Test
 
     }
 
+    public void DataLogStream()
+    {
+      var hsh = new DataLogHash { A = 5, B = 6, C = 9, D = 100, Length = 1000};
+      using (var memstr = new MemoryStream())
+      {
+        hsh.ToStream(memstr);
+        memstr.Position = 0;
+        var hsh2 = DataLogHash.Read(memstr);
+        if(hsh.Equals(hsh2) == false)
+          throw new InvalidOperationException();
+      }
+    }
+
+    public void TestAppendStream()
+    {
+      byte[] data1 = {1, 2, 3, 4};
+      byte[] data2 = {5,6, 7, 8};
+      byte[] data3 = {};
+      byte[] data4 = {9,10};
+      var combined = new[] {data1, data2, data3, data4};
+      var ccat = combined.SelectMany(x => x).ToArray();
+      var streams = combined.Select(x =>(Stream) new MemoryStream(x));
+      using (var app = new CombinedStreams(streams.ToArray()))
+      {
+        var bytes = app.ReadBytes(9);
+        if(bytes.SequenceEqual(ccat.Take(9)) == false)
+          throw new InvalidOperationException();
+        bytes = app.ReadBytes(1);
+        if(bytes.SequenceEqual(ccat.Skip(9)) == false)
+          throw new InvalidOperationException();
+        app.Seek(4, SeekOrigin.Begin);
+        bytes = app.ReadBytes(4);
+        if(bytes.SequenceEqual(ccat.Skip(4).Take(4)) == false)
+          throw new InvalidOperationException();
+      }
+    }
+    
+
     public void RunTests()
     {
+      DataLogStream();
+      TestAppendStream();
+      
       for(int i = 0; i < 5; i++)
         TestDataLog();
       

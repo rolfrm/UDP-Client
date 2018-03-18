@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.Serialization.Formatters.Binary;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -21,7 +22,9 @@ namespace Udpc.Share
 
         readonly List<ConversationManager> conversations = new List<ConversationManager>();
         DataLog log;
-        
+
+        static readonly string tempDir = Path.Combine(Path.GetTempPath(), "Datalog");
+        string baseFile;
         public static FileShare Create(string service, string dataFolder)
         {
             dataFolder = Path.GetFullPath(dataFolder);
@@ -45,10 +48,11 @@ namespace Udpc.Share
             share.DataFolder = dataFolder;
             share.shareThread.Start();
             share.processThread.Start();
+            share.baseFile = Convert.ToBase64String(Encoding.UTF8.GetBytes(Path.GetFullPath(dataFolder)));
 
-            var basefile = Convert.ToBase64String(Encoding.UTF8.GetBytes(Path.GetFullPath(dataFolder)));
-            var binfile = Path.Combine(Path.GetTempPath(), "Datalog", basefile + ".bin");
-            var cfile = Path.Combine(Path.GetTempPath(), "Datalog", basefile + ".commits");
+            
+            var binfile = Path.Combine(tempDir, share.baseFile + ".bin");
+            var cfile = Path.Combine(tempDir, share.baseFile + ".commits");
 
             share.log = new DataLog(dataFolder, binfile, cfile);
             var logUpdate = Task.Factory.StartNew(share.log.Update);
@@ -151,13 +155,23 @@ namespace Udpc.Share
         [Serializable]
         public class SendMeCommits
         {
+            public object Context;
             public long Offset;
             public long Count;
         }
 
         [Serializable]
+        public class BaseSearch
+        {
+            public long Offset;
+            public long Window;
+
+        }
+
+        [Serializable]
         public class CommitResponse
         {
+            public object Context;
             public long Offset;
             public List<DataLogHash> Hashes;
         }
@@ -173,6 +187,12 @@ namespace Udpc.Share
         {
             public long CommitCount;
             public DataLogHash LatestCommit;
+        }
+
+        [Serializable]
+        public class SendMeCommitData
+        {
+            public DataLogHash CommonHash;
         }
         
 
@@ -198,7 +218,7 @@ namespace Udpc.Share
                 }
 
                 Guid id = Guid.NewGuid();
-                var file = File.OpenWrite(".gitChunk" + id);
+                var file = File.OpenWrite(baseFile + "." + id + ".chunk");
                 var conv2 = new ReceiveMessageConversation(file);
                 conv2.Completed += (s, e) => { go(() =>
                 {
@@ -206,8 +226,25 @@ namespace Udpc.Share
                     try
                     {
                         file.Close();
-                        throw new NotImplementedException();
-                        //git.ApplyPatch(fname);
+                        using (var str = File.OpenRead(fname))
+                        {
+                            var hash = DataLogHash.Read(str);
+                            
+                            var patchfile = log.LogCore.CreatePatch(hash, true);
+                            try
+                            {
+                                log.Unpack(DataLogCore.ReadFrom(str));
+                                using (var pkg = DataLogCore.ReadFromFile(patchfile))
+                                    log.Unpack(pkg);
+                            }
+                            finally
+                            {
+                                File.Delete(patchfile);
+                            }
+                                
+
+                        }
+                        
                     }
                     finally
                     {
@@ -229,13 +266,9 @@ namespace Udpc.Share
                 Thread.Sleep(100);
             }
         }
-
-        //DataLogHash lastHash = new DataLogHash();
-
         public void UpdateIfNeeded()
         {
             if (ShutdownPending) return;
-            //if (git.GetGitStatus().Items.Count > 0)
             {
                 go(() =>
                 {
@@ -265,15 +298,95 @@ namespace Udpc.Share
                     Console.WriteLine("{0} {1}", upd.CommitCount, upd.LatestCommit);
                     var hash = log.LogCore.ReadCommitHashes(0, 1).FirstOrDefault();
                     if (hash.Equals(upd.LatestCommit)) return;
-                    conv.SendMessage(new SendMeCommits(){Count = 10, Offset = upd.CommitCount});
+                    var offset = Math.Min(upd.CommitCount, log.LogCore.CommitsCount);
+                    Console.WriteLine("Offsets: {0} {1}", upd.CommitCount, log.LogCore.CommitsCount);
+                    // try find common base.
+                    conv.SendMessage(new SendMeCommits()
+                    {
+                        Count = 1,
+                        Offset = offset - 1,
+                        Context = new BaseSearch(){Offset = offset - 1, Window = offset}
+                    });
 
                     break;
                 }
                 case SendMeCommits diff:
+                {
+
+                    var hashes = log.LogCore.ReadCommitHashes(diff.Offset, diff.Count, reverse: true);
+                    conv.SendMessage(new CommitResponse
+                    {
+                        Hashes = hashes, Offset = diff.Offset, Context = diff.Context
+                    });
+                    break;
+                }
+
+                case SendMeCommitData reg:
+                {
+                    var hsh = reg.CommonHash;
+                    var file = log.LogCore.CreatePatch(hsh, false);
+                    var mem = new MemoryStream();
+                    reg.CommonHash.ToStream(mem);
+                    mem.Position = 0;
                     
                     
+                    var fstr = File.OpenRead(file);
+                    var app = new CombinedStreams(mem, fstr);
+                    var c = new SendMessageConversation(app, null);
+                    c.Completed += (s, e) =>
+                    {
+                        app.Close();
+                        File.Delete(file);
+                    };
+
+                    conv.StartConversation(c);
+
+                    break;
+                }
+                case CommitResponse resp:
+                {
+                    var hashes = log.LogCore.ReadCommitHashes(resp.Offset, 1,reverse: true);
+                    var ctx = (BaseSearch) resp.Context;
+                    long window = ctx.Window;
+                    Console.WriteLine("    : {0} {2}   {1}", window, ctx.Offset, resp.Offset);
+                    Console.WriteLine("        {0}\n    ==   {1}", resp.Hashes.First(), hashes[0]);
+                    var newwindow = Math.Max(1, ctx.Window / 2);
+                    if (resp.Hashes.First().Equals(hashes[0]))
+                    {
+                        if (ctx.Offset == resp.Offset) 
+                            return; // theres no commits in front of this one.
+                        // common base found
+                        if (ctx.Window == 1)
+                        {
+                            
+                            conv.SendMessage(new SendMeCommitData
+                            {
+                                CommonHash = hashes.First()
+                            });
+                        }
+                        else
+                        {
+                            conv.SendMessage(new SendMeCommits()
+                            {
+                                Count = 1,
+                                Offset = resp.Offset + newwindow,
+                                Context = new BaseSearch{Offset = ctx.Offset, Window = newwindow}
+                            });
+                        }   
+                    }
+                    else
+                    {
+                        conv.SendMessage(new SendMeCommits()
+                        {
+                            Count = 1,
+                            Offset = resp.Offset - newwindow,
+                            Context = new BaseSearch{Offset = ctx.Offset, Window = newwindow}
+                        });
+                    }
+                    var resulthashes = resp.Hashes;
                     
                     break;
+                }
                 default:
                     throw new InvalidOperationException();
             }
