@@ -252,7 +252,7 @@ namespace Udpc.Share
             sw.Restart();
         }
 
-        long currentWritePos = 0;
+        long currentWritePos;
 
         public override void HandleMessage(byte[] data)
         {

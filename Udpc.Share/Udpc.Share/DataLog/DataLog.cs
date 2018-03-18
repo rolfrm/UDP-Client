@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using Udpc.Share.Internal;
 
-namespace Udpc.Share
+namespace Udpc.Share.DataLog
 {
     public class DataLog : IDisposable
     {
@@ -89,7 +89,7 @@ namespace Udpc.Share
                     case NullFileLogItem _:
                         continue;
                     default:
-                        throw new NotImplementedException();
+                        throw new InvalidOperationException();
                 }
                 LogCore.writeItem(item);
             }

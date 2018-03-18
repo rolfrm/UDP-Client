@@ -4,10 +4,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.Serialization.Formatters.Binary;
-using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Udpc.Share.DataLog;
 using Udpc.Share.Internal;
 
 namespace Udpc.Share
@@ -21,7 +21,7 @@ namespace Udpc.Share
         public bool ShutdownPending { get; private set; }
 
         readonly List<ConversationManager> conversations = new List<ConversationManager>();
-        DataLog log;
+        DataLog.DataLog log;
 
         static readonly string tempDir = Path.Combine(Path.GetTempPath(), "Datalog");
         string baseFile;
@@ -63,7 +63,7 @@ namespace Udpc.Share
             var binfile = Path.Combine(tempDir, share.baseFile + ".bin");
             var cfile = Path.Combine(tempDir, share.baseFile + ".commits");
 
-            share.log = new DataLog(dataFolder, binfile, cfile);
+            share.log = new DataLog.DataLog(dataFolder, binfile, cfile);
             var logUpdate = Task.Factory.StartNew(share.log.Update);
             void runListen()
             {
@@ -148,19 +148,6 @@ namespace Udpc.Share
 
         }
         
-
-        [Serializable]
-        public class DataLogUpdate
-        {
-            public DataLogHash LastHash;
-        }
-        
-        [Serializable]
-        public class SendMeDiff
-        {
-            public string CommonCommit { get; set; }
-        }
-
         [Serializable]
         public class SendMeCommits
         {
@@ -387,8 +374,6 @@ namespace Udpc.Share
                             Context = new BaseSearch{Offset = ctx.Offset, Window = newwindow}
                         });
                     }
-                    var resulthashes = resp.Hashes;
-                    
                     break;
                 }
                 default:
@@ -413,7 +398,7 @@ namespace Udpc.Share
 
         public const byte Header2 = 11;
         
-        public AnyObjectSend(ConversationManager manager, object anyThing) : base(getObjectStream(anyThing), "")
+        public AnyObjectSend(ConversationManager _, object anyThing) : base(getObjectStream(anyThing), "")
         {
             Header = Header2;
         }

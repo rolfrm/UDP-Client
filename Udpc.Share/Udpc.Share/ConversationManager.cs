@@ -45,15 +45,17 @@ namespace Udpc.Share
         readonly Dictionary<int, IConversation> conversations = new Dictionary<int, IConversation>();
         readonly Dictionary<IConversation, int> conversationIds = new Dictionary<IConversation, int>();
 
-        public int StartConversation(IConversation conv)
+        public void StartConversation(IConversation conv)
         {
             var convId = newConversationId();
             previousConversations.Add(convId);
-            conversations[convId] = conv;
-            conversationIds[conv] = convId;
-            conv.Start(this);
+            lock (conversations)
+            {
+                conversations[convId] = conv;
+                conversationIds[conv] = convId;
+            }
 
-            return convId;
+            conv.Start(this);
         }
 
         public Func<byte, IConversation> NewConversation = (bytes)
@@ -143,7 +145,8 @@ namespace Udpc.Share
             if (DateTime.Now - lastUpdate > TimeSpan.FromMilliseconds(500))
             {
                 lastUpdate = DateTime.Now;
-                SendMessage(null, BitConverter.GetBytes((int)  (isServer ? -2 : -3)));
+                int header = (isServer ? -2 : -3);
+                SendMessage(null, BitConverter.GetBytes(header));
             }
             
             return true;
@@ -175,12 +178,10 @@ namespace Udpc.Share
                     conversations.Remove(conversationIds[con]);
                     conversationIds.Remove(con);
                 }
+                foreach (var con in conversations.Values)
+                    con.Update();
             }
 
-            foreach (var con in conversations.Values)
-            {
-                con.Update();
-            }
             return thingsHappened;
         }
 

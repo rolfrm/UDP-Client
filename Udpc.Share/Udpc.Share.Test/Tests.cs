@@ -6,279 +6,14 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Udpc.Share.DataLog;
 using Udpc.Share.Internal;
 
 namespace Udpc.Share.Test
 {
   public class Tests
   {
-    void GitInterop()
-    {
-      try
-      {
-        Directory.Delete("sync_1", true);
-      }
-      catch
-      {
-      }
-
-      Directory.CreateDirectory("sync_1");
-      File.WriteAllText("sync_1/test1", "Hello world");
-      File.WriteAllText("sync_1/test2", "Hello world");
-
-      var git1 = new Git();
-      git1.Init("sync_1");
-      var status = git1.GetGitStatus();
-      git1.CommitAll();
-      File.WriteAllText("sync_1/test1", "Hello world 222");
-      var status2 = git1.GetGitStatus();
-      git1.CommitAll();
-
-      Directory.CreateDirectory("sync_1/test dir/");
-      File.WriteAllText("sync_1/test dir/file.x", "hello");
-
-      var status3 = git1.GetGitStatus();
-      git1.CommitAll();
-
-      File.WriteAllText("sync_1/test dir/file.x", "hello");
-
-      var status4 = git1.GetGitStatus();
-      git1.CommitAll();
-
-      Directory.Delete("sync_1/test dir", true);
-
-      var status5 = git1.GetGitStatus();
-      git1.CommitAll();
-
-      var log = git1.GetLog();
-
-      try
-      {
-        Directory.Delete("sync_2", true);
-      }
-      catch
-      {
-      }
-
-      Directory.CreateDirectory("sync_2");
-      var git2 = new Git();
-      git2.Init("sync_2");
-
-      var commonBase = Git.GetCommonBase(git1, git2);
-
-      var patchfile = git1.GetPatch(commonBase);
-      // transfer file.
-
-      git2.ApplyPatch(patchfile);
-      File.Delete(patchfile);
-
-      var log4 = git1.GetLog();
-      var log5 = git2.GetLog();
-
-      File.WriteAllText("sync_1/test2", "Hello world\nHello world\nHello world\n");
-      git1.CommitAll();
-
-      commonBase = Git.GetCommonBase(git1, git2);
-
-      patchfile = git1.GetPatch(commonBase);
-      // transfer file.
-
-      git2.ApplyPatch(patchfile);
-      File.Delete(patchfile);
-
-      File.WriteAllText("sync_2/test2", "Hello world");
-      git2.CommitAll();
-
-      var log2 = git1.GetLog();
-      var log3 = git2.GetLog();
-
-      commonBase = Git.GetCommonBase(git1, git2);
-
-      patchfile = git2.GetPatch(commonBase);
-      git1.ApplyPatch(patchfile);
-      File.Delete(patchfile);
-
-      var log6 = git1.GetLog();
-      var log7 = git2.GetLog();
-
-      // test simultaneous edits
-      File.WriteAllText("sync_2/test2", "Hello world 2");
-      File.WriteAllText("sync_1/test1", "Hello world 5");
-
-      git2.CommitAll();
-      git1.CommitAll();
-
-      commonBase = Git.GetCommonBase(git1, git2);
-      var patchfile1 = git1.GetPatch(commonBase);
-      //var patchfile2 = git2.GetPatch(commonBase);
-
-      git2.ApplyPatch(patchfile1);
-      var patchfile2 = git2.GetPatch(commonBase);
-      git1.ApplyPatch(patchfile2);
-
-      var log8 = git1.GetLog();
-      var log9 = git2.GetLog();
-    }
-
-    void testFileShare(IFileShare git1, IFileShare git2)
-    {
-      
-      try
-      {
-        Directory.Delete("sync_1", true);
-      }
-      catch
-      {
-      }
-
-      Directory.CreateDirectory("sync_1");
-      File.WriteAllText("sync_1/test1", "Hello world");
-      File.WriteAllText("sync_1/test2", "Hello world");
-
-      try
-      {
-        Directory.Delete("sync_2", true);
-      }
-      catch
-      {
-      }
-
-      Directory.CreateDirectory("sync_2");
-      
-      git1.Init("sync_1");
-      git1.Commit();
-      File.WriteAllText("sync_1/test1", "Hello world 222");
-      git1.Commit();
-
-      Directory.CreateDirectory("sync_1/test dir/");
-      File.WriteAllText("sync_1/test dir/file.x", "hello");
-
-      git1.Commit();
-
-      File.WriteAllText("sync_1/test dir/file.x", "hello");
-
-      git1.Commit();
-
-      Directory.Delete("sync_1/test dir", true);
-
-      git1.Commit();
-
-      var log = git1.GetSyncData();
-
-      
-      git2.Init("sync_2");
-
-      var commonBase = git2.GetSyncDiff(git1.GetSyncData());
-
-      using (var patchfile = git1.OpenSyncStream(commonBase))
-      {
-        var read = new StreamReader(patchfile).ReadToEnd();
-        // transfer file.
-        git2.UnpackSyncStream(patchfile);
-      }
-
-      File.WriteAllText("sync_1/test2", "Hello world\nHello world\nHello world\n");
-      git1.Commit();
-
-      commonBase = git1.GetSyncDiff(git2.GetSyncData());
-
-      using (var patchfile = git1.OpenSyncStream(commonBase))
-      {
-        // transfer file.
-
-        git2.UnpackSyncStream(patchfile);
-      }
-
-
-      File.WriteAllText("sync_2/test2", "Hello world");
-      git2.Commit();
-
-      commonBase = git1.GetSyncDiff(git2.GetSyncData());
-
-      using (var patchfile = git2.OpenSyncStream(git1.GetSyncData()))
-      {
-        git2.UnpackSyncStream(patchfile);
-      }
-
-      // test simultaneous edits
-      File.WriteAllText("sync_2/test2", "Hello world 2");
-      File.WriteAllText("sync_1/test1", "Hello world 5");
-
-      git2.Commit();
-      git1.Commit();
-
-      commonBase = git1.GetSyncDiff(git2.GetSyncData());
-      using (var patchfile1 = git1.OpenSyncStream(commonBase))
-      {
-        git2.UnpackSyncStream(patchfile1);
-      }
-
-      using (var patchfile2 = git2.OpenSyncStream(commonBase))
-      {
-        git1.UnpackSyncStream(patchfile2);
-      }
-    }
-
-    void GitInterop2()
-    {
-      
-      IFileShare git2 = new Git();
-      IFileShare git1 = new Git();
-      testFileShare(git1, git2);
-    }
-    
-    void GitInterop3()
-    {
-      
-      
-      //testFileShare(git1, git2);
-    }
-    
-
-    void gitSuperPatch()
-    {
-      string[] dirs = new string[] {"sync_1", "sync_2", "sync_3"};
-      Git[] gits = new Git[dirs.Length];
-      int idx = 0;
-      foreach (var dir in dirs)
-      {
-        try
-        {
-          Directory.Delete(dir, true);
-        }
-        catch
-        {
-        }
-
-        Directory.CreateDirectory(dir);
-        var git2 = new Git();
-        git2.Init(dir);
-        gits[idx] = git2;
-        idx++;
-      }
-
-      while (true)
-      {
-        foreach (var git in gits)
-        {
-          if (git.CommitAll())
-          {
-            foreach (var git2 in gits)
-            {
-              if (git2 == git) continue;
-              var commonBase = Git.GetCommonBase(git, git2);
-              var patchfile1 = git.GetPatch(commonBase);
-              git2.ApplyPatch(patchfile1);
-            }
-          }
-        }
-        Thread.Sleep(500);
-
-      }
-
-
-    }
-
+   
     void UdpcBasicInterop()
     {
       UdpcApi.udpc_net_load();
@@ -943,13 +678,13 @@ namespace Udpc.Share.Test
       
       
       System.Reflection.Assembly.LoadFrom("Blake2Sharp.dll");
-      var dl1 = new DataLog("Downloads", datafile, commits);
+      var dl1 = new DataLog.DataLog("Downloads", datafile, commits);
       dl1.Update();
       
       dl1.Update();
       dl1.Flush();
       
-      var dl2 = new DataLog("Downloads2", datafile2, commits2);
+      var dl2 = new DataLog.DataLog("Downloads2", datafile2, commits2);
       dl2.Update();
       
       //File.WriteAllText("Downloads2/testtest", "kijdwoahdopwaj;dwah;sda;hdio;wasd");
@@ -1078,25 +813,7 @@ namespace Udpc.Share.Test
       
       //for (int i = 0; i < 3; i++)
       //  w  TestFileConversation(false);
-      if (false)
-      {
-        //var sw = Stopwatch.StartNew();
-        
 
-        //Console.WriteLine("Time spent: {0}", sw.Elapsed);
-        //return;
-
-        
-        //gitSuperPatch();
-
-        
-        
-      }
-      
-      //GitInterop();
-      //GitInterop2();
-      //GitInterop3();
-      
       TestCircularSum();
       TestUtils();
 
