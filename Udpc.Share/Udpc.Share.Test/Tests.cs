@@ -803,7 +803,7 @@ namespace Udpc.Share.Test
       Thread.Sleep(500);
       fs.ConnectTo(fs2.Service);
       Thread.Sleep(500);
-      fs2.ConnectTo(fs.Service);
+      //fs2.ConnectTo(fs.Service);
       
       void updateFileShares()
       {

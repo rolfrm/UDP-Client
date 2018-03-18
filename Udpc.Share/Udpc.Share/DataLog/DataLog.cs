@@ -269,7 +269,7 @@ namespace Udpc.Share
                 yield return new NewFileLogItem(id, fstr.LastWriteTimeUtc, fstr.Length);
                 while (true)
                 {
-                    byte[] chunk = new byte[Math.Max(1024 * 1024, fstr.Length)];
+                    byte[] chunk = new byte[Math.Min(1024 * 1024, fstr.Length)];
                     int read = str.Read(chunk, 0, chunk.Length);
                     if (read <= 0) break;
                     Array.Resize(ref chunk, read);

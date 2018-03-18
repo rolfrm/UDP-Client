@@ -295,11 +295,9 @@ namespace Udpc.Share
                 }
                 case StatusResponse upd:
                 {
-                    Console.WriteLine("{0} {1}", upd.CommitCount, upd.LatestCommit);
                     var hash = log.LogCore.ReadCommitHashes(0, 1).FirstOrDefault();
                     if (hash.Equals(upd.LatestCommit)) return;
                     var offset = Math.Min(upd.CommitCount, log.LogCore.CommitsCount);
-                    Console.WriteLine("Offsets: {0} {1}", upd.CommitCount, log.LogCore.CommitsCount);
                     // try find common base.
                     conv.SendMessage(new SendMeCommits()
                     {
@@ -347,18 +345,15 @@ namespace Udpc.Share
                 {
                     var hashes = log.LogCore.ReadCommitHashes(resp.Offset, 1,reverse: true);
                     var ctx = (BaseSearch) resp.Context;
-                    long window = ctx.Window;
-                    Console.WriteLine("    : {0} {2}   {1}", window, ctx.Offset, resp.Offset);
-                    Console.WriteLine("        {0}\n    ==   {1}", resp.Hashes.First(), hashes[0]);
                     var newwindow = Math.Max(1, ctx.Window / 2);
                     if (resp.Hashes.First().Equals(hashes[0]))
                     {
-                        if (ctx.Offset == resp.Offset) 
-                            return; // theres no commits in front of this one.
+                        
                         // common base found
-                        if (ctx.Window == 1)
+                        if (ctx.Window == 1 || ctx.Offset == resp.Offset)
                         {
-                            
+                            // no early out, because we already checked
+                            // if the newest commit was the same or not.
                             conv.SendMessage(new SendMeCommitData
                             {
                                 CommonHash = hashes.First()
