@@ -1,0 +1,27 @@
+OPT = -g3 -O0
+LIB_SOURCES1 = orbital.c
+LIB_SOURCES = $(addprefix orbital/, $(LIB_SOURCES1))
+CC = gcc
+TARGET = liborbital.so
+LIB_OBJECTS =$(LIB_SOURCES:.c=.o)
+LDFLAGS= -L. $(OPT) -Wextra #-lmcheck #-ftlo #setrlimit on linux 
+LIBS= -ldl -lm -ludpc -liron
+ALL= $(TARGET)
+CFLAGS = -Iinclude -Isrc -std=c11 -c $(OPT) -D_GNU_SOURCE -Wall -Wextra -Werror=implicit-function-declaration -Wformat=0  -fdiagnostics-color -Wextra -Werror -Wwrite-strings -fbounds-check -Wparentheses  #-DDEBUG
+
+$(TARGET): $(LIB_OBJECTS)
+	$(CC) $(LDFLAGS) $(LIB_OBJECTS) $(LIBS) --shared -o $@
+
+all: $(ALL)
+
+.c.o: $(HEADERS)
+	$(CC) $(CFLAGS) -fPIC $< -o $@ -MMD -MF $@.depends 
+depend: h-depend
+clean:
+	rm -f $(LIB_OBJECTS) $(ALL) *.o.depends
+	rm -f main.o udpc_get.o udpc_speed_test.o udpc_file.o udpc_share.o
+
+-include $(LIB_OBJECTS:.o=.o.depends)
+
+test: $(TARGET) orbital/test.o
+	$(CC) $(LDFLAGS) orbital/test.o $(LIBS) -lorbital -ludpc -Wl,-rpath,. -o orbital_test
