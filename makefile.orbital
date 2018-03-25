@@ -1,4 +1,4 @@
-OPT = -g3 -O0
+OPT = -g3 -Og
 LIB_SOURCES1 = orbital.c
 LIB_SOURCES = $(addprefix orbital/, $(LIB_SOURCES1))
 CC = gcc

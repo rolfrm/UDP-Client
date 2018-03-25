@@ -51,38 +51,43 @@ void test_conversation(){
   udpc_service * s2 = udpc_login2("test@0.0.0.0:s2");
   logd("both login: %p %p\n", s1, s2);
   void count_up(conversation * self, void * data, int length){
+    ASSERT(self->finished == false);
+    ASSERT(self->talk->is_processing == true);
+    ASSERT(self->talk->is_updating == false);
     int * d = (int *) data;
-    //logd("count up: %i %i\n", d[0], length);
+    //logd("count up: %i %i %i\n", d[0], length, self->id);
     ASSERT(d[0] == 123);
+    if(length == 4){
+      //logd("GOT END! %i\n", self->id);
+      self->finished = true;
+      return;
+    }
     //logd("id: %i %i %i\n", self->id, self->talk->is_server, d[1]);
     if(d[1] == self->talk->is_server){
       ASSERT(length == 12);
       //logd("COUNT: %i\n", d[2]);
-      if(d[2] < 1000)
+      if(d[2] < 500)
 	conv_send(self, data, length);
       else{
 	conv_send(self, data, 4);
+	//logd("GOT END2! %i\n", self->id);
 	self->finished = true;
       }
     }else{
-      if(length == 4){
-	self->finished = true;
-      }else{
-	d[2] += 1;
-	conv_send(self, data, length);
-      }
+      d[2] += 1;
+      conv_send(self, data, length);
     }
   }
 
   
   void process_count(conversation * self){
-    //logd("process..\n");
+    ASSERT(self->talk->is_processing == false);
+    ASSERT(self->talk->is_updating == true);
     // todo: implement timeout for finished conversation or no response.
-    UNUSED(self);
     if(self->user_data == NULL){
       self->user_data = (void *) 1;
       int data[] = {123, self->talk->is_server, 0};
-      logd("d: %i\n", sizeof(data));
+      //logd("d: %i\n", sizeof(data));
       conv_send(self, data, sizeof(data));
     }
   }
@@ -102,46 +107,64 @@ void test_conversation(){
 
       ASSERT(length == 12);
       int * b = (int *) buffer;
-      logd("New conversation.. %i\n", b[0]);
+      //logd("New conversation.. %i\n", b[0]);
       ASSERT(b[0] == 123);
       conv->user_data = (void *) 2;
       conv->update = process_count;
       conv->process = count_up;
       ASSERT(conv->id >= 2);
       
-      count_up(conv, buffer, length);
+      //count_up(conv, buffer, length);
 
     }
     
     talk->new_conversation = new_conversation;
-    conversation * c = talk_create_conversation(talk);
-    ASSERT(c->id != 0);
-    logd("ID: %i %i\n", c->id, talk->is_server);
-    c->update = process_count;
-    c->process = count_up;
-
+    void newconv(){
+      conversation * c = talk_create_conversation(talk);
+      ASSERT(c->id != 0);
+      c->update = process_count;
+      c->process = count_up;
+    }
+    bool keep_processing = true;
     void process_talk(){
-      while(true){
-	talk_dispatch_process(talk, 1000);
+      while(keep_processing){
+	talk_dispatch_process(talk, 100);
+	//iron_usleep(1000);
       }
     }
 
     iron_thread * proc_trd = iron_start_thread0(process_talk);
-    
-    while(true){
+    for(int i = 0; i < 10; i++)
+      newconv();
+    //newconv();
+    //newconv();
+
+    int _j = 0;
+    while(_j < 10){
       talk_dispatch_update(talk);
+      if(talk->active_conversation_count > 0)
+	 _j = 0;
+      else {
+	_j++;
+	iron_usleep(100);    
+      }
+      //iron_usleep(10000); //todo: try to comment this out.       
     }
+    logd("DONE\n");
+    keep_processing = false;
     iron_thread_join(proc_trd);
+    talk_dispatch_delete(&talk);
+    udpc_close(con);
     
     return NULL;
   }
 
   iron_thread * s1_trd = iron_start_thread((void * (*)()) process_service, s1);
   iron_thread * s2_trd = iron_start_thread((void * (*)()) process_service, s2);
-
   iron_thread_join(s1_trd);
   iron_thread_join(s2_trd);
-  
+  udpc_logout(s1);
+  udpc_logout(s2);
 }
 
 
@@ -158,7 +181,8 @@ int main(int argc, char ** argv){
   UNUSED(srvtrd);
   iron_usleep(10000);
   logd("test_conversation\n");
-  test_conversation();
+  for(int i = 0; i < 10000; i++)
+    test_conversation();
 
   
   return 0;

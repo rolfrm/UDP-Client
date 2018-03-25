@@ -27,6 +27,7 @@ struct _talk_dispatch{
   // list that contains both client and server conversations.
   size_t conversation_count;
   conversation ** conversations;
+  size_t active_conversation_count;
 
   size_t read_buffer_size;
   void * read_buffer;
@@ -54,6 +55,8 @@ struct _talk_dispatch{
 
   f64 target_rate;
   f64 update_interval;
+  bool is_processing;
+  bool is_updating;
   
 };
 
