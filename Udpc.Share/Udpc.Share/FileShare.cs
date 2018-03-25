@@ -84,6 +84,12 @@ namespace Udpc.Share
             return share;
         }
 
+        public void WaitForShutdown()
+        {
+            listenThread.Join();
+            processThread.Join();
+        }
+
         public void Stop()
         {
             ShutdownPending = true;
@@ -128,6 +134,29 @@ namespace Udpc.Share
                 if(!anyUpdates)
                     Thread.Sleep(1);
             }
+
+            for (int i = 0; i < 5; i++)
+            {
+                bool anyUpdates = false;
+                if (dispatcherQueue.TryDequeue(out Action result))
+                {
+                    result();
+                    anyUpdates = true;
+                }
+
+                foreach (var conv in conversations.ToArray())
+                {
+                    if (conv.Update())
+                        anyUpdates = true;
+                }
+
+                if (!anyUpdates) break;
+            }
+
+            foreach (var conv in conversations)
+            {
+                conv.Dispose();
+            }
             
             serv.Disconnect();
         }
@@ -143,7 +172,8 @@ namespace Udpc.Share
                 }
 
                 var cm = ConversationManager.MultiplexWait(conversations, 100);
-                cm?.Process();
+                if(!ShutdownPending)
+                    cm?.Process();
             }
 
         }
@@ -227,17 +257,24 @@ namespace Udpc.Share
                             var hash = DataLogHash.Read(str);
                             
                             var patchfile = log.LogCore.CreatePatch(hash, true);
-                            try
+                            if (patchfile == null)
                             {
                                 log.Unpack(DataLogCore.ReadFrom(str));
-                                using (var pkg = DataLogCore.ReadFromFile(patchfile))
-                                    log.Unpack(pkg);
                             }
-                            finally
+                            else
                             {
-                                File.Delete(patchfile);
+                                try
+                                {
+                                    log.Unpack(DataLogCore.ReadFrom(str));
+                                    using (var pkg = DataLogCore.ReadFromFile(patchfile))
+                                        log.Unpack(pkg);
+                                }
+                                finally
+                                {
+                                    File.Delete(patchfile);
+                                }
                             }
-                                
+
 
                         }
                         
@@ -322,8 +359,8 @@ namespace Udpc.Share
                     var mem = new MemoryStream();
                     reg.CommonHash.ToStream(mem);
                     mem.Position = 0;
-                    
-                    
+
+                    if (file == null) return;
                     var fstr = File.OpenRead(file);
                     var app = new CombinedStreams(mem, fstr);
                     var c = new SendMessageConversation(app, null);
@@ -380,6 +417,7 @@ namespace Udpc.Share
                     throw new InvalidOperationException();
             }
         }
+
     }
 
 

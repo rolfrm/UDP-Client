@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Linq;
+using System.Reflection.Metadata.Ecma335;
 using System.Runtime.InteropServices;
 
 namespace Udpc.Share
@@ -62,12 +63,12 @@ namespace Udpc.Share
 
     TraceDi(string thing)
     {
-      //Console.WriteLine("Start {0}", thing);
+      Console.WriteLine("Start {0}", thing);
       this.thing = thing;
     }
     public void Dispose()
     {
-      //Console.WriteLine("Stop {0}", thing);
+      Console.WriteLine("Stop {0}", thing);
     }
 
     public static TraceDi Log(string thing)
@@ -162,7 +163,7 @@ namespace Udpc.Share
       return UdpcApi2.udpc_get_timeout(con);
     }
 
-    public static int udpc_wait_reads(IntPtr[] ptrs, int timeoutms)
+    public static int udpc_wait_reads(IntPtr[] ptrs, int count, int timeoutms)
     {
       using (TraceDi.Log(nameof(udpc_wait_reads)))
         return UdpcApi2.udpc_wait_reads(ptrs, ptrs.Length, timeoutms);
@@ -206,6 +207,7 @@ namespace Udpc.Share
   {
     readonly object lck = new object();
     readonly IntPtr con;
+    bool closed = false;
 
     public UdpcClient(IntPtr con)
     {
@@ -214,50 +216,73 @@ namespace Udpc.Share
 
     public void Write(byte[] data, int length)
     {
+      checkClosed();
       lock(lck)
         UdpcApi.udpc_write(con, data, (ulong)length);
     }
 
     public int Read(byte[] buffer, int length)
     {
+      checkClosed();
       lock(lck)
         return UdpcApi.udpc_read(con, buffer, (ulong)length);
     }
 
     public int Peek(byte[] buffer, int length)
     {
+      checkClosed();
       lock(lck)
         return UdpcApi.udpc_peek(con, buffer, (ulong) length);
     }
 
     public int Pending()
     {
+      checkClosed();
       lock(lck)
         return UdpcApi.udpc_pending(con);
     }
 
     public void Disconnect()
     {
+      checkClosed();
+      closed = true;
       lock(lck)
-        UdpcApi.udpc_close(con);
+        UdpcApi.udpc_close(con); 
+    }
+
+    void checkClosed()
+    {
+      if(closed) throw new InvalidOperationException();
     }
 
     public int TimeoutUs
     {
       get{
+        checkClosed();
         lock(lck) 
           return UdpcApi.udpc_get_timeout(con);
       }
-      set { lock(lck) UdpcApi.udpc_set_timeout(con, value); }
+      set
+      {
+        checkClosed();
+        lock(lck) UdpcApi.udpc_set_timeout(con, value);
+      }
     }
 
     public Udpc.IClient WaitReads(Udpc.IClient[] clients, int timeoutms)
     {
+      
       IntPtr[] ptrs = new IntPtr[clients.Length];
       int idx = 0;
       foreach (UdpcClient cli in clients)
+      {
+        if (cli.closed) continue;
         ptrs[idx++] = cli.con;
-      int item = UdpcApi.udpc_wait_reads(ptrs, timeoutms);
+      }
+
+      if (idx == 0) return null;
+
+      int item = UdpcApi.udpc_wait_reads(ptrs, idx, timeoutms);
       if (item == 0) return null;
       for(int i = 0; i < clients.Length; i++)
         if (ptrs[i] != IntPtr.Zero)

@@ -527,24 +527,27 @@ namespace Udpc.Share.Test
         {
           try
           {
+            Console.WriteLine("delete: {0}", f);
             File.Delete(f);
           }
           catch
           {
-            
+            Console.WriteLine("Unable to delete: {0}", f);
           }
         }
 
       }
       
+      Console.Out.Flush();
+      Thread.Sleep(200);
       
       
       var fs = FileShare.Create("test2@0.0.0.0:share1", "myData");
-      Thread.Sleep(500);
+      Thread.Sleep(200);
       var fs2 = FileShare.Create("test3@0.0.0.0:share1", "myData2");
-      Thread.Sleep(500);
+      Thread.Sleep(200);
       fs.ConnectTo(fs2.Service);
-      Thread.Sleep(500);
+      Thread.Sleep(200);
       //fs2.ConnectTo(fs.Service);
       
       void updateFileShares()
@@ -576,8 +579,8 @@ namespace Udpc.Share.Test
       iterate(fs.DataFolder);
       iterate(fs2.DataFolder);
       trd.Start();
-      Thread.Sleep(500);
-      for (int i = 0; i < 100; i++)
+      Thread.Sleep(100);
+      for (int i = 0; i < 10; i++)
       {
         iterate(i%2 == 0 ? fs.DataFolder : fs2.DataFolder);
         Thread.Sleep(50);
@@ -595,7 +598,7 @@ namespace Udpc.Share.Test
       {
         //if(sw.ElapsedMilliseconds > 20000)
         //  throw new InvalidOperationException("test timed out");
-        Thread.Sleep(1000);
+        Thread.Sleep(100);
       }
       Thread.Sleep(100);
 
@@ -611,7 +614,8 @@ namespace Udpc.Share.Test
       fs.Stop();
       fs2.Stop();
       trd.Join();
-
+      fs.WaitForShutdown();
+      fs2.WaitForShutdown();
     }
 
 
@@ -746,23 +750,8 @@ namespace Udpc.Share.Test
           throw new InvalidOperationException();
       }
 
-      return;
-
-      while (true)
-      {
-        Thread.Sleep(500);
-        dl1.Update();
-        dl2.Update();
-        
-        DataLogMerge.MergeDataLogs(dl2, dl1, 1000);
-        DataLogMerge.MergeDataLogs(dl1, dl2, 1000);
-        var hashes1 = dl1.LogCore.ReadCommitHashes().ToArray();
-        var hashes2 = dl2.LogCore.ReadCommitHashes().ToArray();
-        Console.WriteLine("---");
-      }
       dl2.Dispose();
       dl1.Dispose();
-
     }
 
     public void DataLogStream()
@@ -821,8 +810,15 @@ namespace Udpc.Share.Test
       trd.Start();
 
       Thread.Sleep(200);
-      for(int i = 0; i < 100; i++)
-        TestFileShare();  
+      for (int i = 0; i < 100; i++)
+      {
+        
+        Console.WriteLine("Testing {0}", i);
+        Thread.Sleep(100);
+        TestFileShare();
+        Console.WriteLine("Finished with {0}", i);
+      }
+
       return;
       UdpcLatencyTest();
       UdpcBasicInterop();

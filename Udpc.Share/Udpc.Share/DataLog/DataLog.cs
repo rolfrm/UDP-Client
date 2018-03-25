@@ -115,22 +115,22 @@ namespace Udpc.Share.DataLog
                 LogCore.Open();
                 if (LogCore.IsEmpty)
                 {
-                    foreach (var item in Generate(directory))
+                    Action<DataLogItem> f = x => { };
+
+                    Generate(directory, x =>
                     {
-                        LogCore.writeItem(item);
-                        register(item);
-                    }
+                        LogCore.writeItem(x);
+                        register(x);
+                    });
+            
                     Flush();
 
                     return; // no need to do anything further
                 }
-                else
-                {
-                    foreach (var item in DataLogCore.ReadFromFile(LogCore.DataFile))
-                    {
-                        register(item);
-                    }
-                }
+                
+                using(var items = DataLogCore.ReadFromFile(LogCore.DataFile))
+                   foreach (var item in items)
+                      register(item);
             }
             
             foreach (var item in Directory.EnumerateFileSystemEntries(directory, "*", SearchOption.AllDirectories))
@@ -152,31 +152,44 @@ namespace Udpc.Share.DataLog
                     continue;
                 }
 
-
-                IEnumerable<DataLogItem> logitems;
-
-                if (id == Guid.Empty || f.Attributes.HasFlag(FileAttributes.Directory))
-                    logitems = GenerateFromFile(directory, f.FullName);
-                else
-                    logitems = GenerateFileData(f.FullName, id);
-                List<DataLogItem> itemsToRegister = new List<DataLogItem>();
-
-                var pos = LogCore.GetCurrentPosition();
-                
+                var fstr = new FileInfo(item);
+                Stream str = null;
+                if (fstr.Attributes.HasFlag(FileAttributes.Directory) == false)
+                    str = fstr.Open(FileMode.Open, FileAccess.Read);
                 try
                 {
-                    foreach (var x in logitems)
+                    List<DataLogItem> itemsToRegister = new List<DataLogItem>();
+
+                    void addItem(DataLogItem x)
                     {
                         LogCore.writeItem(x);
                         itemsToRegister.Add(x);
                     }
-                    itemsToRegister.ForEach(register);
-                    file[itemsToRegister[0].FileId].Iteration = iteration;
+
+                    var pos = LogCore.GetCurrentPosition();
+
+                        try
+                        {
+                            if (id == Guid.Empty || f.Attributes.HasFlag(FileAttributes.Directory))
+                                GenerateFromFile(directory, f.FullName, str, addItem);
+                            else
+                                GenerateFileData(fstr, str, id, addItem);
+
+                            itemsToRegister.ForEach(register);
+                            file[itemsToRegister[0].FileId].Iteration = iteration;
+
+                        }
+                        catch
+                        {
+                            throw;
+                            //LogCore.RestorePosition(pos);
+                            
+                        }
                     
                 }
-                catch
+                finally
                 {
-                    LogCore.RestorePosition(pos);
+                    str?.Close();
                 }
             }
 
@@ -236,7 +249,7 @@ namespace Udpc.Share.DataLog
 
         }
 
-        static public IEnumerable<DataLogItem> GenerateFromFile(string directory, string item)
+        static public void GenerateFromFile(string directory, string item, Stream str, Action<DataLogItem> process)
         {
             DataLogItem baseitem = null;
             var dstr = new DirectoryInfo(directory);
@@ -244,47 +257,51 @@ namespace Udpc.Share.DataLog
             if (fstr.Attributes.HasFlag(FileAttributes.Directory))
             {
                 baseitem = new NewDirectoryLogItem();
-                yield return baseitem;
+                process(baseitem);
             }
             else if (fstr.Attributes.HasFlag(FileAttributes.System) == false)
             {
                 baseitem = new NewFileLogItem(fstr.LastWriteTimeUtc, fstr.Length);
-                yield return baseitem;
+                process(baseitem);
             }
 
-            if (baseitem == null) yield break;
-            yield return new FileNameLogItem(baseitem.FileId, fstr.FullName.Substring(dstr.FullName.Length + 1));
+            if (baseitem == null) return;
+            process(new FileNameLogItem(baseitem.FileId, fstr.FullName.Substring(dstr.FullName.Length + 1)));
             if (baseitem is NewFileLogItem)
-            {
-                foreach (var item2 in GenerateFileData(item, baseitem.FileId))
-                    yield return item2;
-            }
+                GenerateFileData(fstr, str, baseitem.FileId, process);
         }
 
-        static public IEnumerable<DataLogItem> GenerateFileData(string item, Guid id)
+        static public void GenerateFileData(FileInfo fstr, Stream str, Guid id, Action<DataLogItem> process)
         {
-            var fstr = new FileInfo(item);
-            using (var str = fstr.Open(FileMode.Open, FileAccess.Read))
+            process(new NewFileLogItem(id, fstr.LastWriteTimeUtc, fstr.Length));
+            while (true)
             {
-                yield return new NewFileLogItem(id, fstr.LastWriteTimeUtc, fstr.Length);
-                while (true)
-                {
-                    byte[] chunk = new byte[Math.Min(1024 * 1024, fstr.Length)];
-                    int read = str.Read(chunk, 0, chunk.Length);
-                    if (read <= 0) break;
-                    Array.Resize(ref chunk, read);
-                    yield return new FileDataItem(id, chunk, str.Position - read);
-                }
+                byte[] chunk = new byte[Math.Min(1024 * 1024, fstr.Length)];
+                int read = str.Read(chunk, 0, chunk.Length);
+                if (read <= 0) break;
+                Array.Resize(ref chunk, read);
+                process(new FileDataItem(id, chunk, str.Position - read));
             }
+            
         }
 
-        static public IEnumerable<DataLogItem> Generate(string directory)
+        static public void Generate(string directory, Action<DataLogItem> process)
         {
-            yield return new NullFileLogItem(Guid.Empty);
+            process(new NullFileLogItem(Guid.Empty));
             foreach (var item in Directory.EnumerateFileSystemEntries(directory, "*", SearchOption.AllDirectories))
             {
-                foreach (var x in GenerateFromFile(directory, item))
-                    yield return x;
+                Stream str = null;
+                var f = new FileInfo(item);
+                if (f.Attributes.HasFlag(FileAttributes.Directory) == false)
+                    str = File.OpenRead(item);
+                try
+                {
+                    GenerateFromFile(directory, item, str, process);
+                }
+                finally
+                {
+                    str?.Dispose();
+                }
             }
         }
 

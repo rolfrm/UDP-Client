@@ -6,7 +6,7 @@ using System.Threading;
 
 namespace Udpc.Share
 {
-    public class ConversationManager
+    public class ConversationManager : IDisposable
     {
         public static ConversationManager MultiplexWait(IEnumerable<ConversationManager> cms, int timeoutms)
         {
@@ -106,6 +106,7 @@ namespace Udpc.Share
             int offset = 4;
             if (!conversations.TryGetValue(convId, out IConversation conv))
             {
+                // new connection from peer
                 int mod = convId % 2;
                 if ((isServer && mod == 0) || (!isServer && mod == 1))
                 {
@@ -204,7 +205,6 @@ namespace Udpc.Share
                 var timenow = rateTimer.ElapsedTicks;
                 var start = windowStart.First();
                 double ts = (timenow - start) / Stopwatch.Frequency;
-                currentRate = (windowTransferred.Sum + message.Length) / ts;
                 if (windowStart.Count > 5)
                 {
                     if (currentRate > targetRate)
@@ -271,5 +271,10 @@ namespace Udpc.Share
         /// In bytes per second.
         /// </summary>
         double currentRate { get; set; }
+
+        public void Dispose()
+        {
+            cli.Disconnect();
+        }
     }
 }

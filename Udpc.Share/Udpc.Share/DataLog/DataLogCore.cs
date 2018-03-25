@@ -3,10 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Blake2Sharp;
-using Udpc.Share.DataLog;
 using Udpc.Share.Internal;
 
-namespace Udpc.Share
+namespace Udpc.Share.DataLog
 {
     public class DataLogCore : IDisposable
     {
@@ -25,22 +24,61 @@ namespace Udpc.Share
             DataFile = dataFile;
             this.commitsFile = commitsFile;
         }
+
+        bool checkRe = false;
         
         public void writeItem(DataLogItem item)
         {
-            mmstr.Position = 0;
-            mmstr.SetLength(0);
-            item.ToStream(mmstr);
-            mmstr.Position = 0;
-            hasher.Init();
-            hasher.Update(prevHash,0, 32);
-            hasher.Update(mmstr.GetBuffer(),0, (int)mmstr.Length);
-            mmstr.Position = 0;
-            mmstr.CopyTo(dataStream);
-            prevHash = hasher.Finish();
-            commitStream.Write(prevHash, 0, 32);
-            commitStream.WriteLong(mmstr.Length);
-            CommitsCount += 1;
+            if(checkRe) throw new InvalidOperationException();
+            checkRe = true;
+            var cstream = commitStream;
+            var dstream = dataStream;
+            if(dstream.Length != dstream.Position)
+                throw new InvalidOperationException(string.Format("writeItem: {0} {1}", dstream.Length, dstream.Position));
+            commitStream = null;
+            dataStream = null;
+            try
+            {
+                mmstr.Position = 0;
+                mmstr.SetLength(0);
+                item.ToStream(mmstr);
+                
+                hasher.Init();
+                hasher.Update(prevHash, 0, 32);
+                hasher.Update(mmstr.GetBuffer(), 0, (int) mmstr.Length);
+                dstream.Flush();
+                var ppos = dstream.Length;
+                mmstr.Position = 0;
+                
+                //Console.WriteLine("{0} A len: {1} pos:{2} data:{3}", commitsFile.GetHashCode(), dstream.Length, dstream.Position, mmstr.Length);
+                
+                mmstr.CopyTo(dstream);
+                
+                if (dstream.Length != ppos + mmstr.Length)
+                {
+                    Console.WriteLine("{0} B len: {1} pos:{2} data:{3}", commitsFile.GetHashCode(), dstream.Length, dstream.Position, mmstr.Length);    
+                    throw new InvalidOperationException("This makes no sense!");
+                }
+                //Console.WriteLine("{0} C len: {1} pos:{2} data:{3}", commitsFile.GetHashCode(), dstream.Length, dstream.Position, mmstr.Length);
+
+                prevHash = hasher.Finish();
+                cstream.Write(prevHash, 0, 32);
+                cstream.WriteLong(mmstr.Length);
+                CommitsCount += 1;
+                dstream.Flush();
+                
+
+                
+            }
+            finally
+            {
+                checkRe = false;
+                commitStream = cstream;
+                dataStream = dstream;
+                if(dstream.Length != dstream.Position)
+                    throw new InvalidOperationException();
+            }
+
         }
 
         public DataLogFilePosition GetCurrentPosition()
@@ -50,6 +88,7 @@ namespace Udpc.Share
 
         public void RestorePosition(DataLogFilePosition position)
         {
+            //Console.WriteLine("Restore..");
             dataStream.Position = position.DataPos;
             dataStream.SetLength(position.DataPos);
 
@@ -59,8 +98,11 @@ namespace Udpc.Share
         }
         public void Flush()
         {
-            dataStream.Flush();
-            commitStream.Flush();
+            if (dataStream != null)
+            {
+                dataStream.Flush();
+                commitStream.Flush();
+            }
         }
         
         public void Open()
@@ -80,6 +122,9 @@ namespace Udpc.Share
             {
                 prevHash = new byte[8 * 4];
             }
+            
+            if(dataStream.Length != dataStream.Position)
+                throw new InvalidOperationException();
         }
 
         public void ReadCommitHashes(Stream read, long offset, long count, List<DataLogHash> output, bool reverse)
@@ -170,6 +215,8 @@ namespace Udpc.Share
             finally
             {
                 dataStream.Position = dataStream.Length;
+                if(dataStream.Length != dataStream.Position)
+                    throw new InvalidOperationException();
             }
                 
         }
@@ -193,45 +240,79 @@ namespace Udpc.Share
             return new StreamEnumerator<DataLogItem>(fstr, ReadFrom(fstr));
         }
 
+        bool isCreatingPatch = false;
+
         public string CreatePatch(DataLogHash point, bool rewind)
         {
-            long length = 0;
-            bool foundsome = false;
-            int commits = 0;
-            foreach(var x in ReadCommitHashes())
+            if(isCreatingPatch)
+                throw new InvalidOperationException();
+            isCreatingPatch = true;
+            Flush();
+            var cstream = commitStream;
+            var dstream = dataStream;
+            commitStream = null;
+            dataStream = null;
+            try
             {
-                if (x.Equals(point))
+                //Console.WriteLine("Creating patch...");
+                long length = 0;
+                bool foundsome = false;
+                int commits = 0;
+                foreach (var x in ReadCommitHashes())
                 {
-                    foundsome = true;
-                    break;
+                    if (x.Equals(point))
+                    {
+                        foundsome = true;
+                        break;
+                    }
+
+                    commits += 1;
+                    length += (long) x.Length;
                 }
-                commits += 1;
-                length += (long)x.Length;
+
+                if (foundsome == false)
+                    return null;
+                if (length == 0)
+                    return null;
+                //Console.WriteLine("Seek: {0} {1}", dstream.Position, length);
+                var newpos = dstream.Position - length;
+                //Console.WriteLine("seek: {0} {1} {2}", newpos, dstream.Length, commitsFile);
+                //Console.WriteLine("{0} {1}", commitsFile.GetHashCode(), dstream.Length);
+                //Console.Out.Flush();
+                dstream.Seek(newpos, SeekOrigin.Begin);
+
+                var tmp = Path.GetTempFileName();
+
+                using (var f = File.Open(tmp, FileMode.Open))
+                {
+                    dstream.CopyTo(f);
+                    dstream.Flush(true);
+                    f.Flush(true);
+                }
+
+                if (rewind)
+                {
+                    dstream.Position -= length;
+                    dstream.SetLength(dstream.Position);
+                    cstream.Position -= commits * 5 * 8;
+                    cstream.SetLength(cstream.Position);
+                    prevHash = point.GetHash();
+                    CommitsCount -= commits;
+                }
+
+                
+                return tmp;
             }
-
-            if (foundsome == false) return null;
-            
-            dataStream.Position -= length;
-
-            var tmp = Path.GetTempFileName();
-            
-            using (var f = File.Open(tmp, FileMode.Open))
+            finally
             {
-                dataStream.CopyTo(f);
-                dataStream.Flush();
+                //Console.WriteLine("Creating patch... Done");
+                isCreatingPatch = false;
+                commitStream = cstream;
+                dataStream = dstream;
+                if(dataStream.Length != dataStream.Position)
+                    throw new InvalidOperationException(string.Format("seek: {0} {1} {2}", 1, dstream.Length, commitsFile));
             }
-
-            if (rewind)
-            {
-                dataStream.Position -= length;
-                dataStream.SetLength(dataStream.Length - length);
-                commitStream.Position -= commits * 5 * 8;
-                commitStream.SetLength(commitStream.Length - commits * 5 * 8);
-                prevHash = point.GetHash();
-                CommitsCount -= commits;
-            }
-
-            return tmp;
+                
         }
         
     }
