@@ -69,3 +69,43 @@ void talk_dispatch_delete(talk_dispatch ** talk);
 void talk_dispatch_send(talk_dispatch * talk, conversation * conv, void * message, int message_length);
 void conv_send(conversation * self, void * message, int message_length);
 conversation * talk_create_conversation(talk_dispatch * talk);
+
+struct _reader;
+typedef struct _reader reader;
+
+struct _reader {
+  size_t (*read)(reader * rd, void * dst, size_t size);
+  void (*seek)(reader * rd, size_t position);
+  void (*close)(reader * rd);
+  size_t position;
+
+  void * data;
+};
+
+reader * mem_reader_create(void * data, size_t size, bool delete_on_close);
+reader * file_reader_create(const char * path);
+size_t reader_read(reader * rd, void * buffer, size_t length);
+void reader_seek(reader * rd, size_t position);
+void reader_close(reader ** rd);
+
+struct _writer;
+typedef struct _writer writer;
+
+struct _writer {
+  void (*write)(writer * rd, void * src, size_t size);
+  void (*seek)(writer * rd, size_t position);
+  void (*close)(writer * rd);
+  size_t position;  // not to be changed by user
+  void * data;
+};
+
+writer * mem_writer_create(void ** location, size_t * size_location);
+writer * file_writer_create(const char * file);
+
+void writer_write(writer * wt, void * src, size_t size);
+void writer_seek(writer * wt, size_t position);
+void writer_close(writer ** wt);
+
+
+
+void safesend_create(conversation * conv, reader * reader);

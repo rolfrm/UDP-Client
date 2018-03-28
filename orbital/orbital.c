@@ -49,8 +49,8 @@ talk_dispatch * talk_dispatch_create(udpc_connection * con, bool is_server){
   obj->process_mutex = iron_mutex_create();
   obj->last_update = 0;
   obj->latency = 1000000; //Assume 1s latency
-  obj->target_rate = 1e5;
-  obj->update_interval = 0.1;
+  obj->target_rate = 1e6;
+  obj->update_interval = 0.2;
   obj->active_conversation_count = 0;
   obj->is_processing = false;
   obj->is_updating = false;
@@ -288,5 +288,3 @@ void conv_send(conversation * self, void * message, int message_length){
   talk_dispatch_send(self->talk, self, message, message_length);
 }
 
-					  
-					

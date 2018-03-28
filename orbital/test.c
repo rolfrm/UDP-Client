@@ -10,7 +10,7 @@
 #include <iron/time.h>
 #include <iron/utils.h>
 #include <iron/process.h>
-
+#include <iron/mem.h>
 #include <udpc.h>
 #include "orbital.h"
 
@@ -128,7 +128,7 @@ void test_conversation(){
     bool keep_processing = true;
     void process_talk(){
       while(keep_processing){
-	talk_dispatch_process(talk, 100);
+	talk_dispatch_process(talk, 0);
 	//iron_usleep(1000);
       }
     }
@@ -168,10 +168,203 @@ void test_conversation(){
 }
 
 
+void test_safesend(){
+  udpc_service * s1 = udpc_login2("test@0.0.0.0:s");
+  udpc_service * s2 = udpc_login2("test@0.0.0.0:s2");
+  logd("both login: %p %p\n", s1, s2);
+  void count_up(conversation * self, void * data, int length){
+    ASSERT(self->finished == false);
+    ASSERT(self->talk->is_processing == true);
+    ASSERT(self->talk->is_updating == false);
+    int * d = (int *) data;
+    //logd("count up: %i %i %i\n", d[0], length, self->id);
+    ASSERT(d[0] == 123);
+    if(length == 4){
+      //logd("GOT END! %i\n", self->id);
+      self->finished = true;
+      return;
+    }
+    //logd("id: %i %i %i\n", self->id, self->talk->is_server, d[1]);
+    if(d[1] == self->talk->is_server){
+      ASSERT(length == 12);
+      //logd("COUNT: %i\n", d[2]);
+      if(d[2] < 500)
+	conv_send(self, data, length);
+      else{
+	conv_send(self, data, 4);
+	//logd("GOT END2! %i\n", self->id);
+	self->finished = true;
+      }
+    }else{
+      d[2] += 1;
+      conv_send(self, data, length);
+    }
+  }
+
+  
+  void process_count(conversation * self){
+    ASSERT(self->talk->is_processing == false);
+    ASSERT(self->talk->is_updating == true);
+    // todo: implement timeout for finished conversation or no response.
+    if(self->user_data == NULL){
+      self->user_data = (void *) 1;
+      int data[] = {123, self->talk->is_server, 0};
+      //logd("d: %i\n", sizeof(data));
+      conv_send(self, data, sizeof(data));
+    }
+  }
+
+  void * process_service(udpc_service * s){
+    udpc_connection * con = NULL;
+    if(s == s1)
+      con = udpc_listen2(s);
+    else
+      con = udpc_connect2(s, "test@0.0.0.0:s");
+    logd("Connected2 %p\n", s);
+
+    talk_dispatch * talk = talk_dispatch_create(con, s == s1);
+    logd("Server? %i\n", talk->is_server);
+    void new_conversation(conversation * conv, void * buffer, int length)
+    {
+
+      ASSERT(length == 12);
+      int * b = (int *) buffer;
+      //logd("New conversation.. %i\n", b[0]);
+      ASSERT(b[0] == 123);
+      conv->user_data = (void *) 2;
+      conv->update = process_count;
+      conv->process = count_up;
+      ASSERT(conv->id >= 2);
+      
+      //count_up(conv, buffer, length);
+
+    }
+    
+    talk->new_conversation = new_conversation;
+    void newconv(){
+      conversation * c = talk_create_conversation(talk);
+      ASSERT(c->id != 0);
+      //safesend_create(c);
+    }
+    bool keep_processing = true;
+    void process_talk(){
+      while(keep_processing){
+	talk_dispatch_process(talk, 0);
+	//iron_usleep(1000);
+      }
+    }
+
+    iron_thread * proc_trd = iron_start_thread0(process_talk);
+    for(int i = 0; i < 10; i++)
+      newconv();
+    //newconv();
+    //newconv();
+
+    int _j = 0;
+    while(_j < 10){
+      talk_dispatch_update(talk);
+      if(talk->active_conversation_count > 0)
+	 _j = 0;
+      else {
+	_j++;
+	iron_usleep(100);    
+      }
+      //iron_usleep(10000); //todo: try to comment this out.       
+    }
+    logd("DONE\n");
+    keep_processing = false;
+    iron_thread_join(proc_trd);
+    talk_dispatch_delete(&talk);
+    udpc_close(con);
+    
+    return NULL;
+  }
+
+  iron_thread * s1_trd = iron_start_thread((void * (*)()) process_service, s1);
+  iron_thread * s2_trd = iron_start_thread((void * (*)()) process_service, s2);
+  iron_thread_join(s1_trd);
+  iron_thread_join(s2_trd);
+  udpc_logout(s1);
+  udpc_logout(s2);
+
+}
+
+void test_reader(){
+  size_t test_size = (rand() % 100000) + 50000;
+  i8 * data = alloc(test_size);
+  for(size_t i = 0; i < test_size; i++)
+    data[i] = (i8) i;
+
+  reader * rd = mem_reader_create(data, test_size, true);
+  i8 buffer[10];
+  for(size_t i = 0; i < test_size / 10; i++){
+    reader_read(rd, buffer, sizeof(buffer));
+    for(size_t j = 0; j < (size_t)array_count(buffer); j++){
+      ASSERT(buffer[j] == (i8) (i * 10 + j));
+    }
+  }
+  reader_seek(rd, 5 * 10);
+  for(size_t i = 5; i < test_size / 10; i++){
+    reader_read(rd, buffer, sizeof(buffer));
+    for(size_t j = 0; j < (size_t)array_count(buffer); j++){
+      ASSERT(buffer[j] == (i8) (i * 10 + j));
+    }
+  }
+
+  reader_seek(rd, 0);
+
+
+  
+  const char * fname = "test_reader.file";
+  writer * wt = file_writer_create(fname);
+  size_t read = 0;
+  char buf[100];
+
+  void * reading = NULL;
+  size_t reading_size = 0;
+  writer *wt2 = mem_writer_create(&reading, &reading_size);
+  
+  while((read = reader_read(rd, buf, sizeof(buf)))){
+    writer_write(wt,buf,read);
+    writer_write(wt2, buf, read);
+  }
+  writer_close(&wt);
+  writer_close(&wt2);
+
+  ASSERT(reading_size == test_size);
+  dealloc(reading);
+
+  
+  reader_close(&rd);
+
+  rd = file_reader_create(fname);
+  reader_seek(rd, 10 * 10);
+  for(size_t i = 10; i < test_size / 10; i++){
+    reader_read(rd, buffer, sizeof(buffer));
+    for(size_t j = 0; j < (size_t)array_count(buffer); j++){
+      ASSERT(buffer[j] == (i8) (i * 10 + j));
+    }
+  }
+
+  reader_close(&rd);
+
+  remove(fname);
+  
+  ASSERT(rd == NULL);
+}
+
+
 // UDPC sample program.
 int main(int argc, char ** argv){
   UNUSED(argc);
   UNUSED(argv);
+  for(size_t i = 0; i < 10; i++){
+    
+    test_reader();
+    logd("OK %i\n", i);
+  }
+  return 0;
+  
   void run_server(){
     
     udpc_start_server("0.0.0.0");
