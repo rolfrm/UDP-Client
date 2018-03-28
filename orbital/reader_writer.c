@@ -56,6 +56,11 @@ reader * file_reader_create(const char * path){
   reader->seek = file_reader_seek;
   reader->close = file_reader_close;
   reader->position = 0;
+  
+  fseek(fd->f, 0L, SEEK_END);
+  reader->size = ftell(fd->f);
+  fseek(fd->f, 0L, SEEK_SET);
+  
   return reader;
 }
 
@@ -95,6 +100,7 @@ reader * mem_reader_create(void * data, size_t size, bool delete_on_close){
   reader->seek = mem_reader_seek;
   reader->close = mem_reader_close;
   reader->position = 0;
+  reader->size = size;
   return reader;
 }
 

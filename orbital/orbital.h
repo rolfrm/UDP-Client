@@ -78,6 +78,7 @@ struct _reader {
   void (*seek)(reader * rd, size_t position);
   void (*close)(reader * rd);
   size_t position;
+  size_t size;
 
   void * data;
 };
