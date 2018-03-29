@@ -172,49 +172,20 @@ void test_safesend(){
   udpc_service * s1 = udpc_login2("test@0.0.0.0:s");
   udpc_service * s2 = udpc_login2("test@0.0.0.0:s2");
   logd("both login: %p %p\n", s1, s2);
-  void count_up(conversation * self, void * data, int length){
-    ASSERT(self->finished == false);
-    ASSERT(self->talk->is_processing == true);
-    ASSERT(self->talk->is_updating == false);
-    int * d = (int *) data;
-    //logd("count up: %i %i %i\n", d[0], length, self->id);
-    ASSERT(d[0] == 123);
-    if(length == 4){
-      //logd("GOT END! %i\n", self->id);
-      self->finished = true;
-      return;
-    }
-    //logd("id: %i %i %i\n", self->id, self->talk->is_server, d[1]);
-    if(d[1] == self->talk->is_server){
-      ASSERT(length == 12);
-      //logd("COUNT: %i\n", d[2]);
-      if(d[2] < 500)
-	conv_send(self, data, length);
-      else{
-	conv_send(self, data, 4);
-	//logd("GOT END2! %i\n", self->id);
-	self->finished = true;
-      }
-    }else{
-      d[2] += 1;
-      conv_send(self, data, length);
-    }
-  }
 
   
-  void process_count(conversation * self){
-    ASSERT(self->talk->is_processing == false);
-    ASSERT(self->talk->is_updating == true);
-    // todo: implement timeout for finished conversation or no response.
-    if(self->user_data == NULL){
-      self->user_data = (void *) 1;
-      int data[] = {123, self->talk->is_server, 0};
-      //logd("d: %i\n", sizeof(data));
-      conv_send(self, data, sizeof(data));
-    }
-  }
-
+  
   void * process_service(udpc_service * s){
+
+    void * recieve = NULL;
+    size_t recieve_length = 0;
+    size_t send_length = 100000;
+    i8 * send = alloc(send_length * sizeof(send[0]));
+    for(size_t i = 0; i <send_length; i++){
+      i8 x = -(i % 123);
+      send[i] = x;
+    }
+
     udpc_connection * con = NULL;
     if(s == s1)
       con = udpc_listen2(s);
@@ -224,27 +195,21 @@ void test_safesend(){
 
     talk_dispatch * talk = talk_dispatch_create(con, s == s1);
     logd("Server? %i\n", talk->is_server);
+    writer * wt = mem_writer_create(&recieve, &recieve_length);
+    reader * rd = mem_reader_create(send, send_length, false);
     void new_conversation(conversation * conv, void * buffer, int length)
     {
-
-      ASSERT(length == 12);
-      int * b = (int *) buffer;
-      //logd("New conversation.. %i\n", b[0]);
-      ASSERT(b[0] == 123);
-      conv->user_data = (void *) 2;
-      conv->update = process_count;
-      conv->process = count_up;
-      ASSERT(conv->id >= 2);
-      
-      //count_up(conv, buffer, length);
-
+      UNUSED(buffer);
+      UNUSED(length);
+      logd("Create writer..\n");
+      safereceive_create(conv, wt);
     }
     
     talk->new_conversation = new_conversation;
     void newconv(){
       conversation * c = talk_create_conversation(talk);
       ASSERT(c->id != 0);
-      //safesend_create(c);
+      safesend_create(c, rd);
     }
     bool keep_processing = true;
     void process_talk(){
@@ -255,7 +220,7 @@ void test_safesend(){
     }
 
     iron_thread * proc_trd = iron_start_thread0(process_talk);
-    for(int i = 0; i < 10; i++)
+    for(int i = 0; i < 1; i++)
       newconv();
     //newconv();
     //newconv();
@@ -276,6 +241,9 @@ void test_safesend(){
     iron_thread_join(proc_trd);
     talk_dispatch_delete(&talk);
     udpc_close(con);
+    for(size_t i = 0; i <send_length; i++){
+      ASSERT(send[i] == ((i8 *)recieve)[i]);
+    }
     
     return NULL;
   }
@@ -286,6 +254,8 @@ void test_safesend(){
   iron_thread_join(s2_trd);
   udpc_logout(s1);
   udpc_logout(s2);
+
+
 
 }
 
@@ -332,19 +302,24 @@ void test_reader(){
   writer_close(&wt2);
 
   ASSERT(reading_size == test_size);
-  dealloc(reading);
 
-  
+
   reader_close(&rd);
 
   rd = file_reader_create(fname);
+
+  ASSERT(rd->size == reading_size);
+  
   reader_seek(rd, 10 * 10);
   for(size_t i = 10; i < test_size / 10; i++){
     reader_read(rd, buffer, sizeof(buffer));
     for(size_t j = 0; j < (size_t)array_count(buffer); j++){
       ASSERT(buffer[j] == (i8) (i * 10 + j));
+      ASSERT(buffer[j] == ((i8 *)reading)[i * 10 + j]);
     }
   }
+
+  dealloc(reading);
 
   reader_close(&rd);
 
@@ -363,7 +338,7 @@ int main(int argc, char ** argv){
     test_reader();
     logd("OK %i\n", i);
   }
-  return 0;
+  
   
   void run_server(){
     
@@ -374,9 +349,10 @@ int main(int argc, char ** argv){
   UNUSED(srvtrd);
   iron_usleep(10000);
   logd("test_conversation\n");
-  for(int i = 0; i < 10000; i++)
+  for(int i = 0; i < 1; i++)
     test_conversation();
-
+  logd("test_safesend\n");
+  test_safesend();
   
   return 0;
 }

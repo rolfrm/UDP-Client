@@ -32,6 +32,7 @@ typedef struct{
   size_t chunk_size;
   bool started;
   u64 last_send;
+  size_t chunk_count;
   
 }safesend_data;
 
@@ -63,6 +64,7 @@ typedef enum{
 }SAFESEND_HEADER;
 
 static void send_header(conversation * self, i8 header){
+  logd("Sending header %i\n", header);
   conv_send(self, &header, sizeof(header));
 }
 
@@ -104,7 +106,11 @@ u64 unpack_u64(void * buffer, size_t * index){
 
 
 void safesend_send_chunk(conversation * self, u32 index){
+  logd("Sending chunk.. %i\n", index);
   safesend_data * send = self->user_data;
+  //ASSERT(index * send->chunk_size < send->length + send->chunk_size);
+
+  
   i8 header = SEND_CHUNK;
   size_t pack_idx = 0;
   pack_i8(send->buffer, &pack_idx, header);
@@ -118,7 +124,7 @@ void safesend_send_chunk(conversation * self, u32 index){
 void safesend_update(conversation * self){
   safesend_data * send = self->user_data;
   if(send->started){
-    if(send->initial_send != send->length){
+    if(send->initial_send != send->chunk_count){
       safesend_send_chunk(self, send->initial_send);
       send->initial_send += 1;
       return;
@@ -154,6 +160,7 @@ void safesend_process(conversation * self, void * buffer, int size){
   }
   if(header == RECV_FINAL){
     send_header(self, SEND_FINAL);
+    logd("FINISHED\n");
     self->finished = true;
   }
 }
@@ -169,8 +176,10 @@ void safesend_create(conversation * conv, reader * reader){
   safesend_data * send = alloc(sizeof(send[0]));
   send->rd = reader;
   send->length = reader->size;
+
   send->initial_send = 0;
   send->chunk_size = 1400;
+  send->chunk_count = send->length / send->chunk_size + (send->length % send->chunk_size == 0 ? 0 : 1);
   send->buffer_length = send->chunk_size * 2;
   send->buffer = alloc(send->buffer_length);
   send->started = false;
@@ -193,9 +202,11 @@ void safereceive_update(conversation * self){
   }
   if(send->received_blocks == send->chunk_count && timestamp() - send->finish_time > self->talk->latency * 20){
     // SEND_FINAL got lost.
+    logd("FINISHED..\n");
     self->finished = true;
   }
-  if(send->last_recv > self->talk->latency * 10){
+  if(send->completed_chunks != NULL && timestamp() - send->last_recv > self->talk->latency * 10000){
+    logd("Sending request.. %i %u %u\n", self->talk->latency, (u32)timestamp(), (u32)send->last_recv);
     u32 idx = 1;
     for(size_t i = send->received_blocks; i < send->chunk_count; i++){
       if(send->completed_chunks[i] == 0){
@@ -218,7 +229,7 @@ void safereceive_update(conversation * self){
 void safereceive_process(conversation * self, void * buffer, int size){
   UNUSED(size);
   safereceive_data * send = self->user_data;
-  send->last_recv = timestamp();
+
   size_t pack_index = 0;
   SAFESEND_HEADER header = unpack_i8(buffer, &pack_index);
   if(header == SEND_HANDSHAKE){
@@ -238,8 +249,11 @@ void safereceive_process(conversation * self, void * buffer, int size){
     
   }else if(header == SEND_CHUNK){
     u32 chunk_index = unpack_u32(buffer, &pack_index);
+    logd("Got chunk %i %i %i %i\n", chunk_index, MIN(send->length - chunk_index * send->chunk_size, send->chunk_size), pack_index, ((i8 *) buffer)[pack_index]);
+
+    
     writer_seek(send->wt, chunk_index * send->chunk_size);
-    writer_write(send->wt, buffer + chunk_index, MIN(send->length - chunk_index * send->chunk_size, send->chunk_size));
+    writer_write(send->wt, buffer + pack_index, MIN(send->length - chunk_index * send->chunk_size, send->chunk_size));
     send->completed_chunks[chunk_index] = 1;
     if(chunk_index == send->received_blocks){
       send->received_blocks++;
@@ -256,6 +270,8 @@ void safereceive_process(conversation * self, void * buffer, int size){
   }else if(header == SEND_FINAL){
     self->finished = true;
   }
+  send->last_recv = timestamp();
+  logd("received data: %u\n", send->last_recv);
 }
 
 void safereceive_close(conversation * self){

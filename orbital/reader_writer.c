@@ -129,7 +129,8 @@ void mem_writer_write(writer * wt, void * src, size_t size){
   if(*data.size_location < required_size){
     data.ptr_location[0] = ralloc(data.ptr_location[0], required_size);
   }
-  memmove(data.ptr_location[0], src, size);
+  memmove(data.ptr_location[0] + wt->position, src, size);
+  
   data.size_location[0] = required_size;
   wt->position += size;
 }

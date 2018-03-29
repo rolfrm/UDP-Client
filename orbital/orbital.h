@@ -107,6 +107,5 @@ void writer_write(writer * wt, void * src, size_t size);
 void writer_seek(writer * wt, size_t position);
 void writer_close(writer ** wt);
 
-
-
 void safesend_create(conversation * conv, reader * reader);
+void safereceive_create(conversation * conv, writer * writer);
