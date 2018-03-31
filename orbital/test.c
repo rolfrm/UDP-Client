@@ -239,7 +239,7 @@ void test_safesend(){
 	_j++;
 	iron_usleep(100);    
       }
-      iron_usleep(1000);
+      iron_usleep(10000);
       //iron_usleep(10000); //todo: try to comment this out.       
     }
     logd("DONE\n");

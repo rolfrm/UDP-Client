@@ -117,8 +117,12 @@ void safesend_send_chunk(conversation * self, u32 index){
   size_t pack_idx = 0;
   pack_i8(send->buffer, &pack_idx, header);
   pack_u32(send->buffer, &pack_idx, index);
-  reader_seek(send->rd, index * send->chunk_size);
-  pack_idx += reader_read(send->rd, send->buffer + pack_idx, send->chunk_size);
+
+  size_t chunk_offset = index * send->chunk_size;
+  size_t chunk_size = MIN(send->length - chunk_offset, send->chunk_size);
+  ASSERT(chunk_offset + chunk_size <= send->length);
+  reader_seek(send->rd, chunk_offset);
+  pack_idx += reader_read(send->rd, send->buffer + pack_idx, chunk_size);
   conv_send(self, send->buffer, pack_idx);
 }
 
@@ -156,7 +160,9 @@ void safesend_process(conversation * self, void * buffer, int size){
   safesend_data * send = self->user_data;
   size_t index = 0;
   SAFESEND_HEADER header = unpack_i8(buffer, &index);
-  if(header == RECV_REQ && self->finished == false){
+  if(header == RECV_REQ){
+    if(send->initial_send != send->chunk_count)
+      return;
     u32 * chunks = (buffer + 4);
     size -= index;
     size_t count = size / sizeof(chunks[0]);
@@ -268,23 +274,19 @@ void safereceive_process(conversation * self, void * buffer, int size){
     logd("FINISHED? %i\n", self->finished);
     u32 chunk_index = unpack_u32(buffer, &pack_index);
     logd("Got chunk %i %i %i %i\n", chunk_index, MIN(send->length - chunk_index * send->chunk_size, send->chunk_size), pack_index, ((i8 *) buffer)[pack_index]);
-
+    logd("%i %i\n", ((i8 *) buffer)[pack_index],((i8 *) buffer)[pack_index + 1]);
     
     writer_seek(send->wt, chunk_index * send->chunk_size);
-    writer_write(send->wt, buffer + pack_index, MIN(send->length - chunk_index * send->chunk_size, send->chunk_size));
+    writer_write(send->wt, buffer + pack_index, size - pack_index);
     send->completed_chunks[chunk_index] = 1;
-    if(chunk_index == send->received_blocks){
-      send->received_blocks++;
-      while(chunk_index <= send->chunk_count){
-	if(send->completed_chunks[chunk_index]){
-	  send->received_blocks++;
-	  chunk_index++;
-	}else{
-	  break;
-	}
-      }
+    while(chunk_index <= send->chunk_count){
+      if(send->completed_chunks[chunk_index]){
+	send->received_blocks++;
+	chunk_index++;
+      }else
+	break;
+      
     }
-    
   }
   send->last_recv = timestamp();
   logd("received data: %u\n", send->last_recv);

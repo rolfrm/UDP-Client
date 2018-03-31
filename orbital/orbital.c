@@ -192,7 +192,7 @@ void talk_dispatch_update(talk_dispatch * talk){
     iron_mutex_lock(talk->process_mutex);
     ASSERT(talk->is_processing == false && talk->is_updating == false);
     talk->is_updating = true;
-    logd("update..\n");
+    //logd("pdate..\n");
     _process_index(i);
     talk->is_updating = false;
     iron_mutex_unlock(talk->process_mutex);
