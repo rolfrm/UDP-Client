@@ -49,7 +49,7 @@ talk_dispatch * talk_dispatch_create(udpc_connection * con, bool is_server){
   obj->process_mutex = iron_mutex_create();
   obj->last_update = 0;
   obj->latency = 1000000; //Assume 1s latency
-  obj->target_rate = 1e6;
+  obj->target_rate = 1e5;
   obj->update_interval = 0.2;
   obj->active_conversation_count = 0;
   obj->is_processing = false;
@@ -83,11 +83,13 @@ static void _process_read(talk_dispatch * obj){
   }
 
   if(obj->conversation_count < (size_t)convId){
-    obj->conversations = ralloc(obj->conversations, (convId + 2) * sizeof(obj->conversations[0]));
-    for(int i = obj->conversation_count; i < (convId + 2); i++){
+    let new_count = convId + 2;
+    obj->conversations = ralloc(obj->conversations, new_count * sizeof(obj->conversations[0]));
+    for(int i = obj->conversation_count; i < new_count; i++){
+      logd("ALLOC Conversation: %i\n", i);
       obj->conversations[i] = NULL;
     }
-    obj->conversation_count = convId + 2;
+    obj->conversation_count = new_count;
   }
 
   l = udpc_read(obj->connection, obj->read_buffer, obj->read_buffer_size);
@@ -100,6 +102,7 @@ static void _process_read(talk_dispatch * obj){
     // new connection from peer.
     int mod = convId % 2;
     if((obj->is_server && mod == 1) || (!obj->is_server && mod == 0)){
+      
       ASSERT(obj->new_conversation != NULL);
 	
       conv = alloc(sizeof(conversation));
@@ -107,19 +110,27 @@ static void _process_read(talk_dispatch * obj){
       conv->user_data = NULL;
       conv->finished = false;
       conv->id = convId;
+      conv->process = NULL;
+      conv->update = NULL;
 
       obj->new_conversation(conv, obj->read_buffer + 4, l - 4);
+      if(conv->process == NULL || conv->update == NULL){
+	dealloc(conv);
+	return;
+      }
+      ASSERT(obj->conversations[convId] == NULL);
       obj->conversations[convId] = conv;
       conv->id = convId;
     }else
-      ERROR("Conversation deleted %i", l);
+      return;
+    //ERROR("Conversation deleted %i", l);
     
   }else{
     conv = obj->conversations[convId];
   }
   ASSERT(conv != NULL);
-
-  conv->process(conv, obj->read_buffer + 4, l - 4);
+  if(conv->finished == false)
+    conv->process(conv, obj->read_buffer + 4, l - 4);
 
   /*
   if(conv->finished){
@@ -175,20 +186,23 @@ void talk_dispatch_update(talk_dispatch * talk){
       count++;
     }
   }
+  
   for(size_t i = 0; i < talk->conversation_count; i++){
     if(talk->conversations[i] == NULL) continue;
     iron_mutex_lock(talk->process_mutex);
     ASSERT(talk->is_processing == false && talk->is_updating == false);
     talk->is_updating = true;
+    logd("update..\n");
     _process_index(i);
     talk->is_updating = false;
     iron_mutex_unlock(talk->process_mutex);
   }
   talk->active_conversation_count = count;
+  logd("Active conversations: %i\n", count);
 }
 
 conversation * talk_create_conversation(talk_dispatch * talk){
-  
+  iron_mutex_lock(talk->process_mutex);
   conversation * c = alloc(sizeof(conversation));
   c->talk = talk;
   c->user_data = NULL;
@@ -198,13 +212,17 @@ conversation * talk_create_conversation(talk_dispatch * talk){
       c->id = i;
       talk->conversations[i] = c;
       talk->active_conversation_count += 1;
+      iron_mutex_unlock(talk->process_mutex);
       return c;
     }
   }
 
   talk->conversations = ralloc(talk->conversations, (talk->conversation_count + 4) * sizeof(talk->conversations[0]));
-  for(size_t i = 0; i < 4; i++)
+  for(size_t i = 0; i < 4; i++){
+    logd("ALLOC Conversation2: %i %i\n", i + talk->conversation_count, sizeof(talk->conversations[0]));
+     
     talk->conversations[i + talk->conversation_count] = NULL;
+  }
 
   
   c->id = MAX(talk->conversation_count,2) + (talk->is_server ? 0 : 1);
@@ -212,6 +230,7 @@ conversation * talk_create_conversation(talk_dispatch * talk){
   talk->conversations[c->id] = c;
   talk->conversation_count += 4;
   talk->active_conversation_count += 1;
+  iron_mutex_unlock(talk->process_mutex);
   return c;
 }
 

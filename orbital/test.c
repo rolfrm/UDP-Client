@@ -120,10 +120,12 @@ void test_conversation(){
     
     talk->new_conversation = new_conversation;
     void newconv(){
+      iron_mutex_lock(talk->process_mutex);
       conversation * c = talk_create_conversation(talk);
       ASSERT(c->id != 0);
       c->update = process_count;
       c->process = count_up;
+      iron_mutex_unlock(talk->process_mutex);
     }
     bool keep_processing = true;
     void process_talk(){
@@ -179,7 +181,7 @@ void test_safesend(){
 
     void * recieve = NULL;
     size_t recieve_length = 0;
-    size_t send_length = 100000;
+    size_t send_length = 10000;
     i8 * send = alloc(send_length * sizeof(send[0]));
     for(size_t i = 0; i <send_length; i++){
       i8 x = -(i % 123);
@@ -201,7 +203,10 @@ void test_safesend(){
     {
       UNUSED(buffer);
       UNUSED(length);
-      logd("Create writer..\n");
+      if(((i8 *)buffer)[0] == 3)
+	return;
+      ASSERT(((i8 *)buffer)[0] != 3);
+      logd("Create writer.. %i\n", ((i8 *)buffer)[0]);
       safereceive_create(conv, wt);
     }
     
@@ -234,6 +239,7 @@ void test_safesend(){
 	_j++;
 	iron_usleep(100);    
       }
+      iron_usleep(1000);
       //iron_usleep(10000); //todo: try to comment this out.       
     }
     logd("DONE\n");
@@ -349,8 +355,8 @@ int main(int argc, char ** argv){
   UNUSED(srvtrd);
   iron_usleep(10000);
   logd("test_conversation\n");
-  for(int i = 0; i < 1; i++)
-    test_conversation();
+  //for(int i = 0; i < 1; i++)
+    //test_conversation();
   logd("test_safesend\n");
   test_safesend();
   
