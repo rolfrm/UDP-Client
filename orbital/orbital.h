@@ -57,6 +57,7 @@ struct _talk_dispatch{
   f64 update_interval;
   bool is_processing;
   bool is_updating;
+  bool connection_closed;
   
 };
 

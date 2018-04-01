@@ -16,11 +16,6 @@
 #include <udpc.h>
 #include "orbital.h"
 
-void print_buffer(void * buf, size_t length){
-  for(size_t i = 0; i < length; i++){
-    logd("%x", ((u8 *)buf)[i]);
-  }
-}
 static void ensure_buffer_size(void ** ptr_to_buffer, size_t * current_size, size_t wanted_size){
   if(*current_size < wanted_size){
     *current_size = wanted_size;
@@ -54,6 +49,7 @@ talk_dispatch * talk_dispatch_create(udpc_connection * con, bool is_server){
   obj->active_conversation_count = 0;
   obj->is_processing = false;
   obj->is_updating = false;
+  obj->connection_closed = false;
   return obj;
 }
 
@@ -86,16 +82,12 @@ static void _process_read(talk_dispatch * obj){
     let new_count = convId + 2;
     obj->conversations = ralloc(obj->conversations, new_count * sizeof(obj->conversations[0]));
     for(int i = obj->conversation_count; i < new_count; i++){
-      logd("ALLOC Conversation: %i\n", i);
       obj->conversations[i] = NULL;
     }
     obj->conversation_count = new_count;
   }
 
   l = udpc_read(obj->connection, obj->read_buffer, obj->read_buffer_size);
-  //logd("READ %i %i ", l, obj->is_server);
-  //print_buffer(obj->read_buffer, l);
-  //logd("\n");
 
   conversation * conv = NULL;
   if(obj->conversations[convId] == NULL){
@@ -149,7 +141,7 @@ static void _process_read(talk_dispatch * obj){
 void talk_dispatch_process(talk_dispatch * talk, int timeoutms){
   udpc_connection * clst = talk->connection;
 
-  if(udpc_wait_reads(&clst, 1, timeoutms) == -1 || clst == NULL)
+  if(udpc_wait_reads(&clst, 1, timeoutms) < 0 || clst == NULL)
     return;
   
   iron_mutex_lock(talk->process_mutex);
@@ -157,8 +149,15 @@ void talk_dispatch_process(talk_dispatch * talk, int timeoutms){
   talk->is_processing = true;
   while(true){
     _process_read(talk);
-    if(udpc_wait_reads(&clst, 1, 0) == -1 || clst == NULL)
+    if(udpc_wait_reads(&clst, 1, 0) < 0)
       break;
+    if(clst == NULL)
+      break;
+    u8 buffer[5];
+    if(udpc_peek(talk->connection, buffer, sizeof(buffer)) == 0){
+      talk->connection_closed = true;
+      break;
+    }
   }
   
   talk->is_processing = false;
@@ -172,7 +171,6 @@ void talk_dispatch_update(talk_dispatch * talk){
     if(talk->conversations[i] != NULL){
       if(talk->conversations[i]->finished){
       finished:
-	//logd("Delete conversation: %i\n", talk->conversations[i]->id);
 	dealloc(talk->conversations[i]);
 	talk->conversations[i] = NULL;
 	return;
@@ -192,13 +190,11 @@ void talk_dispatch_update(talk_dispatch * talk){
     iron_mutex_lock(talk->process_mutex);
     ASSERT(talk->is_processing == false && talk->is_updating == false);
     talk->is_updating = true;
-    //logd("pdate..\n");
     _process_index(i);
     talk->is_updating = false;
     iron_mutex_unlock(talk->process_mutex);
   }
   talk->active_conversation_count = count;
-  logd("Active conversations: %i\n", count);
 }
 
 conversation * talk_create_conversation(talk_dispatch * talk){
@@ -219,8 +215,6 @@ conversation * talk_create_conversation(talk_dispatch * talk){
 
   talk->conversations = ralloc(talk->conversations, (talk->conversation_count + 4) * sizeof(talk->conversations[0]));
   for(size_t i = 0; i < 4; i++){
-    logd("ALLOC Conversation2: %i %i\n", i + talk->conversation_count, sizeof(talk->conversations[0]));
-     
     talk->conversations[i + talk->conversation_count] = NULL;
   }
 
@@ -250,12 +244,10 @@ void talk_dispatch_send(talk_dispatch * talk, conversation * conv, void * messag
       i64 transferred = talk->transfer_sum + to_send;
       double current_rate = transferred / (timespan * 1e-6);
       double target_rate = talk->target_rate;
-      //logd("RATE: %f %f %i %i \n", current_rate, target_rate, timespan, transferred);
       ASSERT(timespan > 0);
       
       if(current_rate >= target_rate){
 	double waitTime = transferred / target_rate - timespan * 1e-6;
-	//logd("SLEEP: %f\n", waitTime);
 	iron_sleep(waitTime);
 	goto check_transfer_rate;
       }
@@ -282,9 +274,6 @@ void talk_dispatch_send(talk_dispatch * talk, conversation * conv, void * messag
   ensure_buffer_size(&talk->send_buffer, &talk->send_buffer_size, to_send);
   memmove(talk->send_buffer, &conv->id, sizeof(conv->id));
   memmove(talk->send_buffer + sizeof(conv->id), message, message_size);
-  //logd("Sending %i %i ", talk->is_server, to_send);
-  //print_buffer(talk->send_buffer, to_send);
-  //logd("\n");
   
   udpc_write(talk->connection, talk->send_buffer, to_send);
   memset(talk->send_buffer, 0, to_send);

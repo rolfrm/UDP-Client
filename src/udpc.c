@@ -328,8 +328,9 @@ int udpc_wait_reads(udpc_connection ** clients, int count, int timeout_ms){
   
   int i = select(bfd + 1, &rfds, NULL, NULL, &timeout);
   for(int i = 0; i < count; i++)
-    if(!FD_ISSET(clients[i]->fd, &rfds))
+    if(!FD_ISSET(clients[i]->fd, &rfds)){
       clients[i] = NULL;
+    }
   FD_ZERO(&rfds);
   return i;
 

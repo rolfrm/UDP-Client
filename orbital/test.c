@@ -193,10 +193,7 @@ void test_safesend(){
       con = udpc_listen2(s);
     else
       con = udpc_connect2(s, "test@0.0.0.0:s");
-    logd("Connected2 %p\n", s);
-
     talk_dispatch * talk = talk_dispatch_create(con, s == s1);
-    logd("Server? %i\n", talk->is_server);
     writer * wt = mem_writer_create(&recieve, &recieve_length);
     reader * rd = mem_reader_create(send, send_length, false);
     void new_conversation(conversation * conv, void * buffer, int length)
@@ -206,7 +203,6 @@ void test_safesend(){
       if(((i8 *)buffer)[0] == 3)
 	return;
       ASSERT(((i8 *)buffer)[0] != 3);
-      logd("Create writer.. %i\n", ((i8 *)buffer)[0]);
       safereceive_create(conv, wt);
     }
     
@@ -218,17 +214,12 @@ void test_safesend(){
     }
     bool keep_processing = true;
     void process_talk(){
-      while(keep_processing){
+      while(keep_processing)
 	talk_dispatch_process(talk, 0);
-	//iron_usleep(1000);
-      }
     }
 
     iron_thread * proc_trd = iron_start_thread0(process_talk);
-    for(int i = 0; i < 1; i++)
-      newconv();
-    //newconv();
-    //newconv();
+    newconv();
 
     int _j = 0;
     while(_j < 10){
@@ -239,10 +230,8 @@ void test_safesend(){
 	_j++;
 	iron_usleep(100);    
       }
-      iron_usleep(10000);
-      //iron_usleep(10000); //todo: try to comment this out.       
+      iron_usleep(1000);
     }
-    logd("DONE\n");
     keep_processing = false;
     iron_thread_join(proc_trd);
     talk_dispatch_delete(&talk);
@@ -358,7 +347,8 @@ int main(int argc, char ** argv){
   //for(int i = 0; i < 1; i++)
     //test_conversation();
   logd("test_safesend\n");
-  test_safesend();
+  for(int i = 0; i < 100; i++)
+    test_safesend();
   
   return 0;
 }
