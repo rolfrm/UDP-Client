@@ -110,3 +110,20 @@ void writer_close(writer ** wt);
 
 void safesend_create(conversation * conv, reader * reader);
 void safereceive_create(conversation * conv, writer * writer);
+
+typedef enum{
+  DATA_LOG_NEW_FILE = 1,
+  DATA_LOG_NEW_DIR = 2,
+  DATA_LOG_NAME = 3,
+  DATA_LOG_DATA = 4,
+  DATA_LOG_NULL = 5,
+  DATA_LOG_DELETED = 6
+}data_log_item_type;
+
+typedef struct{
+  u32 file_id;
+  data_log_item_type type;
+}data_log_item_header;
+
+
+void data_log_generate(const char * directory, void (* f)(const data_log_item_header * item, void * userdata), void * userdata);

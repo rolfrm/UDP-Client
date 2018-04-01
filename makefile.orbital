@@ -1,5 +1,5 @@
 OPT = -g3 -Og
-LIB_SOURCES1 = orbital.c safesend.c reader_writer.c
+LIB_SOURCES1 = orbital.c safesend.c reader_writer.c datalog.c
 LIB_SOURCES = $(addprefix orbital/, $(LIB_SOURCES1))
 CC = gcc
 TARGET = liborbital.so

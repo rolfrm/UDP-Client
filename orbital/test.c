@@ -32,7 +32,6 @@ udpc_service * udpc_login2(const char * url){
   return s1;
 }
 
-
 udpc_connection * udpc_listen2(udpc_service * con){
   udpc_connection * con2 = NULL;
   while(con2 == NULL) con2 = udpc_listen(con);
@@ -323,6 +322,19 @@ void test_reader(){
   ASSERT(rd == NULL);
 }
 
+void test_datalog(){
+
+  void * _userdata = (void*) 5;
+  void f(const data_log_item_header * item, void * userdata){
+    
+    ASSERT(5 == (u64)userdata);
+    logd("item: %p\n", item);
+    
+  }
+  
+  data_log_generate("sync_1", f, _userdata);
+}
+
 
 // UDPC sample program.
 int main(int argc, char ** argv){
@@ -347,8 +359,11 @@ int main(int argc, char ** argv){
   //for(int i = 0; i < 1; i++)
     //test_conversation();
   logd("test_safesend\n");
-  for(int i = 0; i < 100; i++)
+  for(int i = 0; i < 1; i++)
     test_safesend();
+
+  logd("Test DATALOG\n");
+  test_datalog();
   
   return 0;
 }
