@@ -328,7 +328,7 @@ void test_datalog(){
   void f(const data_log_item_header * item, void * userdata){
     
     ASSERT(5 == (u64)userdata);
-    logd("item: %p\n", item);
+    logd("item: %p %i\n", item->file_id, item->type);
     
   }
   

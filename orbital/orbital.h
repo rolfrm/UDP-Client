@@ -121,9 +121,45 @@ typedef enum{
 }data_log_item_type;
 
 typedef struct{
-  u32 file_id;
+  u64 file_id;
   data_log_item_type type;
 }data_log_item_header;
+
+typedef u64 data_log_timestamp;
+
+typedef struct {
+  data_log_item_header header;
+  data_log_timestamp last_edit;
+  u64 size;
+}data_log_new_file;
+
+typedef struct {
+  data_log_item_header header;
+
+}data_log_new_dir;
+
+typedef struct{
+  data_log_item_header header;
+  const char * name;
+}data_log_name;
+
+typedef struct{
+  data_log_item_header header;
+  u64 offset;
+  u64 size;
+  void * data;
+}data_log_data;
+
+typedef struct{
+  data_log_item_header header;
+}data_log_deleted;
+
+typedef struct {
+  data_log_item_header header;
+}data_log_null;
+
+extern data_log_null null_item;
+
 
 
 void data_log_generate(const char * directory, void (* f)(const data_log_item_header * item, void * userdata), void * userdata);
