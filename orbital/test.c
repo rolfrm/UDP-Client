@@ -332,7 +332,11 @@ void test_datalog(){
     
   }
   
-  data_log_generate("sync_1", f, _userdata);
+  data_log_generate_items("sync_1", f, _userdata);
+
+  datalog dlog;
+  datalog_initialize(&dlog, "sync_1", "commits");
+  
 }
 
 

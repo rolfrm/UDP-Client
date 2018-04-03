@@ -124,13 +124,6 @@ static void _process_read(talk_dispatch * obj){
   if(conv->finished == false)
     conv->process(conv, obj->read_buffer + 4, l - 4);
 
-  /*
-  if(conv->finished){
-    obj->conversations[conv->id] = NULL;
-    dealloc(conv);
-    }*/
-     
-  
   if(timestamp() - obj->last_update > obj->update_interval * 1e6 ){
     obj->last_update = timestamp();
     int header = obj->is_server ? -2 : -3;

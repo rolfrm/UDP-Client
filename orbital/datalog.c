@@ -18,30 +18,11 @@
 #include "murmurhash2.h"
 #include <dirent.h>
 #include <ftw.h>
+#include <icydb.h>
 
 data_log_null null_item = {.header = {.file_id = 0, .type = DATA_LOG_NULL}};
 
-//extern int scandir64 (const char *__restrict __dir,
-//		      struct dirent64 ***__restrict __namelist,
-//		      int (*__selector) (const struct dirent64 *),
-//		      int (*__cmp) (const struct dirent64 **,
-//				    const struct dirent64 **))
-//     __nonnull ((1, 2));
-
-//extern int scandirat (int __dfd, const char *__restrict __dir,
-//		      struct dirent ***__restrict __namelist,
-//		      int (*__selector) (const struct dirent *),
-//		      int (*__cmp) (const struct dirent **,
-//
-//const struct dirent **))
-
-//extern int scandirat (int __dfd, const char *__restrict __dir,
-//		      struct dirent ***__restrict __namelist,
-//		      int (*__selector) (const struct dirent *),
-//		      int (*__cmp) (const struct dirent **,
-//				    const struct dirent **))
-
-void data_log_generate(const char * directory, void (* f)(const data_log_item_header * item, void * userdata), void * userdata){
+void data_log_generate_items(const char * directory, void (* f)(const data_log_item_header * item, void * userdata), void * userdata){
   struct bloom bloom;
   bloom_init(&bloom, 1000000, 0.01);
   void yield(data_log_item_header * header){
@@ -68,8 +49,6 @@ void data_log_generate(const char * directory, void (* f)(const data_log_item_he
     bloom_add(&bloom, &mm, sizeof(mm));
     return mm;
   }
-
-  
   
   int lookup (const char * name, const struct stat64 * stati, int flags){
     void emit_name(u64 id){
@@ -108,13 +87,9 @@ void data_log_generate(const char * directory, void (* f)(const data_log_item_he
 	  .data = buffer};
 	yield(&data.header);
       }
-      
-
-
       fclose(f);
-
-
-    }else if(is_dir){
+    }
+    else if(is_dir){
       data_log_new_dir d;
       d.header.file_id = getid(name + fstlen + 1);
       d.header.type = DATA_LOG_NEW_DIR;
@@ -125,6 +100,80 @@ void data_log_generate(const char * directory, void (* f)(const data_log_item_he
     return 0;
   }
   ftw64(directory, lookup, 10000);
-  bloom_print(&bloom);
   bloom_free(&bloom);
+}
+
+typedef char * string;
+
+#include "u64_ptr.h"
+#include "u64_ptr.c"
+
+
+typedef struct{
+  u64_ptr * id_name_lookup;
+  struct bloom bloom;
+  FILE * commits_file;
+}datalog_internal;
+
+void datalog_initialize(datalog * dlog, const char * root_dir, const char * commits_file){
+  ASSERT(dlog != NULL);
+  ASSERT(root_dir != NULL);
+  ASSERT(commits_file != NULL);
+  dlog->root = fmtstr("%s", root_dir);
+  dlog->commits_file = fmtstr("%s", commits_file);
+  datalog_internal * dlog_i = alloc(sizeof(datalog_internal));
+  dlog_i->id_name_lookup = u64_ptr_create(NULL);
+  bloom_init(&dlog_i->bloom, 1000000, 0.01);
+  dlog_i->commits_file = NULL;//fopen(commits_file, "r+");
+  dlog->internal = dlog_i;
+}
+
+static size_t item_size(const data_log_item_header * item){
+  switch(item->type){
+  case DATA_LOG_NEW_FILE:
+    return sizeof(data_log_new_file);
+  case DATA_LOG_NEW_DIR:
+    return sizeof(data_log_new_dir);
+  case DATA_LOG_NULL:
+    return sizeof(data_log_null);
+  case DATA_LOG_DELETED:
+    return sizeof(data_log_deleted);
+  default:
+    ERROR("Invalid operation");
+    return 0;
+  }
+}
+
+void handle_item_init(const data_log_item_header * item, void * userdata){
+
+  datalog * dlog = userdata;
+  UNUSED(dlog);
+  switch(item->type){
+  case DATA_LOG_NEW_FILE:
+  case DATA_LOG_NEW_DIR:
+  case DATA_LOG_NULL:
+  case DATA_LOG_DELETED:
+    {
+      size_t s = item_size(item);
+      logd("S: %i\n", s);
+      break;
+    };
+  default:
+    break;
+  }
+}
+
+void datalog_update(datalog * dlog){
+  datalog_internal * dlog_i = dlog->internal;
+  if(dlog_i->commits_file == NULL){
+    dlog_i->commits_file = fopen(dlog->commits_file, "r+");
+
+    data_log_generate_items(dlog->root, handle_item_init, dlog);
+    return;
+  }
+}
+
+void datalog_destroy(datalog ** dlog){
+  UNUSED(dlog);
+  ASSERT(false);
 }

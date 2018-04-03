@@ -160,6 +160,16 @@ typedef struct {
 
 extern data_log_null null_item;
 
+void data_log_generate_items(const char * directory, void (* f)(const data_log_item_header * item, void * userdata), void * userdata);
 
 
-void data_log_generate(const char * directory, void (* f)(const data_log_item_header * item, void * userdata), void * userdata);
+typedef struct{
+  const char * root;
+  const char * commits_file;
+  void * internal;
+}datalog;
+
+
+void datalog_initialize(datalog * dlog, const char * root_dir, const char * commits_file);
+void datalog_update(datalog * dlog);
+void datalog_destroy(datalog ** dlog);
