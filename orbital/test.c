@@ -335,7 +335,11 @@ void test_datalog(){
   data_log_generate_items("sync_1", f, _userdata);
 
   datalog dlog;
-  datalog_initialize(&dlog, "sync_1", "commits");
+  
+  datalog_initialize(&dlog, "sync_1", "datalog_file", "commits_file");
+  remove(dlog.commits_file);
+  remove(dlog.datalog_file);
+  datalog_update(&dlog);
   
 }
 

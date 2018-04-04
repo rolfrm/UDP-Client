@@ -19,6 +19,7 @@
 #include <dirent.h>
 #include <ftw.h>
 #include <icydb.h>
+#include <xxhash.h>
 
 data_log_null null_item = {.header = {.file_id = 0, .type = DATA_LOG_NULL}};
 
@@ -113,15 +114,20 @@ typedef struct{
   u64_ptr * id_name_lookup;
   struct bloom bloom;
   FILE * commits_file;
+  FILE * datalog_file;
+  char prevhash[8];
+  XXH64_state_t*  state;
 }datalog_internal;
 
-void datalog_initialize(datalog * dlog, const char * root_dir, const char * commits_file){
+void datalog_initialize(datalog * dlog, const char * root_dir, const char * datalog_file, const char * commits_file){
   ASSERT(dlog != NULL);
   ASSERT(root_dir != NULL);
   ASSERT(commits_file != NULL);
   dlog->root = fmtstr("%s", root_dir);
   dlog->commits_file = fmtstr("%s", commits_file);
+  dlog->datalog_file = fmtstr("%s", datalog_file);
   datalog_internal * dlog_i = alloc(sizeof(datalog_internal));
+  dlog_i->state = XXH64_createState();
   dlog_i->id_name_lookup = u64_ptr_create(NULL);
   bloom_init(&dlog_i->bloom, 1000000, 0.01);
   dlog_i->commits_file = NULL;//fopen(commits_file, "r+");
@@ -146,7 +152,18 @@ static size_t item_size(const data_log_item_header * item){
 
 void handle_item_init(const data_log_item_header * item, void * userdata){
 
+  
+
   datalog * dlog = userdata;
+  datalog_internal * dlog_i = dlog->internal;
+  XXH64_reset(dlog_i->state, 0);
+  u32 totallen = 0;
+  void write(const void * data, size_t len){
+    fwrite(data, len, 1, dlog_i->datalog_file);
+    XXH64_update(dlog_i->state, data, len);
+    totallen += (u32)len;
+  }
+  
   UNUSED(dlog);
   switch(item->type){
   case DATA_LOG_NEW_FILE:
@@ -156,19 +173,45 @@ void handle_item_init(const data_log_item_header * item, void * userdata){
     {
       size_t s = item_size(item);
       logd("S: %i\n", s);
+      fwrite(item, s, 1, dlog_i->datalog_file);
+      XXH64_update(dlog_i->state, item, s);
       break;
     };
+  case DATA_LOG_NAME:
+    {
+      data_log_name * dlogname = (data_log_name *) item;
+      size_t s = sizeof(data_log_data) - sizeof(dlogname->name);
+      write(dlogname, s);
+      size_t len = strlen(dlogname->name);
+      write(&len, sizeof(len));      
+      write(dlogname->name, strlen(dlogname->name));
+      break;
+  }
+  case DATA_LOG_DATA:
+    {
+      data_log_data * dlogdata = (data_log_data *) item;
+      size_t s = sizeof(data_log_data) - sizeof(dlogdata->data);
+      write(dlogdata, s);
+      write(dlogdata->data, dlogdata->size);
+      break;
+    }
   default:
     break;
   }
+  unsigned long long const hash = XXH64_digest(dlog_i->state);
+  fwrite(&hash, sizeof(hash), 1, dlog_i->commits_file);
+  fwrite(&totallen,sizeof(totallen), 1, dlog_i->commits_file);
+  
 }
 
 void datalog_update(datalog * dlog){
   datalog_internal * dlog_i = dlog->internal;
   if(dlog_i->commits_file == NULL){
-    dlog_i->commits_file = fopen(dlog->commits_file, "r+");
+    dlog_i->commits_file = fopen(dlog->commits_file, "w+");
+    dlog_i->datalog_file = fopen(dlog->datalog_file, "w+");
 
     data_log_generate_items(dlog->root, handle_item_init, dlog);
+    
     return;
   }
 }

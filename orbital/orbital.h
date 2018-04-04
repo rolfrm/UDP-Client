@@ -166,10 +166,11 @@ void data_log_generate_items(const char * directory, void (* f)(const data_log_i
 typedef struct{
   const char * root;
   const char * commits_file;
+  const char * datalog_file;
   void * internal;
 }datalog;
 
 
-void datalog_initialize(datalog * dlog, const char * root_dir, const char * commits_file);
+void datalog_initialize(datalog * dlog, const char * root_dir, const char * datalog_file, const char * commits_file);
 void datalog_update(datalog * dlog);
 void datalog_destroy(datalog ** dlog);
