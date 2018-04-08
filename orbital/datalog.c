@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
+#include <unistd.h>
 
 #include <iron/log.h>
 #include <iron/types.h>
@@ -104,20 +105,27 @@ void data_log_generate_items(const char * directory, void (* f)(const data_log_i
   bloom_free(&bloom);
 }
 
-typedef char * string;
+typedef struct{
+  const char * name;
+  u64 size;
+  data_log_timestamp last_edit;
+  bool is_dir;
+}datalog_item_data;
 
-#include "u64_ptr.h"
-#include "u64_ptr.c"
+#include "u64_dlog.h"
+#include "u64_dlog.c"
 
 
 typedef struct{
-  u64_ptr * id_name_lookup;
+  u64_dlog * id_name_lookup;
   struct bloom bloom;
   FILE * commits_file;
   FILE * datalog_file;
   char prevhash[8];
   XXH64_state_t*  state;
 }datalog_internal;
+
+
 
 void datalog_initialize(datalog * dlog, const char * root_dir, const char * datalog_file, const char * commits_file){
   ASSERT(dlog != NULL);
@@ -128,7 +136,7 @@ void datalog_initialize(datalog * dlog, const char * root_dir, const char * data
   dlog->datalog_file = fmtstr("%s", datalog_file);
   datalog_internal * dlog_i = alloc(sizeof(datalog_internal));
   dlog_i->state = XXH64_createState();
-  dlog_i->id_name_lookup = u64_ptr_create(NULL);
+  dlog_i->id_name_lookup = u64_dlog_create(NULL);
   bloom_init(&dlog_i->bloom, 1000000, 0.01);
   dlog_i->commits_file = NULL;//fopen(commits_file, "r+");
   dlog->internal = dlog_i;
@@ -150,9 +158,12 @@ static size_t item_size(const data_log_item_header * item){
   }
 }
 
-void handle_item_init(const data_log_item_header * item, void * userdata){
+typedef struct{
+  u64 hash;
+  u32 length;
+}commit_item;
 
-  
+void handle_item_init(const data_log_item_header * item, void * userdata){
 
   datalog * dlog = userdata;
   datalog_internal * dlog_i = dlog->internal;
@@ -164,7 +175,6 @@ void handle_item_init(const data_log_item_header * item, void * userdata){
     totallen += (u32)len;
   }
   
-  UNUSED(dlog);
   switch(item->type){
   case DATA_LOG_NEW_FILE:
   case DATA_LOG_NEW_DIR:
@@ -175,18 +185,19 @@ void handle_item_init(const data_log_item_header * item, void * userdata){
       logd("S: %i\n", s);
       fwrite(item, s, 1, dlog_i->datalog_file);
       XXH64_update(dlog_i->state, item, s);
+      totallen = s;
       break;
     };
   case DATA_LOG_NAME:
     {
       data_log_name * dlogname = (data_log_name *) item;
-      size_t s = sizeof(data_log_data) - sizeof(dlogname->name);
+      size_t s = sizeof(data_log_name) - sizeof(dlogname->name);
       write(dlogname, s);
       size_t len = strlen(dlogname->name);
       write(&len, sizeof(len));      
       write(dlogname->name, strlen(dlogname->name));
       break;
-  }
+    }
   case DATA_LOG_DATA:
     {
       data_log_data * dlogdata = (data_log_data *) item;
@@ -199,24 +210,225 @@ void handle_item_init(const data_log_item_header * item, void * userdata){
     break;
   }
   unsigned long long const hash = XXH64_digest(dlog_i->state);
-  fwrite(&hash, sizeof(hash), 1, dlog_i->commits_file);
-  fwrite(&totallen,sizeof(totallen), 1, dlog_i->commits_file);
+  commit_item ci;
+  ci.hash = hash;
+  ci.length = totallen;
+  fwrite(&ci, sizeof(ci), 1, dlog_i->commits_file);
   
 }
+void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool register_only);
 
 void datalog_update(datalog * dlog){
   datalog_internal * dlog_i = dlog->internal;
   if(dlog_i->commits_file == NULL){
     dlog_i->commits_file = fopen(dlog->commits_file, "w+");
     dlog_i->datalog_file = fopen(dlog->datalog_file, "w+");
-
-    data_log_generate_items(dlog->root, handle_item_init, dlog);
-    
-    return;
+    u64 cnt = datalog_get_commit_count(dlog);
+    if(cnt == 0){
+      data_log_generate_items(dlog->root, handle_item_init, dlog); 
+      return;
+    }
+    datalog_iterator it = datalog_iterator_create(dlog);
+    const data_log_item_header * nxt = NULL;
+    while((nxt = datalog_iterator_next(&it)) != NULL){
+      datalog_apply_item(dlog, nxt, true);
+    }
+    datalog_iterator_destroy(&it);
   }
+  
 }
 
 void datalog_destroy(datalog ** dlog){
   UNUSED(dlog);
   ASSERT(false);
+}
+
+typedef struct{
+  FILE * commits_file;
+  FILE * datalog_file;
+  void * buffer;
+  size_t buffer_size;
+  void * buffer2;
+  size_t buffer2_size;
+  
+}datalog_iterator_internal;
+
+size_t stream_length(FILE * f){
+  size_t pos = ftell(f);
+  fseek(f, 0, SEEK_END);
+  size_t end = ftell(f);
+  fseek(f, pos, SEEK_SET);
+  return end;
+}
+
+datalog_iterator datalog_iterator_create(datalog * dlog){
+  datalog_iterator it;
+  it.dlog = dlog;
+  it.head = NULL;
+  it.offset = 0;
+  it.commit_index = 0;
+
+  datalog_iterator_internal iti = {0};
+  datalog_internal * dlog_i = dlog->internal;
+  fflush(dlog_i->commits_file);
+  fflush(dlog_i->datalog_file);
+  iti.commits_file = fopen(dlog->commits_file, "r");
+  iti.datalog_file = fopen(dlog->datalog_file, "r");
+
+  it.internal = IRON_CLONE(iti);
+  
+  return it;
+}
+
+const data_log_item_header * datalog_iterator_next(datalog_iterator * it){
+  datalog_iterator_internal * iti = it->internal;
+  if(iti == NULL)
+    return NULL;
+  commit_item ci;
+  logd("%i/%i %i/%i\n", ftell(iti->commits_file),stream_length(iti->commits_file), ftell(iti->datalog_file), stream_length(iti->datalog_file));
+  ASSERT(stream_length(iti->commits_file) > 0);
+  ASSERT(stream_length(iti->datalog_file) > 0);
+  int read = fread(&ci, sizeof(ci), 1, iti->commits_file);
+
+  if(read ==  1){
+    if(iti->buffer_size < ci.length)
+      iti->buffer = ralloc(iti->buffer, (iti->buffer_size = ci.length));
+    logd("len: %i\n", ci.length);
+    ASSERT(fread(iti->buffer, ci.length, 1, iti->datalog_file) > 0);
+    data_log_item_header * hd = iti->buffer;
+    if(hd->type == DATA_LOG_NAME){
+      size_t * l = iti->buffer + sizeof(data_log_name) - sizeof(void *);
+      size_t strlen = *l;
+      char * str = iti->buffer + sizeof(data_log_name) - sizeof(void *) + sizeof(*l);
+      size_t s2 = sizeof(data_log_name) + strlen + 1;
+      if(iti->buffer2_size < s2)
+	iti->buffer2 = ralloc(iti->buffer2, (iti->buffer2_size = s2));
+      data_log_name * dname = iti->buffer2;
+      *dname = ((data_log_name *) iti->buffer)[0];
+      memcpy(iti->buffer2 + sizeof(data_log_name), str, *l);
+      char * _str = iti->buffer2 + sizeof(data_log_name);
+      _str[*l] = 0;
+      dname->name = _str;
+      
+      return iti->buffer2;
+    }else if(hd->type == DATA_LOG_DATA){
+      void * data = iti->buffer + sizeof(data_log_data) - sizeof(void *);
+      var dl = ((data_log_data *) iti->buffer)[0];
+      dl.data = data;
+      
+      if(iti->buffer2_size < sizeof(data_log_data))
+	iti->buffer2 = ralloc(iti->buffer2, (iti->buffer2_size = sizeof(data_log_data)));
+      ((data_log_data *) iti->buffer2)[0] = dl;
+      return iti->buffer2;
+    }else{
+      return iti->buffer;
+    }
+    
+  }else{
+    datalog_iterator_destroy(it);
+    return NULL;
+  }
+}
+void datalog_iterator_destroy(datalog_iterator * it){
+  datalog_iterator_internal * iti = it->internal;
+  if(iti == NULL) return;
+  dealloc(iti->buffer);
+  dealloc(iti->buffer2);
+  fclose(iti->commits_file);
+  fclose(iti->datalog_file);
+  dealloc(iti);
+  it->internal = NULL;
+}
+
+static char * translate_dir(datalog * dlog, const char * path){
+  static __thread char buffer[1000];
+  sprintf(buffer, "%s/%s", dlog->root, path);
+  return buffer;
+}
+
+void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool register_only){
+  datalog_internal * dlog_i = dlog->internal;
+  if(!register_only)
+    handle_item_init(item, dlog);
+  switch(item->type)
+    {
+    case DATA_LOG_NEW_FILE:
+      {
+	
+	data_log_new_file * f = (data_log_new_file *) item;
+	datalog_item_data d = {0};
+	d.last_edit = f->last_edit;
+	d.size = f->size;
+	u64_dlog_set(dlog_i->id_name_lookup, item->file_id, d);
+	break;
+      }
+    case DATA_LOG_NEW_DIR:
+      {
+	datalog_item_data d = {0};
+	d.is_dir = true;
+	u64_dlog_set(dlog_i->id_name_lookup, item->file_id, d);
+	break;
+      }
+    case DATA_LOG_NAME:
+      {
+	datalog_item_data d;
+
+	data_log_name * f = (data_log_name *) item;
+               
+	ASSERT(u64_dlog_try_get(dlog_i->id_name_lookup, (void *)&item->file_id, &d));
+	d.name = f->name;
+	u64_dlog_set(dlog_i->id_name_lookup, item->file_id, d);
+	if(d.is_dir){
+	  char * buf = translate_dir(dlog, d.name);
+	  if(!register_only)
+	    mkdir(buf, S_IRWXU);
+	}
+      
+	break;
+      }
+    case DATA_LOG_DATA:
+      {
+	datalog_item_data d;
+	ASSERT(u64_dlog_try_get(dlog_i->id_name_lookup, (void *) &item->file_id, &d));
+
+	if(!register_only){
+	  data_log_data * da = ((data_log_data *) item);
+	  char * buf = translate_dir(dlog, d.name);
+	  FILE * file = fopen(buf, "w");
+	  ASSERT(file);
+	  fseek(file, da->offset, SEEK_SET);
+	  fwrite(da->data, 1, da->size, file);
+	  fclose(file);
+	}
+	break;
+      
+      }
+    case DATA_LOG_DELETED:
+      {
+
+	datalog_item_data d;
+	ASSERT(u64_dlog_try_get(dlog_i->id_name_lookup,  (void *)&item->file_id, &d));
+	if(!register_only){
+	  char * buf = translate_dir(dlog, d.name);
+	  if(d.is_dir){
+	    rmdir(buf);
+	  }else{
+	    remove(buf);
+	  }
+	}
+	break;
+      }
+    case DATA_LOG_NULL:
+      break;
+    }
+}
+
+
+u64 datalog_get_commit_count(datalog * dlog){
+  datalog_internal * dlog_i = dlog->internal;
+  var opos = ftell(dlog_i->commits_file);
+  fseek(dlog_i->commits_file, 0, SEEK_END);
+  var epos = ftell(dlog_i->commits_file);
+  fseek(dlog_i->commits_file, opos, SEEK_SET);
+  return epos / sizeof(commit_item);
 }

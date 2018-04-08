@@ -325,11 +325,12 @@ void test_reader(){
 void test_datalog(){
 
   void * _userdata = (void*) 5;
+  u64 cnt = 0;
   void f(const data_log_item_header * item, void * userdata){
     
     ASSERT(5 == (u64)userdata);
     logd("item: %p %i\n", item->file_id, item->type);
-    
+    cnt++;
   }
   
   data_log_generate_items("sync_1", f, _userdata);
@@ -340,6 +341,15 @@ void test_datalog(){
   remove(dlog.commits_file);
   remove(dlog.datalog_file);
   datalog_update(&dlog);
+  u64 commit_count = datalog_get_commit_count(&dlog);
+  ASSERT(commit_count == cnt);
+  logd("COMMIT COUNT: %i\n", commit_count);
+  datalog_iterator di = datalog_iterator_create(&dlog);
+  const data_log_item_header * header = NULL;
+  while((header = datalog_iterator_next(&di)) != NULL){
+    logd("OK..\n");
+  }
+  datalog_iterator_destroy(&di);
   
 }
 

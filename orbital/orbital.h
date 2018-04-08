@@ -170,7 +170,19 @@ typedef struct{
   void * internal;
 }datalog;
 
-
 void datalog_initialize(datalog * dlog, const char * root_dir, const char * datalog_file, const char * commits_file);
 void datalog_update(datalog * dlog);
 void datalog_destroy(datalog ** dlog);
+u64 datalog_get_commit_count(datalog * dlog);
+
+typedef struct {
+  datalog * dlog;
+  data_log_item_header * head;
+  size_t offset;
+  size_t commit_index;
+  void * internal;
+}datalog_iterator;
+
+datalog_iterator datalog_iterator_create(datalog * dlog);
+const data_log_item_header * datalog_iterator_next(datalog_iterator * it);
+void datalog_iterator_destroy(datalog_iterator * it);
