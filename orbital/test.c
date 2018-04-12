@@ -4,6 +4,7 @@
 #include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <sys/stat.h>
 
 #include <iron/log.h>
 #include <iron/types.h>
@@ -336,18 +337,31 @@ void test_datalog(){
   data_log_generate_items("sync_1", f, _userdata);
 
   datalog dlog;
+
+  datalog dlog2;
+  datalog_initialize(&dlog2, "sync_2", "datalog_file_2", "commits_file_2");  
+
+  remove(dlog2.commits_file);
+  remove(dlog2.datalog_file);
   
   datalog_initialize(&dlog, "sync_1", "datalog_file", "commits_file");
+  //mkdir("sync_2", 0666);
   remove(dlog.commits_file);
   remove(dlog.datalog_file);
   datalog_update(&dlog);
+  datalog_update(&dlog2);
   u64 commit_count = datalog_get_commit_count(&dlog);
   ASSERT(commit_count == cnt);
   logd("COMMIT COUNT: %i\n", commit_count);
   datalog_iterator di = datalog_iterator_create(&dlog);
   const data_log_item_header * header = NULL;
+  bool first = true;
   while((header = datalog_iterator_next(&di)) != NULL){
     logd("OK..\n");
+    if(!first)
+      datalog_apply_item(&dlog2, header, false);
+    first = false;
+    
   }
   datalog_iterator_destroy(&di);
   
