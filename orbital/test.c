@@ -358,6 +358,12 @@ void test_datalog(){
   bool first = true;
   while((header = datalog_iterator_next(&di)) != NULL){
     logd("OK..\n");
+    logd("%i\n", header->type);
+    if(header->type == 3){
+      data_log_name * dname = (data_log_name *) header;
+      logd("%s\n", dname->name);
+      
+    }
     if(!first)
       datalog_apply_item(&dlog2, header, false);
     first = false;

@@ -34,7 +34,6 @@ void data_log_generate_items(const char * directory, void (* f)(const data_log_i
   yield((data_log_item_header *) &null_item);
   const char * fst = NULL;
   int fstlen = 0;
-
   u64 gethash(const char * name, u64 prev){
     u64 out;
     u32 * hsh = (u32 *) &out;
@@ -54,7 +53,7 @@ void data_log_generate_items(const char * directory, void (* f)(const data_log_i
   
   int lookup (const char * name, const struct stat64 * stati, int flags){
     void emit_name(u64 id){
-      data_log_name n = {.header = {.file_id = id, .type = DATA_LOG_NAME}, .name = name};
+      data_log_name n = {.header = {.file_id = id, .type = DATA_LOG_NAME}, .name = name + fstlen + 1};
       yield((data_log_item_header *) &n);
     }
     if(fst == NULL){
@@ -195,7 +194,7 @@ void handle_item_init(const data_log_item_header * item, void * userdata){
       write(dlogname, s);
       size_t len = strlen(dlogname->name);
       write(&len, sizeof(len));      
-      write(dlogname->name, strlen(dlogname->name));
+      write(dlogname->name, len);
       break;
     }
   case DATA_LOG_DATA:
@@ -376,7 +375,7 @@ void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool 
 	data_log_name * f = (data_log_name *) item;
                
 	ASSERT(u64_dlog_try_get(dlog_i->id_name_lookup, (void *)&item->file_id, &d));
-	d.name = f->name;
+	d.name = fmtstr("%s", f->name);
 	u64_dlog_set(dlog_i->id_name_lookup, item->file_id, d);
 	if(d.is_dir){
 	  char * buf = translate_dir(dlog, d.name);
