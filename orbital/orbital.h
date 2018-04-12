@@ -187,3 +187,6 @@ datalog_iterator datalog_iterator_create(datalog * dlog);
 const data_log_item_header * datalog_iterator_next(datalog_iterator * it);
 void datalog_iterator_destroy(datalog_iterator * it);
 void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool register_only);
+
+// fix file access times and sizes.
+void datalog_update_files(datalog * dlog);

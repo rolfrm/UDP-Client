@@ -370,6 +370,7 @@ void test_datalog(){
     
   }
   datalog_iterator_destroy(&di);
+  datalog_update_files(&dlog2);
   
 }
 

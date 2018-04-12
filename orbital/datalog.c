@@ -6,6 +6,8 @@
 #include <stdint.h>
 #include <string.h>
 #include <unistd.h>
+#include <utime.h>
+
 
 #include <iron/log.h>
 #include <iron/types.h>
@@ -68,7 +70,7 @@ void data_log_generate_items(const char * directory, void (* f)(const data_log_i
     bool is_file = flags == 0;
     bool is_dir = flags == 1;
     if(is_file){
-      data_log_new_file f1 = { .size = stati->st_size};
+      data_log_new_file f1 = { .size = stati->st_size,.last_edit = stati->st_mtime};
       FILE * f = fopen(name, "r");
       if(f == NULL){
 	return 0;
@@ -78,12 +80,13 @@ void data_log_generate_items(const char * directory, void (* f)(const data_log_i
       yield((data_log_item_header *) &f1);
       emit_name(f1.header.file_id);
 
-      u8 buffer[1024 * 4];
+      u8 buffer[1024 * 1];
       u32 read = 0;
       while((read = fread(buffer, 1, sizeof(buffer), f))){
 	data_log_data data = {
 	  .header = {.file_id = f1.header.file_id, .type = DATA_LOG_DATA},
-	  .offset = ftell(f),
+	  .offset = ftell(f) - read,
+
 	  .size = read,
 	  .data = buffer};
 	yield(&data.header);
@@ -393,11 +396,11 @@ void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool 
 	if(!register_only){
 	  data_log_data * da = ((data_log_data *) item);
 	  char * buf = translate_dir(dlog, d.name);
-	  FILE * file = fopen(buf, "w");
+	  FILE * file = fopen(buf, "r+");
 	  ASSERT(file);
 	  fseek(file, da->offset, SEEK_SET);
-	  fwrite(da->data, 1, da->size, file);
-	  fclose(file);
+	  fwrite(da->data, da->size, 1, file);
+	  fclose(file);	  
 	}
 	break;
       
@@ -430,4 +433,18 @@ u64 datalog_get_commit_count(datalog * dlog){
   var epos = ftell(dlog_i->commits_file);
   fseek(dlog_i->commits_file, opos, SEEK_SET);
   return epos / sizeof(commit_item);
+}
+
+void datalog_update_files(datalog * dlog){
+  datalog_internal * dlog_i = dlog->internal;
+  for(size_t i = 0; i < dlog_i->id_name_lookup->count; i++){
+    datalog_item_data * item = dlog_i->id_name_lookup->value + i;
+    if(item->is_dir || item->name == NULL) continue;
+    char * fpath = translate_dir(dlog, item->name);
+    ASSERT(truncate64(fpath, item->size) == 0);
+    struct utimbuf time;
+    time.actime = item->last_edit;
+    time.modtime = item->last_edit;
+    utime(fpath, &time);
+  }
 }
