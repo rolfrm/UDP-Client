@@ -389,14 +389,23 @@ void test_datalog(){
   u64 c2 = datalog_get_commit_count(&dlog2);
   ASSERT(c1 == c2);
   {
-    datalog_commit_iterator it;
+    datalog_commit_iterator it[2];
     for(int i = 0; i < 2; i++){
-      datalog_commit_iterator_init(&it,&dlog,  i == 1);
+      datalog_commit_iterator_init(it,&dlog,  i == 1);
+      datalog_commit_iterator_init(it + 1,&dlog2,  i == 1);
       commit_item item;
+      commit_item item2;
       u64 c3 = 0;
-      while(datalog_commit_iterator_next(&it, &item)){
+      while(true){
+	var ok1 = datalog_commit_iterator_next(it, &item);
+	var ok2 = datalog_commit_iterator_next(it + 1, &item2);
+	ASSERT(ok1 == ok2);
+	if(!ok1)
+	  break;
 	c3 += 1;
-	logd("Commit size: %i\n", item.length);
+	logd("Commit size: %i %p\n", item.length, item.hash);
+	ASSERT(item.hash == item2.hash);
+	ASSERT(item.length == item2.length);
       }
       ASSERT(c3 == c1);
     }
