@@ -170,6 +170,11 @@ typedef struct{
   void * internal;
 }datalog;
 
+typedef struct{
+  u64 hash;
+  u32 length;
+}commit_item;
+
 void datalog_initialize(datalog * dlog, const char * root_dir, const char * datalog_file, const char * commits_file);
 void datalog_update(datalog * dlog);
 void datalog_destroy(datalog ** dlog);
@@ -190,3 +195,14 @@ void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool 
 
 // fix file access times and sizes.
 void datalog_update_files(datalog * dlog);
+
+typedef struct{
+  datalog * dlog;
+  bool reverse;
+  void * internal;
+
+}datalog_commit_iterator;
+
+void datalog_commit_iterator_init(datalog_commit_iterator * it, datalog * dlog, bool reverse);
+void datalog_commit_iterator_destroy(datalog_commit_iterator * it);
+bool datalog_commit_iterator_next(datalog_commit_iterator * it, commit_item * out_item);

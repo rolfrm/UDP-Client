@@ -1,4 +1,4 @@
-OPT = -g3 -Og
+OPT = -g3 -O0
 LIB_SOURCES1 = orbital.c safesend.c reader_writer.c datalog.c
 LIB_SOURCES = $(addprefix orbital/, $(LIB_SOURCES1))
 CC = gcc

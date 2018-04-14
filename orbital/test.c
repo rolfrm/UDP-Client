@@ -345,6 +345,8 @@ void test_datalog(){
   remove(dlog2.datalog_file);
   
   datalog_initialize(&dlog, "sync_1", "datalog_file", "commits_file");
+  system("rm -r sync_2");
+  system("mkdir sync_2");
   //mkdir("sync_2", 0666);
   remove(dlog.commits_file);
   remove(dlog.datalog_file);
@@ -356,6 +358,7 @@ void test_datalog(){
   datalog_iterator di = datalog_iterator_create(&dlog);
   const data_log_item_header * header = NULL;
   bool first = true;
+  cnt = 0;
   while((header = datalog_iterator_next(&di)) != NULL){
     logd("OK..\n");
     logd("%i\n", header->type);
@@ -364,13 +367,41 @@ void test_datalog(){
       logd("%s\n", dname->name);
       
     }
-    if(!first)
+    if(!first){
       datalog_apply_item(&dlog2, header, false);
+      u64 commit_count2 = datalog_get_commit_count(&dlog2);
+      logd("Commit count 2: %i\n", commit_count2);
+      ASSERT(commit_count2 == (cnt + 1));
+
+    }
+    else{
+
+    }
     first = false;
+    cnt++;
     
   }
+  ASSERT(cnt == commit_count);
   datalog_iterator_destroy(&di);
   datalog_update_files(&dlog2);
+
+  u64 c1 = datalog_get_commit_count(&dlog);
+  u64 c2 = datalog_get_commit_count(&dlog2);
+  ASSERT(c1 == c2);
+  {
+    datalog_commit_iterator it;
+    for(int i = 0; i < 2; i++){
+      datalog_commit_iterator_init(&it,&dlog,  i == 1);
+      commit_item item;
+      u64 c3 = 0;
+      while(datalog_commit_iterator_next(&it, &item)){
+	c3 += 1;
+	logd("Commit size: %i\n", item.length);
+      }
+      ASSERT(c3 == c1);
+    }
+
+  }
   
 }
 

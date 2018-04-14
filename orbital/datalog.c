@@ -160,11 +160,6 @@ static size_t item_size(const data_log_item_header * item){
   }
 }
 
-typedef struct{
-  u64 hash;
-  u32 length;
-}commit_item;
-
 void handle_item_init(const data_log_item_header * item, void * userdata){
 
   datalog * dlog = userdata;
@@ -397,6 +392,8 @@ void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool 
 	  data_log_data * da = ((data_log_data *) item);
 	  char * buf = translate_dir(dlog, d.name);
 	  FILE * file = fopen(buf, "r+");
+	  if(file == NULL)
+	    file = fopen(buf, "w+");
 	  ASSERT(file);
 	  fseek(file, da->offset, SEEK_SET);
 	  fwrite(da->data, da->size, 1, file);
@@ -448,3 +445,54 @@ void datalog_update_files(datalog * dlog){
     utime(fpath, &time);
   }
 }
+
+typedef struct{
+  FILE * file;
+}datalog_commit_iterator_internal;
+
+void datalog_commit_iterator_init(datalog_commit_iterator * it, datalog * dlog, bool reverse){
+  it->dlog = dlog;
+  it->reverse = reverse;
+  datalog_commit_iterator_internal * internal = it->internal = alloc(sizeof(datalog_commit_iterator_internal));
+  internal->file = fopen(dlog->commits_file, "r");
+  if(internal->file == NULL){
+    dealloc(internal);
+    it->internal = NULL;
+    return;
+  }
+  if(reverse)
+    fseek(internal->file, -sizeof(commit_item), SEEK_END);
+}
+
+void datalog_commit_iterator_destroy(datalog_commit_iterator * it){
+  ASSERT(it->internal != NULL);
+  datalog_commit_iterator_internal * itn = it->internal;
+  fclose(itn->file);
+  dealloc(itn);
+  it->internal = NULL;
+}
+
+bool datalog_commit_iterator_next(datalog_commit_iterator * it, commit_item * item){
+  datalog_commit_iterator_internal * itn = it->internal;
+  if(itn == NULL) return false;
+  if(it->reverse){
+
+    if(fread(item,sizeof(item[0]),1,itn->file) == 0)
+      goto failure;
+
+    // When the last thing was read fseek is done to a negative pos, which causes it to fail.
+    if(fseek(itn->file, -sizeof(item[0]) * 2, SEEK_CUR) != 0)
+      datalog_commit_iterator_destroy(it); 
+    
+    
+  }else{
+    if(fread(item,sizeof(item[0]),1,itn->file) == 0)
+      goto failure;
+  }
+  return true;
+
+ failure:
+  datalog_commit_iterator_destroy(it);
+  return false;
+}
+
