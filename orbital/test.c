@@ -368,7 +368,8 @@ void test_datalog(){
     logd("%i\n", header->type);
     if(header->type == 3){
       data_log_name * dname = (data_log_name *) header;
-      logd("%s\n", dname->name);
+      logd("%p\n", dname->name);
+      logd("'%s'\n", dname->name);
       
     }
     if(!first){
@@ -413,12 +414,15 @@ void test_datalog(){
       ASSERT(c3 == c1);
     }
   }
-
+  datalog_update(&dlog);
   write_string_to_file("11223344555", "sync_1/genfile");
+
+  u64 c4_pre = datalog_get_commit_count(&dlog);
   datalog_update(&dlog);
   u64 c4 = datalog_get_commit_count(&dlog);
+  ASSERT(c4 == c4_pre + 3);
   ASSERT(c4 > c1);
-  logd("C4: %i\n", c4);
+  logd("C4: %i pre: %i\n", c4, c4_pre);
   system("sync");
   
   write_string_to_file("11223344555666", "sync_1/genfile");
@@ -429,7 +433,27 @@ void test_datalog(){
   logd("C4: %i %i\n", c4, c5);
   ASSERT(c5 > c4);
 
+  write_string_to_file("11223344555666777", "sync_2/genfile2");
+  //datalog_update(&dlog2);
 
+  u64 search_max = MIN(datalog_get_commit_count(&dlog2), datalog_get_commit_count(&dlog)) - 1;
+  logd("SEARCH MAX: %i\n", search_max);
+  while(search_max>0){
+    var c1 = datalog_get_commit(&dlog, search_max);
+    var c2 = datalog_get_commit(&dlog2, search_max);
+    logd("%p %p\n", c1.hash, c2.hash);
+    if(c1.hash == c2.hash && c1.length == c2.length)
+      break;
+    search_max -= 1;
+  }
+  logd("Found commit: %i\n", search_max);
+  ASSERT(search_max > 0);
+  
+  write_string_to_file("11223344555666", "sync_2/genfile");
+  system("sync");
+  datalog_update(&dlog2);
+  var c6 = datalog_get_commit_count(&dlog2);
+  ASSERT(c6 > c5);
   
   datalog_destroy(&dlog);
   datalog_destroy(&dlog2);  
@@ -440,6 +464,11 @@ void test_datalog(){
 int main(int argc, char ** argv){
   UNUSED(argc);
   UNUSED(argv);
+
+  logd("Test DATALOG\n");
+  test_datalog();
+  return 0;
+  
   for(size_t i = 0; i < 10; i++){
     test_reader();
     logd("OK %i\n", i);
@@ -461,8 +490,7 @@ int main(int argc, char ** argv){
   for(int i = 0; i < 1; i++)
     test_safesend();
 
-  logd("Test DATALOG\n");
-  test_datalog();
+
   
   return 0;
 }

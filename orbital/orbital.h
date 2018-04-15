@@ -119,42 +119,42 @@ typedef enum{
   DATA_LOG_NULL = 5,
   DATA_LOG_DELETED = 6
 }data_log_item_type;
-
-typedef struct{
+ 
+typedef  struct  __attribute__((__packed__)) {
   u64 file_id;
   data_log_item_type type;
 }data_log_item_header;
 
 typedef u64 data_log_timestamp;
 
-typedef struct {
+typedef struct __attribute__((__packed__)){
   data_log_item_header header;
   data_log_timestamp last_edit;
   u64 size;
 }data_log_new_file;
 
-typedef struct {
+typedef struct __attribute__((__packed__)){
   data_log_item_header header;
 
 }data_log_new_dir;
 
-typedef struct{
+typedef struct __attribute__((__packed__)){
   data_log_item_header header;
   const char * name;
 }data_log_name;
 
-typedef struct{
+typedef struct  __attribute__((__packed__)){
   data_log_item_header header;
   u64 offset;
   u64 size;
   void * data;
 }data_log_data;
 
-typedef struct{
+typedef struct __attribute__((__packed__)){
   data_log_item_header header;
 }data_log_deleted;
 
-typedef struct {
+typedef struct __attribute__((__packed__)){
   data_log_item_header header;
 }data_log_null;
 
@@ -170,7 +170,7 @@ typedef struct{
   void * internal;
 }datalog;
 
-typedef struct{
+typedef struct __attribute__((__packed__)) {
   u64 hash;
   u32 length;
 }commit_item;
@@ -206,3 +206,5 @@ typedef struct{
 void datalog_commit_iterator_init(datalog_commit_iterator * it, datalog * dlog, bool reverse);
 void datalog_commit_iterator_destroy(datalog_commit_iterator * it);
 bool datalog_commit_iterator_next(datalog_commit_iterator * it, commit_item * out_item);
+
+commit_item datalog_get_commit(datalog * dlog, u64 index);

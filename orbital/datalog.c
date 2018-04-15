@@ -115,7 +115,6 @@ void datalog_generate_items2(datalog_item_generator * gen, const char * director
 	data_log_data data = {
 	  .header = {.file_id = f1.header.file_id, .type = DATA_LOG_DATA},
 	  .offset = ftell(f) - read,
-
 	  .size = read,
 	  .data = buffer};
 	yield(&data.header);
@@ -323,6 +322,7 @@ datalog_iterator datalog_iterator_create(datalog * dlog){
 }
 
 const data_log_item_header * datalog_iterator_next(datalog_iterator * it){
+  
   datalog_iterator_internal * iti = it->internal;
   if(iti == NULL)
     return NULL;
@@ -348,9 +348,8 @@ const data_log_item_header * datalog_iterator_next(datalog_iterator * it){
       *dname = ((data_log_name *) iti->buffer)[0];
       memcpy(iti->buffer2 + sizeof(data_log_name), str, *l);
       char * _str = iti->buffer2 + sizeof(data_log_name);
-      _str[*l] = 0;
+      _str[strlen] = 0;
       dname->name = _str;
-      
       return iti->buffer2;
     }else if(hd->type == DATA_LOG_DATA){
       void * data = iti->buffer + sizeof(data_log_data) - sizeof(void *);
@@ -370,6 +369,7 @@ const data_log_item_header * datalog_iterator_next(datalog_iterator * it){
     return NULL;
   }
 }
+
 void datalog_iterator_destroy(datalog_iterator * it){
   datalog_iterator_internal * iti = it->internal;
   if(iti == NULL) return;
@@ -540,3 +540,15 @@ bool datalog_commit_iterator_next(datalog_commit_iterator * it, commit_item * it
   return false;
 }
 
+commit_item datalog_get_commit(datalog * dlog, u64 index){
+  datalog_internal * dlog_i = dlog->internal;
+  
+  u64 cnt = datalog_get_commit_count(dlog);
+  ASSERT(index < cnt);
+  var opos = ftell(dlog_i->commits_file);
+  fseek(dlog_i->commits_file, index * sizeof(commit_item), SEEK_END);
+  commit_item out;
+  fread(&out, sizeof(commit_item), 1, dlog_i->commits_file);
+  fseek(dlog_i->commits_file, opos, SEEK_SET);
+  return out;
+}
