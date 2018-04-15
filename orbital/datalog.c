@@ -8,7 +8,6 @@
 #include <unistd.h>
 #include <utime.h>
 
-
 #include <iron/log.h>
 #include <iron/types.h>
 #include <iron/time.h>
@@ -25,6 +24,7 @@
 #include <xxhash.h>
 
 data_log_null null_item = {.header = {.file_id = 0, .type = DATA_LOG_NULL}};
+u64 get_file_time(const struct stat64 * stati);
 
 typedef struct{
   const char * name;
@@ -64,21 +64,16 @@ void datalog_generate_items2(datalog_item_generator * gen, const char * director
   u64 getid(const char * name, datalog_item_data * d){
 
     u64 mm = gethash(name, 0);
-    logd("getid: %s %p\n", name, mm);
     while(bloom_check(gen->bloom, &mm, sizeof(mm))){
-
       // this could be a collision or because the file already exists.
       // if it already exists, then just return the id.
       if(gen->id_name_lookup != NULL){
-	logd("Refound?\n");
 	if(u64_dlog_try_get(gen->id_name_lookup, &mm, d)){
-
 	  if(strcmp(d->name, name) == 0)
 	    return mm;
 	}
       }
       mm = gethash(name, mm);
-      logd("getid: %s %p\n", name, mm);
     }
     bloom_add(gen->bloom, &mm, sizeof(mm));
     return mm;
@@ -98,12 +93,12 @@ void datalog_generate_items2(datalog_item_generator * gen, const char * director
     bool is_file = flags == 0;
     bool is_dir = flags == 1;
     if(is_file){
-      data_log_new_file f1 = { .size = stati->st_size,.last_edit = stati->st_mtime};
+      data_log_new_file f1 = { .size = stati->st_size,.last_edit = get_file_time(stati)};
       datalog_item_data d = {0};
       f1.header.file_id = getid(name + fstlen + 1, &d);
       if(d.name != NULL){
 	// if its refound, only care if its newer than the old one.
-	if(d.last_edit <= (u64)stati->st_mtime)
+	if(d.last_edit >= f1.last_edit && d.size == f1.size)
 	  return 0;
       }
       FILE * f = fopen(name, "r");
@@ -175,7 +170,7 @@ void datalog_initialize(datalog * dlog, const char * root_dir, const char * data
   dlog_i->state = XXH64_createState();
   dlog_i->id_name_lookup = u64_dlog_create(NULL);
   bloom_init(&dlog_i->bloom, 1000000, 0.01);
-  dlog_i->commits_file = NULL;//fopen(commits_file, "r+");
+  dlog_i->commits_file = NULL;
   dlog->internal = dlog_i;
 }
 
@@ -212,12 +207,10 @@ void handle_item_init(const data_log_item_header * item, void * userdata){
   case DATA_LOG_NEW_DIR:
   case DATA_LOG_NULL:
     bloom_add(&dlog_i->bloom, &item->file_id, sizeof(item->file_id));
-    logd("adding ID: %p\n", item->file_id);
     // fall through
   case DATA_LOG_DELETED:
     {
       size_t s = item_size(item);
-      logd("S: %i\n", s);
       fwrite(item, s, 1, dlog_i->datalog_file);
       XXH64_update(dlog_i->state, item, s);
       totallen = s;

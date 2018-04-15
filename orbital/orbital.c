@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
+#include <asm-generic/stat.h>
 
 #include <iron/types.h>
 #include <iron/process.h>
@@ -21,6 +22,11 @@ static void ensure_buffer_size(void ** ptr_to_buffer, size_t * current_size, siz
     *current_size = wanted_size;
     *ptr_to_buffer = realloc(*ptr_to_buffer, wanted_size);
   }
+}
+
+// get the time in microseconds, because nanoseconds is probably too accurate.
+u64 get_file_time(const struct stat * stati){
+  return stati->st_mtime * 1000000 + (stati->st_mtime_nsec / 1000);
 }
 
 talk_dispatch * talk_dispatch_create(udpc_connection * con, bool is_server){
@@ -284,8 +290,6 @@ void talk_dispatch_delete(talk_dispatch ** _talk){
 }
 
 void conv_send(conversation * self, void * message, int message_length){
-
-  
   talk_dispatch_send(self->talk, self, message, message_length);
 }
 

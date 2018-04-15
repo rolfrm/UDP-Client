@@ -407,7 +407,6 @@ void test_datalog(){
 	if(!ok1)
 	  break;
 	c3 += 1;
-	logd("Commit size: %i %p\n", item.length, item.hash);
 	ASSERT(item.hash == item2.hash);
 	ASSERT(item.length == item2.length);
       }
@@ -417,10 +416,19 @@ void test_datalog(){
 
   write_string_to_file("11223344555", "sync_1/genfile");
   datalog_update(&dlog);
-  //write_string_to_file("sync_1/genfile", "11223344555666");
-  //datalog_update(&dlog);
   u64 c4 = datalog_get_commit_count(&dlog);
   ASSERT(c4 > c1);
+  logd("C4: %i\n", c4);
+  system("sync");
+  
+  write_string_to_file("11223344555666", "sync_1/genfile");
+  system("sync");
+  
+  datalog_update(&dlog);
+  var c5 = datalog_get_commit_count(&dlog);
+  logd("C4: %i %i\n", c4, c5);
+  ASSERT(c5 > c4);
+
 
   
   datalog_destroy(&dlog);
@@ -433,7 +441,6 @@ int main(int argc, char ** argv){
   UNUSED(argc);
   UNUSED(argv);
   for(size_t i = 0; i < 10; i++){
-    
     test_reader();
     logd("OK %i\n", i);
   }
