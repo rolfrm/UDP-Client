@@ -337,7 +337,6 @@ void test_datalog(){
     logd("item: %p %i\n", item->file_id, item->type);
     cnt++;
   }
-  iron_usleep(100000);
   data_log_generate_items("sync_1", f, _userdata);
 
   datalog dlog;
@@ -471,11 +470,6 @@ int main(int argc, char ** argv){
   UNUSED(argc);
   UNUSED(argv);
 
-  logd("Test DATALOG\n");
-  for(int i = 0; i < 100; i++)
-    test_datalog();
-  return 0;
-  
   for(size_t i = 0; i < 10; i++){
     test_reader();
     logd("OK %i\n", i);
@@ -497,7 +491,9 @@ int main(int argc, char ** argv){
   for(int i = 0; i < 1; i++)
     test_safesend();
 
-
+  logd("Test DATALOG\n");
+  for(int i = 0; i < 10; i++)
+    test_datalog();
   
   return 0;
 }
