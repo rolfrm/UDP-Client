@@ -177,7 +177,7 @@ typedef struct{
 
 void datalog_initialize(datalog * dlog, const char * root_dir, const char * datalog_file, const char * commits_file);
 void datalog_update(datalog * dlog);
-void datalog_destroy(datalog ** dlog);
+void datalog_destroy(datalog *dlog);
 u64 datalog_get_commit_count(datalog * dlog);
 
 typedef struct {

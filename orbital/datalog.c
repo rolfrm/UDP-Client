@@ -26,14 +26,31 @@
 
 data_log_null null_item = {.header = {.file_id = 0, .type = DATA_LOG_NULL}};
 
-void data_log_generate_items(const char * directory, void (* f)(const data_log_item_header * item, void * userdata), void * userdata){
-  struct bloom bloom;
-  bloom_init(&bloom, 1000000, 0.01);
+typedef struct{
+  const char * name;
+  u64 size;
+  data_log_timestamp last_edit;
+  bool is_dir;
+}datalog_item_data;
+
+#include "u64_dlog.h"
+#include "u64_dlog.c"
+
+typedef struct {
+  struct bloom * bloom;
+  u64_dlog * id_name_lookup;
+}datalog_item_generator;
+
+void datalog_generate_items2(datalog_item_generator * gen, const char * directory, void (* f)(const data_log_item_header * item, void * userdata), void * userdata){
+
   void yield(data_log_item_header * header){
     f(header, userdata);
   }
-
-  yield((data_log_item_header *) &null_item);
+  u64 null_id = null_item.header.file_id;
+  if(!bloom_check(gen->bloom, &null_id, sizeof(null_id))){
+    yield((data_log_item_header *) &null_item);
+    bloom_add(gen->bloom, &null_id, sizeof(null_id));
+  }
   const char * fst = NULL;
   int fstlen = 0;
   u64 gethash(const char * name, u64 prev){
@@ -44,40 +61,57 @@ void data_log_generate_items(const char * directory, void (* f)(const data_log_i
     return out;
   }
 
-  u64 getid(const char * name){
+  u64 getid(const char * name, datalog_item_data * d){
+
     u64 mm = gethash(name, 0);
-    while(bloom_check(&bloom, &mm, sizeof(mm))){
+    logd("getid: %s %p\n", name, mm);
+    while(bloom_check(gen->bloom, &mm, sizeof(mm))){
+
+      // this could be a collision or because the file already exists.
+      // if it already exists, then just return the id.
+      if(gen->id_name_lookup != NULL){
+	logd("Refound?\n");
+	if(u64_dlog_try_get(gen->id_name_lookup, &mm, d)){
+
+	  if(strcmp(d->name, name) == 0)
+	    return mm;
+	}
+      }
       mm = gethash(name, mm);
+      logd("getid: %s %p\n", name, mm);
     }
-    bloom_add(&bloom, &mm, sizeof(mm));
+    bloom_add(gen->bloom, &mm, sizeof(mm));
     return mm;
   }
   
   int lookup (const char * name, const struct stat64 * stati, int flags){
     void emit_name(u64 id){
       data_log_name n = {.header = {.file_id = id, .type = DATA_LOG_NAME}, .name = name + fstlen + 1};
-      yield((data_log_item_header *) &n);
+      yield(&n.header);
     }
     if(fst == NULL){
       fst = name;
       fstlen = strlen(fst);
       return 0;
     }
-    UNUSED(stati);
-    UNUSED(flags);
-    logd("NAme: %s %i\n", name + fstlen + 1, flags);
 
     bool is_file = flags == 0;
     bool is_dir = flags == 1;
     if(is_file){
       data_log_new_file f1 = { .size = stati->st_size,.last_edit = stati->st_mtime};
+      datalog_item_data d = {0};
+      f1.header.file_id = getid(name + fstlen + 1, &d);
+      if(d.name != NULL){
+	// if its refound, only care if its newer than the old one.
+	if(d.last_edit <= (u64)stati->st_mtime)
+	  return 0;
+      }
       FILE * f = fopen(name, "r");
       if(f == NULL){
 	return 0;
       }
-      f1.header.file_id = getid(name + fstlen + 1);
       f1.header.type = DATA_LOG_NEW_FILE;
-      yield((data_log_item_header *) &f1);
+      yield(&f1.header);
       emit_name(f1.header.file_id);
 
       u8 buffer[1024 * 1];
@@ -95,7 +129,9 @@ void data_log_generate_items(const char * directory, void (* f)(const data_log_i
     }
     else if(is_dir){
       data_log_new_dir d;
-      d.header.file_id = getid(name + fstlen + 1);
+      datalog_item_data d2 = {0};
+      d.header.file_id = getid(name + fstlen + 1, &d2);
+      if(d2.name != NULL) return 0;
       d.header.type = DATA_LOG_NEW_DIR;
       yield((data_log_item_header *) &d);
       emit_name(d.header.file_id);
@@ -104,19 +140,18 @@ void data_log_generate_items(const char * directory, void (* f)(const data_log_i
     return 0;
   }
   ftw64(directory, lookup, 10000);
-  bloom_free(&bloom);
 }
 
-typedef struct{
-  const char * name;
-  u64 size;
-  data_log_timestamp last_edit;
-  bool is_dir;
-}datalog_item_data;
 
-#include "u64_dlog.h"
-#include "u64_dlog.c"
+void data_log_generate_items(const char * directory, void (* f)(const data_log_item_header * item, void * userdata), void * userdata){
 
+  struct bloom bloom;
+  bloom_init(&bloom, 1000000, 0.01);
+  datalog_item_generator gen = {0};
+  gen.bloom = &bloom;
+  datalog_generate_items2(&gen, directory, f, userdata);
+  bloom_free(&bloom);
+}
 
 typedef struct{
   u64_dlog * id_name_lookup;
@@ -176,6 +211,9 @@ void handle_item_init(const data_log_item_header * item, void * userdata){
   case DATA_LOG_NEW_FILE:
   case DATA_LOG_NEW_DIR:
   case DATA_LOG_NULL:
+    bloom_add(&dlog_i->bloom, &item->file_id, sizeof(item->file_id));
+    logd("adding ID: %p\n", item->file_id);
+    // fall through
   case DATA_LOG_DELETED:
     {
       size_t s = item_size(item);
@@ -217,27 +255,41 @@ void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool 
 
 void datalog_update(datalog * dlog){
   datalog_internal * dlog_i = dlog->internal;
+
   if(dlog_i->commits_file == NULL){
     dlog_i->commits_file = fopen(dlog->commits_file, "w+");
     dlog_i->datalog_file = fopen(dlog->datalog_file, "w+");
     u64 cnt = datalog_get_commit_count(dlog);
-    if(cnt == 0){
-      data_log_generate_items(dlog->root, handle_item_init, dlog); 
-      return;
+    if(cnt != 0){
+      datalog_iterator it = datalog_iterator_create(dlog);
+      const data_log_item_header * nxt = NULL;
+      while((nxt = datalog_iterator_next(&it)) != NULL){
+	datalog_apply_item(dlog, nxt, true);
+      }
+      datalog_iterator_destroy(&it);
     }
-    datalog_iterator it = datalog_iterator_create(dlog);
-    const data_log_item_header * nxt = NULL;
-    while((nxt = datalog_iterator_next(&it)) != NULL){
-      datalog_apply_item(dlog, nxt, true);
-    }
-    datalog_iterator_destroy(&it);
+  }
+
+  datalog_item_generator gen = {0};
+  gen.bloom = &dlog_i->bloom;
+  gen.id_name_lookup = dlog_i->id_name_lookup;
+  
+  void add_item(const data_log_item_header * item, void * userdata){
+    datalog_apply_item((datalog *) userdata, item, false);
   }
   
+  datalog_generate_items2(&gen, dlog->root, add_item, dlog);
 }
 
-void datalog_destroy(datalog ** dlog){
-  UNUSED(dlog);
-  ASSERT(false);
+void datalog_destroy(datalog * dlog){
+  ASSERT(dlog->internal != NULL);
+  datalog_internal * dlog_i = dlog->internal;
+  if(dlog_i->commits_file != NULL){
+    fclose(dlog_i->commits_file);
+    fclose(dlog_i->datalog_file);
+  }
+  dealloc(dlog_i);
+  dlog->internal = NULL;
 }
 
 typedef struct{
@@ -282,7 +334,6 @@ const data_log_item_header * datalog_iterator_next(datalog_iterator * it){
   if(iti == NULL)
     return NULL;
   commit_item ci;
-  logd("%i/%i %i/%i\n", ftell(iti->commits_file),stream_length(iti->commits_file), ftell(iti->datalog_file), stream_length(iti->datalog_file));
   ASSERT(stream_length(iti->commits_file) > 0);
   ASSERT(stream_length(iti->datalog_file) > 0);
   int read = fread(&ci, sizeof(ci), 1, iti->commits_file);
@@ -290,7 +341,7 @@ const data_log_item_header * datalog_iterator_next(datalog_iterator * it){
   if(read ==  1){
     if(iti->buffer_size < ci.length)
       iti->buffer = ralloc(iti->buffer, (iti->buffer_size = ci.length));
-    logd("len: %i\n", ci.length);
+
     ASSERT(fread(iti->buffer, ci.length, 1, iti->datalog_file) > 0);
     data_log_item_header * hd = iti->buffer;
     if(hd->type == DATA_LOG_NAME){

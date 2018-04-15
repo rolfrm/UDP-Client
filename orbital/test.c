@@ -12,6 +12,7 @@
 #include <iron/utils.h>
 #include <iron/process.h>
 #include <iron/mem.h>
+#include <iron/fileio.h>
 #include <udpc.h>
 #include "orbital.h"
 
@@ -324,7 +325,10 @@ void test_reader(){
 }
 
 void test_datalog(){
-
+  system("rm -r sync_2");
+  system("mkdir sync_2");
+  system("rm sync_1/genfile");
+  
   void * _userdata = (void*) 5;
   u64 cnt = 0;
   void f(const data_log_item_header * item, void * userdata){
@@ -345,14 +349,14 @@ void test_datalog(){
   remove(dlog2.datalog_file);
   
   datalog_initialize(&dlog, "sync_1", "datalog_file", "commits_file");
-  system("rm -r sync_2");
-  system("mkdir sync_2");
-  //mkdir("sync_2", 0666);
+
+  
   remove(dlog.commits_file);
   remove(dlog.datalog_file);
   datalog_update(&dlog);
   datalog_update(&dlog2);
   u64 commit_count = datalog_get_commit_count(&dlog);
+  
   ASSERT(commit_count == cnt);
   logd("COMMIT COUNT: %i\n", commit_count);
   datalog_iterator di = datalog_iterator_create(&dlog);
@@ -409,9 +413,18 @@ void test_datalog(){
       }
       ASSERT(c3 == c1);
     }
-
   }
+
+  write_string_to_file("11223344555", "sync_1/genfile");
+  datalog_update(&dlog);
+  //write_string_to_file("sync_1/genfile", "11223344555666");
+  //datalog_update(&dlog);
+  u64 c4 = datalog_get_commit_count(&dlog);
+  ASSERT(c4 > c1);
+
   
+  datalog_destroy(&dlog);
+  datalog_destroy(&dlog2);  
 }
 
 
