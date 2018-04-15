@@ -205,7 +205,7 @@ void handle_item_init(const data_log_item_header * item, void * userdata){
   case DATA_LOG_NEW_FILE:
   case DATA_LOG_NEW_DIR:
   case DATA_LOG_NULL:
-    bloom_add(&dlog_i->bloom, &item->file_id, sizeof(item->file_id));
+
     // fall through
   case DATA_LOG_DELETED:
     {
@@ -243,22 +243,28 @@ void handle_item_init(const data_log_item_header * item, void * userdata){
   fwrite(&ci, sizeof(ci), 1, dlog_i->commits_file);
   
 }
-void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool register_only);
+void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool register_only, bool write_commit);
 
 void datalog_update(datalog * dlog){
   datalog_internal * dlog_i = dlog->internal;
 
   if(dlog_i->commits_file == NULL){
-    dlog_i->commits_file = fopen(dlog->commits_file, "w+");
-    dlog_i->datalog_file = fopen(dlog->datalog_file, "w+");
+    dlog_i->commits_file = fopen(dlog->commits_file, "r+");
+    if(dlog_i->commits_file == NULL)
+      dlog_i->commits_file = fopen(dlog->commits_file, "w+");
+    dlog_i->datalog_file = fopen(dlog->datalog_file, "r+");
+    if(dlog_i->datalog_file == NULL)
+      dlog_i->datalog_file = fopen(dlog->datalog_file, "w+");
     u64 cnt = datalog_get_commit_count(dlog);
     if(cnt != 0){
       datalog_iterator it = datalog_iterator_create(dlog);
       const data_log_item_header * nxt = NULL;
-      while((nxt = datalog_iterator_next(&it)) != NULL){
-	datalog_apply_item(dlog, nxt, true);
-      }
+      while((nxt = datalog_iterator_next(&it)) != NULL)
+	datalog_apply_item(dlog, nxt, true, false);
+      
       datalog_iterator_destroy(&it);
+      fseek(dlog_i->commits_file, 0, SEEK_END);
+      fseek(dlog_i->datalog_file, 0, SEEK_END);
     }
   }
 
@@ -267,7 +273,7 @@ void datalog_update(datalog * dlog){
   gen.id_name_lookup = dlog_i->id_name_lookup;
   
   void add_item(const data_log_item_header * item, void * userdata){
-    datalog_apply_item((datalog *) userdata, item, false);
+    datalog_apply_item((datalog *) userdata, item, true, true);
   }
   
   datalog_generate_items2(&gen, dlog->root, add_item, dlog);
@@ -387,9 +393,9 @@ static char * translate_dir(datalog * dlog, const char * path){
   return buffer;
 }
 
-void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool register_only){
+void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool register_only, bool write_commit){
   datalog_internal * dlog_i = dlog->internal;
-  if(!register_only)
+  if(write_commit)
     handle_item_init(item, dlog);
   switch(item->type)
     {
@@ -401,6 +407,7 @@ void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool 
 	d.last_edit = f->last_edit;
 	d.size = f->size;
 	u64_dlog_set(dlog_i->id_name_lookup, item->file_id, d);
+	bloom_add(&dlog_i->bloom, &item->file_id, sizeof(item->file_id));
 	break;
       }
     case DATA_LOG_NEW_DIR:
@@ -408,6 +415,7 @@ void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool 
 	datalog_item_data d = {0};
 	d.is_dir = true;
 	u64_dlog_set(dlog_i->id_name_lookup, item->file_id, d);
+	bloom_add(&dlog_i->bloom, &item->file_id, sizeof(item->file_id));
 	break;
       }
     case DATA_LOG_NAME:
@@ -424,6 +432,7 @@ void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool 
 	  if(!register_only)
 	    mkdir(buf, S_IRWXU);
 	}
+	bloom_add(&dlog_i->bloom, &item->file_id, sizeof(item->file_id));
       
 	break;
       }
@@ -440,6 +449,7 @@ void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool 
 	    file = fopen(buf, "w+");
 	  ASSERT(file);
 	  fseek(file, da->offset, SEEK_SET);
+	  ASSERT(strcmp(dlog->root, "sync_1") != 0);
 	  fwrite(da->data, da->size, 1, file);
 	  fclose(file);	  
 	}
@@ -462,6 +472,7 @@ void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool 
 	break;
       }
     case DATA_LOG_NULL:
+      bloom_add(&dlog_i->bloom, &item->file_id, sizeof(item->file_id));
       break;
     }
 }

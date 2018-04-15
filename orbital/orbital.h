@@ -177,7 +177,7 @@ typedef struct __attribute__((__packed__)) {
 
 void datalog_initialize(datalog * dlog, const char * root_dir, const char * datalog_file, const char * commits_file);
 void datalog_update(datalog * dlog);
-void datalog_destroy(datalog *dlog);
+void datalog_destroy(datalog * dlog);
 u64 datalog_get_commit_count(datalog * dlog);
 
 typedef struct {
@@ -191,7 +191,7 @@ typedef struct {
 datalog_iterator datalog_iterator_create(datalog * dlog);
 const data_log_item_header * datalog_iterator_next(datalog_iterator * it);
 void datalog_iterator_destroy(datalog_iterator * it);
-void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool register_only);
+void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool register_only, bool write_commit);
 
 // fix file access times and sizes.
 void datalog_update_files(datalog * dlog);

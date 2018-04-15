@@ -337,7 +337,7 @@ void test_datalog(){
     logd("item: %p %i\n", item->file_id, item->type);
     cnt++;
   }
-  
+  iron_usleep(100000);
   data_log_generate_items("sync_1", f, _userdata);
 
   datalog dlog;
@@ -373,7 +373,7 @@ void test_datalog(){
       
     }
     if(!first){
-      datalog_apply_item(&dlog2, header, false);
+      datalog_apply_item(&dlog2, header, false, true);
       u64 commit_count2 = datalog_get_commit_count(&dlog2);
       logd("Commit count 2: %i\n", commit_count2);
       ASSERT(commit_count2 == (cnt + 1));
@@ -391,6 +391,11 @@ void test_datalog(){
   datalog_update_files(&dlog2);
 
   u64 c1 = datalog_get_commit_count(&dlog);
+  datalog_destroy(&dlog);
+  datalog_initialize(&dlog, "sync_1", "datalog_file", "commits_file");
+  datalog_update(&dlog);
+  u64 c1_2 = datalog_get_commit_count(&dlog);
+  ASSERT(c1 == c1_2);
   u64 c2 = datalog_get_commit_count(&dlog2);
   ASSERT(c1 == c2);
   {
@@ -416,11 +421,12 @@ void test_datalog(){
   }
   datalog_update(&dlog);
   write_string_to_file("11223344555", "sync_1/genfile");
-
+  logd("----\n");
   u64 c4_pre = datalog_get_commit_count(&dlog);
   datalog_update(&dlog);
   u64 c4 = datalog_get_commit_count(&dlog);
   ASSERT(c4 == c4_pre + 3);
+  return;
   ASSERT(c4 > c1);
   logd("C4: %i pre: %i\n", c4, c4_pre);
   system("sync");
@@ -466,7 +472,8 @@ int main(int argc, char ** argv){
   UNUSED(argv);
 
   logd("Test DATALOG\n");
-  test_datalog();
+  for(int i = 0; i < 100; i++)
+    test_datalog();
   return 0;
   
   for(size_t i = 0; i < 10; i++){
