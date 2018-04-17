@@ -6,7 +6,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <asm-generic/stat.h>
-
+#include <sys/time.h>
 #include <iron/types.h>
 #include <iron/process.h>
 #include <iron/time.h>
@@ -27,6 +27,21 @@ static void ensure_buffer_size(void ** ptr_to_buffer, size_t * current_size, siz
 // get the time in microseconds, because nanoseconds is probably too accurate.
 u64 get_file_time(const struct stat * stati){
   return stati->st_mtime * 1000000 + (stati->st_mtime_nsec / 1000);
+}
+
+int stat(const char *path, struct stat *buf);
+
+void set_file_time(const char * file, u64 stamp){
+  struct timeval times[2];
+  times[0].tv_sec = stamp / 1000000;
+  times[0].tv_usec = stamp % 1000000;
+  times[1] = times[0];
+  ASSERT(0 == utimes(file, times));
+
+  struct stat st;
+  stat(file, &st);
+  ASSERT(get_file_time(&st) == stamp);
+  
 }
 
 talk_dispatch * talk_dispatch_create(udpc_connection * con, bool is_server){

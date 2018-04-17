@@ -188,7 +188,7 @@ typedef struct {
   void * internal;
 }datalog_iterator;
 
-datalog_iterator datalog_iterator_create(datalog * dlog);
+void datalog_iterator_init(datalog * dlog, datalog_iterator * it);
 const data_log_item_header * datalog_iterator_next(datalog_iterator * it);
 void datalog_iterator_destroy(datalog_iterator * it);
 void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool register_only, bool write_commit);
@@ -208,3 +208,4 @@ void datalog_commit_iterator_destroy(datalog_commit_iterator * it);
 bool datalog_commit_iterator_next(datalog_commit_iterator * it, commit_item * out_item);
 
 commit_item datalog_get_commit(datalog * dlog, u64 index);
+void datalog_iterator_init_from(datalog_iterator * it, datalog * dlog, commit_item item);

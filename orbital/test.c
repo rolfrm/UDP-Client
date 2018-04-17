@@ -358,7 +358,8 @@ void test_datalog(){
   
   ASSERT(commit_count == cnt);
   logd("COMMIT COUNT: %i\n", commit_count);
-  datalog_iterator di = datalog_iterator_create(&dlog);
+  datalog_iterator di;
+  datalog_iterator_init(&dlog, &di);
   const data_log_item_header * header = NULL;
   bool first = true;
   cnt = 0;
@@ -385,9 +386,18 @@ void test_datalog(){
     cnt++;
     
   }
+  
   ASSERT(cnt == commit_count);
   datalog_iterator_destroy(&di);
   datalog_update_files(&dlog2);
+
+  {
+    var c6_1 = datalog_get_commit_count(&dlog2);
+    datalog_update(&dlog2);
+    var c6 = datalog_get_commit_count(&dlog2);
+    ASSERT(c6_1 == c6);
+  }
+  
 
   u64 c1 = datalog_get_commit_count(&dlog);
   datalog_destroy(&dlog);
@@ -418,6 +428,9 @@ void test_datalog(){
       ASSERT(c3 == c1);
     }
   }
+
+
+  
   datalog_update(&dlog);
   write_string_to_file("11223344555", "sync_1/genfile");
   logd("----\n");
@@ -425,7 +438,7 @@ void test_datalog(){
   datalog_update(&dlog);
   u64 c4 = datalog_get_commit_count(&dlog);
   ASSERT(c4 == c4_pre + 3);
-  return;
+
   ASSERT(c4 > c1);
   logd("C4: %i pre: %i\n", c4, c4_pre);
   system("sync");
@@ -438,26 +451,44 @@ void test_datalog(){
   logd("C4: %i %i\n", c4, c5);
   ASSERT(c5 > c4);
 
-  write_string_to_file("11223344555666777", "sync_2/genfile2");
+  //write_string_to_file("11223344555666777", "sync_2/genfile2");
   //datalog_update(&dlog2);
-
+  write_string_to_file("3322111223344555666", "sync_2/genfile54");
+  system("sync");
+  datalog_update(&dlog2);
+  var c6_1 = datalog_get_commit_count(&dlog2);
+  datalog_update(&dlog2);
+  var c6 = datalog_get_commit_count(&dlog2);
+  ASSERT(c6_1 == c6);
+  logd("C6: %i %i %i\n", c6, c5, c6_1);
+  
   u64 search_max = MIN(datalog_get_commit_count(&dlog2), datalog_get_commit_count(&dlog)) - 1;
-  logd("SEARCH MAX: %i\n", search_max);
+  logd("SEARCH MAX: %i %i %i\n", search_max, datalog_get_commit_count(&dlog2), datalog_get_commit_count(&dlog));
   while(search_max>0){
     var c1 = datalog_get_commit(&dlog, search_max);
     var c2 = datalog_get_commit(&dlog2, search_max);
     logd("%p %p\n", c1.hash, c2.hash);
-    if(c1.hash == c2.hash && c1.length == c2.length)
+    if(c1.hash == c2.hash && c1.length == c2.length && search_max)
       break;
     search_max -= 1;
   }
   logd("Found commit: %i\n", search_max);
   ASSERT(search_max > 0);
+
+
+  {
+    var c1 = datalog_get_commit(&dlog, search_max);
+    datalog_iterator it;
+    datalog_iterator_init_from(&it, &dlog, c1);
+    const data_log_item_header * hd = datalog_iterator_next(&it);
+    
+    logd("???? %p\n", hd);
+    while((hd = datalog_iterator_next(&it)) != NULL){
+      logd("%i\n", hd->type);
+    }
+    
+  }
   
-  write_string_to_file("11223344555666", "sync_2/genfile");
-  system("sync");
-  datalog_update(&dlog2);
-  var c6 = datalog_get_commit_count(&dlog2);
   ASSERT(c6 > c5);
   
   datalog_destroy(&dlog);

@@ -25,6 +25,7 @@
 
 data_log_null null_item = {.header = {.file_id = 0, .type = DATA_LOG_NULL}};
 u64 get_file_time(const struct stat64 * stati);
+void set_file_time(const char * file, u64 stamp);
 
 typedef struct{
   const char * name;
@@ -257,7 +258,8 @@ void datalog_update(datalog * dlog){
       dlog_i->datalog_file = fopen(dlog->datalog_file, "w+");
     u64 cnt = datalog_get_commit_count(dlog);
     if(cnt != 0){
-      datalog_iterator it = datalog_iterator_create(dlog);
+      datalog_iterator it;
+      datalog_iterator_init(dlog, &it);
       const data_log_item_header * nxt = NULL;
       while((nxt = datalog_iterator_next(&it)) != NULL)
 	datalog_apply_item(dlog, nxt, true, false);
@@ -265,6 +267,7 @@ void datalog_update(datalog * dlog){
       datalog_iterator_destroy(&it);
       fseek(dlog_i->commits_file, 0, SEEK_END);
       fseek(dlog_i->datalog_file, 0, SEEK_END);
+
     }
   }
 
@@ -308,12 +311,20 @@ size_t stream_length(FILE * f){
   return end;
 }
 
-datalog_iterator datalog_iterator_create(datalog * dlog){
-  datalog_iterator it;
-  it.dlog = dlog;
-  it.head = NULL;
-  it.offset = 0;
-  it.commit_index = 0;
+void datalog_iterator_init2(datalog * dlog, datalog_iterator * it, u64 commit_offset, u64 commit_index){
+  datalog_iterator_init(dlog, it);
+  var it2 = (datalog_iterator_internal*) it->internal;
+  fseek(it2->commits_file, -commit_index * sizeof(commit_item), SEEK_END);
+  fseek(it2->datalog_file, -commit_offset, SEEK_END);
+}
+
+
+void datalog_iterator_init(datalog * dlog, datalog_iterator * it){
+  
+  it->dlog = dlog;
+  it->head = NULL;
+  it->offset = 0;
+  it->commit_index = 0;
 
   datalog_iterator_internal iti = {0};
   datalog_internal * dlog_i = dlog->internal;
@@ -322,9 +333,7 @@ datalog_iterator datalog_iterator_create(datalog * dlog){
   iti.commits_file = fopen(dlog->commits_file, "r");
   iti.datalog_file = fopen(dlog->datalog_file, "r");
 
-  it.internal = IRON_CLONE(iti);
-  
-  return it;
+  it->internal = IRON_CLONE(iti);
 }
 
 const data_log_item_header * datalog_iterator_next(datalog_iterator * it){
@@ -494,10 +503,7 @@ void datalog_update_files(datalog * dlog){
     if(item->is_dir || item->name == NULL) continue;
     char * fpath = translate_dir(dlog, item->name);
     ASSERT(truncate64(fpath, item->size) == 0);
-    struct utimbuf time;
-    time.actime = item->last_edit;
-    time.modtime = item->last_edit;
-    utime(fpath, &time);
+    set_file_time(fpath, item->last_edit); 
   }
 }
 
@@ -517,6 +523,24 @@ void datalog_commit_iterator_init(datalog_commit_iterator * it, datalog * dlog, 
   }
   if(reverse)
     fseek(internal->file, -sizeof(commit_item), SEEK_END);
+}
+
+void datalog_iterator_init_from(datalog_iterator * it, datalog * dlog, commit_item item){
+  datalog_commit_iterator it2;
+  datalog_commit_iterator_init(&it2, dlog, true);
+  size_t size = 0;
+  size_t index =0;
+  while(true){
+    commit_item _item;
+    var ok = datalog_commit_iterator_next(&it2, &_item);
+    if(!ok) return;
+    if(_item.hash == item.hash && _item.length == item.length){
+      break;
+    }
+    size += _item.length;
+    index += 1;
+  }
+  datalog_iterator_init2(dlog, it, size, index);
 }
 
 void datalog_commit_iterator_destroy(datalog_commit_iterator * it){
@@ -557,9 +581,10 @@ commit_item datalog_get_commit(datalog * dlog, u64 index){
   u64 cnt = datalog_get_commit_count(dlog);
   ASSERT(index < cnt);
   var opos = ftell(dlog_i->commits_file);
-  fseek(dlog_i->commits_file, index * sizeof(commit_item), SEEK_END);
+  fseek(dlog_i->commits_file, index * sizeof(commit_item), SEEK_SET);
   commit_item out;
-  fread(&out, sizeof(commit_item), 1, dlog_i->commits_file);
+  size_t rcnt = fread(&out, sizeof(commit_item), 1, dlog_i->commits_file);
+  ASSERT(1 == rcnt);
   fseek(dlog_i->commits_file, opos, SEEK_SET);
   return out;
 }
