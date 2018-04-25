@@ -276,6 +276,7 @@ void datalog_update(datalog * dlog){
   gen.id_name_lookup = dlog_i->id_name_lookup;
   
   void add_item(const data_log_item_header * item, void * userdata){
+
     datalog_apply_item((datalog *) userdata, item, true, true);
   }
   
@@ -317,7 +318,6 @@ void datalog_iterator_init2(datalog * dlog, datalog_iterator * it, u64 commit_of
   fseek(it2->commits_file, -commit_index * sizeof(commit_item), SEEK_END);
   fseek(it2->datalog_file, -commit_offset, SEEK_END);
 }
-
 
 void datalog_iterator_init(datalog * dlog, datalog_iterator * it){
   
@@ -499,7 +499,7 @@ u64 datalog_get_commit_count(datalog * dlog){
 void datalog_update_files(datalog * dlog){
   datalog_internal * dlog_i = dlog->internal;
   for(size_t i = 0; i < dlog_i->id_name_lookup->count; i++){
-    datalog_item_data * item = dlog_i->id_name_lookup->value + i;
+    datalog_item_data * item = dlog_i->id_name_lookup->value + i + 1;
     if(item->is_dir || item->name == NULL) continue;
     char * fpath = translate_dir(dlog, item->name);
     ASSERT(truncate64(fpath, item->size) == 0);
