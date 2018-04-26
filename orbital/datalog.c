@@ -255,12 +255,15 @@ void handle_item_init(const data_log_item_header * item, void * userdata){
   u64 len = datalog_cpy_to_buffer(item, &dlog_i->write_buffer, &dlog_i->write_buffer_size);
   fwrite(dlog_i->write_buffer, len, 1, dlog_i->datalog_file);
   XXH64_reset(dlog_i->state, 0);
+  commit_item prev_commit = datalog_get_prev_commit(dlog);
+  XXH64_update(dlog_i->state, &prev_commit.hash, sizeof(prev_commit.hash));
   XXH64_update(dlog_i->state, dlog_i->write_buffer, len);
   
   unsigned long long const hash = XXH64_digest(dlog_i->state);
   commit_item ci;
   ci.hash = hash;
   ci.length = len;
+
   fwrite(&ci, sizeof(ci), 1, dlog_i->commits_file);
   
 }
@@ -410,7 +413,7 @@ const data_log_item_header * datalog_iterator_next0(FILE * f, void ** buffer, si
   
 }
 
-const data_log_item_header * datalog_iterator_next(datalog_iterator * it){
+const data_log_item_header * datalog_iterator_next2(datalog_iterator * it, commit_item * commit){
 
   // TODO: Change it so that datalog_iterator does not need to read from the commits file
   // this makes it complicated to save partial states.
@@ -418,10 +421,10 @@ const data_log_item_header * datalog_iterator_next(datalog_iterator * it){
   datalog_iterator_internal * iti = it->internal;
   if(iti == NULL)
     return NULL;
-  commit_item ci;
+
   ASSERT(stream_length(iti->commits_file) > 0);
   ASSERT(stream_length(iti->datalog_file) > 0);
-  int read = fread(&ci, sizeof(ci), 1, iti->commits_file);
+  int read = fread(commit, sizeof(*commit), 1, iti->commits_file);
   
   var hd =  datalog_iterator_next0(iti->datalog_file, &iti->buffer, &iti->buffer_size);
   if(hd == NULL)
@@ -430,6 +433,13 @@ const data_log_item_header * datalog_iterator_next(datalog_iterator * it){
     datalog_iterator_destroy(it);
   return hd;
 }
+
+const data_log_item_header * datalog_iterator_next(datalog_iterator * it){
+  commit_item item;
+  return datalog_iterator_next2(it, &item);
+}
+
+
 
 void datalog_iterator_destroy(datalog_iterator * it){
   datalog_iterator_internal * iti = it->internal;
@@ -503,7 +513,6 @@ void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool 
 	    file = fopen(buf, "w+");
 	  ASSERT(file);
 	  fseek(file, da->offset, SEEK_SET);
-	  ASSERT(strcmp(dlog->root, "sync_1") != 0);
 	  fwrite(da->data, da->size, 1, file);
 	  fclose(file);	  
 	}
@@ -534,12 +543,24 @@ void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool 
 
 u64 datalog_get_commit_count(datalog * dlog){
   datalog_internal * dlog_i = dlog->internal;
-  var opos = ftell(dlog_i->commits_file);
-  fseek(dlog_i->commits_file, 0, SEEK_END);
   var epos = ftell(dlog_i->commits_file);
-  fseek(dlog_i->commits_file, opos, SEEK_SET);
   return epos / sizeof(commit_item);
 }
+
+void datalog_assert_is_at_end(datalog * dlog){
+  datalog_internal * dlog_i = dlog->internal;
+
+  void runcheck(FILE * f){
+    var epos = ftell(f);
+    fseek(f, 0, SEEK_END);
+    var epos2 = ftell(f);
+    ASSERT(epos == epos2);
+  }
+  runcheck(dlog_i->commits_file);
+  runcheck(dlog_i->datalog_file);
+  
+}
+
 
 void datalog_update_files(datalog * dlog){
   datalog_internal * dlog_i = dlog->internal;
@@ -557,9 +578,12 @@ typedef struct{
 }datalog_commit_iterator_internal;
 
 void datalog_commit_iterator_init(datalog_commit_iterator * it, datalog * dlog, bool reverse){
+  datalog_internal * dlog_i = dlog->internal;
+  fflush(dlog_i->commits_file);
   it->dlog = dlog;
   it->reverse = reverse;
   datalog_commit_iterator_internal * internal = it->internal = alloc(sizeof(datalog_commit_iterator_internal));
+
   internal->file = fopen(dlog->commits_file, "r");
   if(internal->file == NULL){
     dealloc(internal);
@@ -585,6 +609,7 @@ void datalog_iterator_init_from(datalog_iterator * it, datalog * dlog, commit_it
     size += _item.length;
     index += 1;
   }
+
   datalog_iterator_init2(dlog, it, size, index);
 }
 
@@ -620,6 +645,7 @@ bool datalog_commit_iterator_next(datalog_commit_iterator * it, commit_item * it
   return false;
 }
 
+
 commit_item datalog_get_commit(datalog * dlog, u64 index){
   datalog_internal * dlog_i = dlog->internal;
   
@@ -633,6 +659,15 @@ commit_item datalog_get_commit(datalog * dlog, u64 index){
   fseek(dlog_i->commits_file, opos, SEEK_SET);
   return out;
 }
+
+commit_item datalog_get_prev_commit(datalog * dlog){
+  u64 cnt = datalog_get_commit_count(dlog);
+  if(cnt == 0)
+    return (commit_item){0};
+  ASSERT(cnt > 0);
+  return datalog_get_commit(dlog, cnt - 1);
+}
+
 
 void datalog_rewind_to(datalog * dlog, datalog_iterator * it){
   datalog_internal * dlog_i = dlog->internal;

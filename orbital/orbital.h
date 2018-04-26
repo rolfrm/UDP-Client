@@ -193,6 +193,7 @@ typedef struct {
 void datalog_iterator_init(datalog * dlog, datalog_iterator * it);
 const data_log_item_header * datalog_iterator_next(datalog_iterator * it);
 const data_log_item_header * datalog_iterator_next0(FILE * f, void ** buffer, size_t * buffer_size);
+const data_log_item_header * datalog_iterator_next2(datalog_iterator * it, commit_item * out_commit);
 void datalog_iterator_destroy(datalog_iterator * it);
 void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool register_only, bool write_commit);
 
@@ -211,6 +212,14 @@ void datalog_commit_iterator_destroy(datalog_commit_iterator * it);
 bool datalog_commit_iterator_next(datalog_commit_iterator * it, commit_item * out_item);
 
 commit_item datalog_get_commit(datalog * dlog, u64 index);
+// Starts iterating from a specific commit item. Iteration started this way can only be forward.
+// the first commit retrieved by next will be the commit specified in 'item'.
 void datalog_iterator_init_from(datalog_iterator * it, datalog * dlog, commit_item item);
 void datalog_cpy_to_file(datalog * dlog, const data_log_item_header * item, FILE * file);
 void datalog_rewind_to(datalog * dlog, datalog_iterator * it2);
+commit_item datalog_get_prev_commit(datalog * dlog);
+
+
+
+// debug
+void datalog_assert_is_at_end(datalog * dlog);
