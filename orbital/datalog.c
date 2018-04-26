@@ -101,6 +101,7 @@ void datalog_generate_items2(datalog_item_generator * gen, const char * director
 	// if its refound, only care if its newer than the old one.
 	if(d.last_edit >= f1.last_edit && d.size == f1.size)
 	  return 0;
+	logd("refound but edited: %s %i %i %i %i\n", d.name, d.last_edit, f1.last_edit, d.size, f1.size);
       }
       FILE * f = fopen(name, "r");
       if(f == NULL){
@@ -191,7 +192,7 @@ static size_t item_size(const data_log_item_header * item){
   case DATA_LOG_DELETED:
     return sizeof(data_log_deleted);
   default:
-    ERROR("Invalid operation");
+    ERROR("Invalid operation: %i", item->type);
     return 0;
   }
 }

@@ -553,6 +553,8 @@ void test_datalog(){
   u64 c6_p = c6;
   u64 c5_p = c5;
   for(int i = 0; i < 10; i++){
+    datalog_update(&dlog);
+    datalog_update(&dlog2);
     do_merge(&dlog, &dlog2);
     do_merge(&dlog2, &dlog);
     //since they are already merged no change should be needed.
@@ -564,6 +566,126 @@ void test_datalog(){
   datalog_destroy(&dlog);
   datalog_destroy(&dlog2);  
 }
+
+
+void run_persisted_dirs(){
+  system("rm -r sync_2");
+  system("mkdir sync_2");
+  system("rm sync_1/genfile");
+  
+  void * _userdata = (void*) 5;
+  u64 cnt = 0;
+  void f(const data_log_item_header * item, void * userdata){
+    
+    ASSERT(5 == (u64)userdata);
+    logd("item: %p %i\n", item->file_id, item->type);
+    cnt++;
+  }
+  data_log_generate_items("sync_1", f, _userdata);
+
+  datalog dlog;
+
+  datalog dlog2;
+  datalog_initialize(&dlog2, "sync_2", "datalog_file_2", "commits_file_2");  
+
+  remove(dlog2.commits_file);
+  remove(dlog2.datalog_file);
+  
+  datalog_initialize(&dlog, "sync_1", "datalog_file", "commits_file");
+  remove(dlog.commits_file);
+  remove(dlog.datalog_file);
+  system("sync");
+
+  
+  // commits from dlog are merged into dlog2.
+  void do_merge(datalog * dlog, datalog * dlog2){
+    u64 dlog_cnt(){
+      return datalog_get_commit_count(dlog);
+    }
+    u64 dlog2_cnt(){
+      return datalog_get_commit_count(dlog2);
+    }
+
+    u64 search_max = MIN(dlog2_cnt(), dlog_cnt()) - 1;
+
+    while(search_max>0){
+      var c1 = datalog_get_commit(dlog, search_max);
+      var c2 = datalog_get_commit(dlog2, search_max);
+      if(c1.hash == c2.hash && c1.length == c2.length && search_max)
+	break;
+      search_max -= 1;
+    }
+    
+    const char * buff_file = "sync2_buffer";
+    remove(buff_file);
+
+    if(false){
+      // it might not be necessesary to handle this edge case.
+      if(dlog_cnt() -1 == search_max)
+	return; // nothing to do.
+    }
+    var c1 = datalog_get_commit(dlog, search_max);
+    var c2 = datalog_get_commit(dlog2, search_max);
+    if(dlog2_cnt() > (search_max + 1) && dlog_cnt() > (search_max + 1)){
+      var c1 = datalog_get_commit(dlog, search_max +1);
+      var c2 = datalog_get_commit(dlog2, search_max +1);
+      ASSERT(c1.hash != c2.hash);
+    }
+    
+    ASSERT(c1.hash == c2.hash);
+    ASSERT(c1.length == c2.length);
+    
+    {
+      datalog_iterator it2;
+      datalog_iterator_init_from(&it2, dlog2, c1);
+      const data_log_item_header * hd = datalog_iterator_next(&it2);
+      FILE * buffer_file = fopen(buff_file, "w");
+      ASSERT(buffer_file);
+      while((hd = datalog_iterator_next(&it2)) != NULL){
+	datalog_cpy_to_file(dlog2, hd, buffer_file);
+      }
+      fclose(buffer_file);
+      datalog_iterator_init_from(&it2, dlog2, c1);
+      datalog_rewind_to(dlog2, &it2);
+    }
+
+    datalog_iterator it;
+    datalog_iterator_init_from(&it, dlog, c1);
+    
+    const data_log_item_header * hd = NULL;
+    
+    while((hd = datalog_iterator_next(&it)) != NULL){
+      datalog_apply_item(dlog2, hd, false, true);
+    }
+
+    u64 mc1 = datalog_get_commit_count(dlog);
+    u64 mc2 = datalog_get_commit_count(dlog2);
+    ASSERT(mc1 == mc2);
+    void apply_item_from_backup(const data_log_item_header * item, void * userdata){
+      UNUSED(userdata);
+      datalog_apply_item(dlog2, item, false, true);
+    }
+    
+    datalog_generate_from_file(buff_file, apply_item_from_backup, NULL);
+  }
+  datalog_update_files(&dlog2);
+  datalog_update_files(&dlog);
+  while(true){
+    logd("merge...\n");
+    datalog_update(&dlog2);
+    datalog_update(&dlog);
+    do_merge(&dlog, &dlog2);
+    do_merge(&dlog2, &dlog);
+    datalog_update_files(&dlog2);
+    datalog_update_files(&dlog);
+    iron_usleep(100000);
+  }
+
+  
+  datalog_destroy(&dlog);
+  datalog_destroy(&dlog2);  
+}
+
 
 
 // UDPC sample program.
@@ -593,8 +715,8 @@ int main(int argc, char ** argv){
     test_safesend();
 
   logd("Test DATALOG\n");
-  for(int i = 0; i < 10; i++)
+  for(int i = 0; i < 1; i++)
     test_datalog();
-  
+  run_persisted_dirs();
   return 0;
 }
