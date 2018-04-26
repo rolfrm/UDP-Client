@@ -162,6 +162,8 @@ extern data_log_null null_item;
 
 void data_log_generate_items(const char * directory, void (* f)(const data_log_item_header * item, void * userdata), void * userdata);
 
+void datalog_generate_from_file(const char * file, void (* f)(const data_log_item_header * item, void * userdata), void * userdata);
+
 
 typedef struct{
   const char * root;
@@ -190,6 +192,7 @@ typedef struct {
 
 void datalog_iterator_init(datalog * dlog, datalog_iterator * it);
 const data_log_item_header * datalog_iterator_next(datalog_iterator * it);
+const data_log_item_header * datalog_iterator_next0(FILE * f, void ** buffer, size_t * buffer_size);
 void datalog_iterator_destroy(datalog_iterator * it);
 void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool register_only, bool write_commit);
 
@@ -209,3 +212,5 @@ bool datalog_commit_iterator_next(datalog_commit_iterator * it, commit_item * ou
 
 commit_item datalog_get_commit(datalog * dlog, u64 index);
 void datalog_iterator_init_from(datalog_iterator * it, datalog * dlog, commit_item item);
+void datalog_cpy_to_file(datalog * dlog, const data_log_item_header * item, FILE * file);
+void datalog_rewind_to(datalog * dlog, datalog_iterator * it2);

@@ -477,16 +477,45 @@ void test_datalog(){
 
 
   {
+    const char * buff_file = "sync2_buffer";
+    UNUSED(buff_file);
     var c1 = datalog_get_commit(&dlog, search_max);
+    
+    
+    {
+      datalog_iterator it2;
+      datalog_iterator_init_from(&it2, &dlog2, c1);
+      const data_log_item_header * hd = datalog_iterator_next(&it2);
+      FILE * buffer_file = fopen(buff_file, "w");
+      ASSERT(buffer_file);
+      while((hd = datalog_iterator_next(&it2)) != NULL){
+	logd("writing to file: %i\n", hd->type);
+	datalog_cpy_to_file(&dlog2, hd, buffer_file);
+      }
+      fclose(buffer_file);
+      datalog_iterator_init_from(&it2, &dlog2, c1);
+      datalog_rewind_to(&dlog2, &it2);
+    }
+    
     datalog_iterator it;
     datalog_iterator_init_from(&it, &dlog, c1);
+
+
+    
     const data_log_item_header * hd = datalog_iterator_next(&it);
     
     logd("???? %p\n", hd);
     while((hd = datalog_iterator_next(&it)) != NULL){
       logd("%i\n", hd->type);
+      datalog_apply_item(&dlog2, hd, false, true);
+    }
+
+    void apply_item_from_backup(const data_log_item_header * item, void * userdata){
+      UNUSED(userdata);
+      datalog_apply_item(&dlog2, item, false, true);
     }
     
+    datalog_generate_from_file(buff_file, apply_item_from_backup, NULL);
   }
   
   ASSERT(c6 > c5);

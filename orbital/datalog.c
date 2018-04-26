@@ -155,6 +155,10 @@ typedef struct{
   FILE * datalog_file;
   char prevhash[8];
   XXH64_state_t*  state;
+
+  void * write_buffer;
+  size_t write_buffer_size;
+  
 }datalog_internal;
 
 
@@ -169,6 +173,8 @@ void datalog_initialize(datalog * dlog, const char * root_dir, const char * data
   datalog_internal * dlog_i = alloc(sizeof(datalog_internal));
   dlog_i->state = XXH64_createState();
   dlog_i->id_name_lookup = u64_dlog_create(NULL);
+  dlog_i->write_buffer = NULL;
+  dlog_i->write_buffer_size = 0;
   bloom_init(&dlog_i->bloom, 1000000, 0.01);
   dlog_i->commits_file = NULL;
   dlog->internal = dlog_i;
@@ -190,16 +196,13 @@ static size_t item_size(const data_log_item_header * item){
   }
 }
 
-void handle_item_init(const data_log_item_header * item, void * userdata){
-
-  datalog * dlog = userdata;
-  datalog_internal * dlog_i = dlog->internal;
-  XXH64_reset(dlog_i->state, 0);
-  u32 totallen = 0;
+size_t datalog_cpy_to_buffer(const data_log_item_header * item, void ** buffer, size_t * buffer_size){
+  u64 offset = 0;
   void write(const void * data, size_t len){
-    fwrite(data, len, 1, dlog_i->datalog_file);
-    XXH64_update(dlog_i->state, data, len);
-    totallen += (u32)len;
+    if(len + offset > *buffer_size)
+      *buffer = ralloc(*buffer, (*buffer_size = (len + offset)));
+    memcpy(*buffer + offset, data, len);
+    offset += len;
   }
   
   switch(item->type){
@@ -211,9 +214,7 @@ void handle_item_init(const data_log_item_header * item, void * userdata){
   case DATA_LOG_DELETED:
     {
       size_t s = item_size(item);
-      fwrite(item, s, 1, dlog_i->datalog_file);
-      XXH64_update(dlog_i->state, item, s);
-      totallen = s;
+      write(item, s);
       break;
     };
   case DATA_LOG_NAME:
@@ -237,10 +238,29 @@ void handle_item_init(const data_log_item_header * item, void * userdata){
   default:
     break;
   }
+  return offset;
+}
+
+void datalog_cpy_to_file(datalog * dlog, const data_log_item_header * item, FILE * file){
+  datalog_internal * dlog_i = dlog->internal;
+  u64 len = datalog_cpy_to_buffer(item, &dlog_i->write_buffer, &dlog_i->write_buffer_size);
+  fwrite(dlog_i->write_buffer, len, 1, file);
+}
+
+void handle_item_init(const data_log_item_header * item, void * userdata){
+
+  datalog * dlog = userdata;
+  datalog_internal * dlog_i = dlog->internal;
+
+  u64 len = datalog_cpy_to_buffer(item, &dlog_i->write_buffer, &dlog_i->write_buffer_size);
+  fwrite(dlog_i->write_buffer, len, 1, dlog_i->datalog_file);
+  XXH64_reset(dlog_i->state, 0);
+  XXH64_update(dlog_i->state, dlog_i->write_buffer, len);
+  
   unsigned long long const hash = XXH64_digest(dlog_i->state);
   commit_item ci;
   ci.hash = hash;
-  ci.length = totallen;
+  ci.length = len;
   fwrite(&ci, sizeof(ci), 1, dlog_i->commits_file);
   
 }
@@ -299,8 +319,6 @@ typedef struct{
   FILE * datalog_file;
   void * buffer;
   size_t buffer_size;
-  void * buffer2;
-  size_t buffer2_size;
   
 }datalog_iterator_internal;
 
@@ -336,8 +354,68 @@ void datalog_iterator_init(datalog * dlog, datalog_iterator * it){
   it->internal = IRON_CLONE(iti);
 }
 
-const data_log_item_header * datalog_iterator_next(datalog_iterator * it){
+const data_log_item_header * datalog_iterator_next0(FILE * f, void ** buffer, size_t * buffer_size){
+
+  int read(void * out, size_t len){
+    return fread(out, len, 1, f);
+  }
   
+  if(*buffer_size < sizeof(data_log_item_header))
+    *buffer = ralloc(*buffer, (*buffer_size = sizeof(data_log_item_header) * 4));
+  
+  if(read(*buffer, sizeof(data_log_item_header)) < 1)
+    return NULL;
+  data_log_item_header * hd = *buffer;
+
+  size_t s;
+  
+  if(hd->type == DATA_LOG_NAME){
+    s = sizeof(data_log_name) - sizeof(void *);
+  }else if(hd->type == DATA_LOG_DATA){
+    s = sizeof(data_log_data) - sizeof(void *);;
+  }else{
+    s = item_size(hd);
+  }
+
+  size_t rest = s - sizeof(data_log_item_header);
+  if(*buffer_size < s)
+    *buffer = ralloc(*buffer, (*buffer_size = s * 4));
+  
+  if(rest > 0)
+    ASSERT(read(*buffer + sizeof(data_log_item_header), rest) > 0);
+  
+  if(hd->type == DATA_LOG_NAME){
+    size_t l = 0;
+    read(&l, sizeof(l));
+    if(*buffer_size < sizeof(data_log_name) + l + 1)
+      *buffer = ralloc(*buffer, *buffer_size = (sizeof(data_log_name) + l + 1));
+    read(*buffer + sizeof(data_log_name), l);
+    data_log_name * dl = *buffer;
+    char * name =*buffer + sizeof(data_log_name); 
+    dl->name = name;
+    name[l] = 0;
+  }else if(hd->type == DATA_LOG_DATA){
+    data_log_data * dld = *buffer;
+    size_t l = dld->size;
+    if(*buffer_size < sizeof(data_log_data) + l){
+      *buffer = ralloc(*buffer, *buffer_size = (sizeof(data_log_data) + l));
+      dld = *buffer;
+    }
+    read(*buffer + sizeof(data_log_data), l);
+    
+    dld->data = *buffer + sizeof(data_log_data);
+  }
+  
+
+  return *buffer;
+  
+}
+
+const data_log_item_header * datalog_iterator_next(datalog_iterator * it){
+
+  // TODO: Change it so that datalog_iterator does not need to read from the commits file
+  // this makes it complicated to save partial states.
+
   datalog_iterator_internal * iti = it->internal;
   if(iti == NULL)
     return NULL;
@@ -345,51 +423,19 @@ const data_log_item_header * datalog_iterator_next(datalog_iterator * it){
   ASSERT(stream_length(iti->commits_file) > 0);
   ASSERT(stream_length(iti->datalog_file) > 0);
   int read = fread(&ci, sizeof(ci), 1, iti->commits_file);
-
-  if(read ==  1){
-    if(iti->buffer_size < ci.length)
-      iti->buffer = ralloc(iti->buffer, (iti->buffer_size = ci.length));
-
-    ASSERT(fread(iti->buffer, ci.length, 1, iti->datalog_file) > 0);
-    data_log_item_header * hd = iti->buffer;
-    if(hd->type == DATA_LOG_NAME){
-      size_t * l = iti->buffer + sizeof(data_log_name) - sizeof(void *);
-      size_t strlen = *l;
-      char * str = iti->buffer + sizeof(data_log_name) - sizeof(void *) + sizeof(*l);
-      size_t s2 = sizeof(data_log_name) + strlen + 1;
-      if(iti->buffer2_size < s2)
-	iti->buffer2 = ralloc(iti->buffer2, (iti->buffer2_size = s2));
-      data_log_name * dname = iti->buffer2;
-      *dname = ((data_log_name *) iti->buffer)[0];
-      memcpy(iti->buffer2 + sizeof(data_log_name), str, *l);
-      char * _str = iti->buffer2 + sizeof(data_log_name);
-      _str[strlen] = 0;
-      dname->name = _str;
-      return iti->buffer2;
-    }else if(hd->type == DATA_LOG_DATA){
-      void * data = iti->buffer + sizeof(data_log_data) - sizeof(void *);
-      var dl = ((data_log_data *) iti->buffer)[0];
-      dl.data = data;
-      
-      if(iti->buffer2_size < sizeof(data_log_data))
-	iti->buffer2 = ralloc(iti->buffer2, (iti->buffer2_size = sizeof(data_log_data)));
-      ((data_log_data *) iti->buffer2)[0] = dl;
-      return iti->buffer2;
-    }else{
-      return iti->buffer;
-    }
-    
-  }else{
+  
+  var hd =  datalog_iterator_next0(iti->datalog_file, &iti->buffer, &iti->buffer_size);
+  if(hd == NULL)
+    ASSERT(read == 0);
+  if(hd == NULL)
     datalog_iterator_destroy(it);
-    return NULL;
-  }
+  return hd;
 }
 
 void datalog_iterator_destroy(datalog_iterator * it){
   datalog_iterator_internal * iti = it->internal;
   if(iti == NULL) return;
   dealloc(iti->buffer);
-  dealloc(iti->buffer2);
   fclose(iti->commits_file);
   fclose(iti->datalog_file);
   dealloc(iti);
@@ -588,3 +634,26 @@ commit_item datalog_get_commit(datalog * dlog, u64 index){
   fseek(dlog_i->commits_file, opos, SEEK_SET);
   return out;
 }
+
+void datalog_rewind_to(datalog * dlog, datalog_iterator * it){
+  datalog_internal * dlog_i = dlog->internal;
+  datalog_iterator_internal * iti = it->internal;
+  fseek(dlog_i->datalog_file, ftell(iti->datalog_file), SEEK_SET);
+  fseek(dlog_i->commits_file, ftell(iti->commits_file), SEEK_SET);
+  datalog_iterator_destroy(it);
+}
+
+void datalog_generate_from_file(const char * file, void (* fcn)(const data_log_item_header * item, void * userdata), void * userdata){
+  FILE * f = fopen(file, "r");
+  void * buffer = NULL;
+  size_t len = 0;
+  const data_log_item_header * hd = NULL;
+  while(NULL != (hd = datalog_iterator_next0(f,&buffer, &len))){
+    fcn(hd, userdata);
+  }
+  if(buffer != NULL)
+    dealloc(buffer);
+  fclose(f);
+      
+}
+
