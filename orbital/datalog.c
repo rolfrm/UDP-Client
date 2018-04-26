@@ -611,7 +611,7 @@ void datalog_iterator_init_from(datalog_iterator * it, datalog * dlog, commit_it
   }
 
   datalog_iterator_init2(dlog, it, size, index);
-}
+} 
 
 void datalog_commit_iterator_destroy(datalog_commit_iterator * it){
   ASSERT(it->internal != NULL);
@@ -691,3 +691,12 @@ void datalog_generate_from_file(const char * file, void (* fcn)(const data_log_i
       
 }
 
+void datalog_print_commits(datalog * dlog, bool reverse){
+    datalog_commit_iterator it;
+    datalog_commit_iterator_init(&it,dlog, reverse);
+    commit_item item;
+    int idx = 0;
+    while(datalog_commit_iterator_next(&it, &item)){
+      logd("%i #%p (%i)\n", idx++, item.hash, item.length);
+    }
+  }

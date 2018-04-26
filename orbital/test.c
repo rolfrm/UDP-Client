@@ -416,16 +416,7 @@ void test_datalog(){
   //do_end_check();
   ASSERT(c1 == c2);
 
-  void print_commits(datalog * dlog){
-    datalog_commit_iterator it;
-    datalog_commit_iterator_init(&it,dlog, false);
-    commit_item item;
-    int idx = 0;
-    while(datalog_commit_iterator_next(&it, &item)){
-      logd("%i #%p (%i)\n", idx++, item.hash, item.length);
-    }
-  }
-  
+    
   {
     datalog_commit_iterator it[2];
     for(int i = 0; i < 2; i++){
@@ -458,7 +449,7 @@ void test_datalog(){
   ASSERT(c4 == c4_pre + 3);
 
   ASSERT(c4 > c1);
-  logd("C4: %i pre: %i\n", c4, c4_pre);
+
   system("sync");
   
   write_string_to_file("11223344555666", "sync_1/genfile");
@@ -466,7 +457,6 @@ void test_datalog(){
   
   datalog_update(&dlog);
   var c5 = datalog_get_commit_count(&dlog);
-  logd("C4: %i %i\n", c4, c5);
   ASSERT(c5 > c4);
 
   //write_string_to_file("11223344555666777", "sync_2/genfile2");
@@ -478,7 +468,6 @@ void test_datalog(){
   datalog_update(&dlog2);
   var c6 = datalog_get_commit_count(&dlog2);
   ASSERT(c6_1 == c6);
-  logd("C6: %i %i %i\n", c6, c5, c6_1);
 
   // commits from dlog are merged into dlog2.
   void do_merge(datalog * dlog, datalog * dlog2){
@@ -489,19 +478,15 @@ void test_datalog(){
       return datalog_get_commit_count(dlog2);
     }
 
-    
-    
     u64 search_max = MIN(dlog2_cnt(), dlog_cnt()) - 1;
-    logd("SEARCH MAX: %i %i %i\n", search_max, datalog_get_commit_count(dlog2), datalog_get_commit_count(dlog));
+
     while(search_max>0){
       var c1 = datalog_get_commit(dlog, search_max);
       var c2 = datalog_get_commit(dlog2, search_max);
-      logd("%p %p\n", c1.hash, c2.hash);
       if(c1.hash == c2.hash && c1.length == c2.length && search_max)
 	break;
       search_max -= 1;
     }
-    logd("Found commit: %i\n", search_max);
     ASSERT(search_max > 0);
 
     
@@ -516,18 +501,10 @@ void test_datalog(){
     var c1 = datalog_get_commit(dlog, search_max);
     var c2 = datalog_get_commit(dlog2, search_max);
     if(dlog2_cnt() > (search_max + 1) && dlog_cnt() > (search_max + 1)){
-      logd("SI! %i %i %i\n", search_max, dlog2_cnt(), dlog_cnt());
       var c1 = datalog_get_commit(dlog, search_max +1);
       var c2 = datalog_get_commit(dlog2, search_max +1);
       ASSERT(c1.hash != c2.hash);
     }
-    logd("DLOG:\n");
-    print_commits(dlog);
-
-    logd("DLOG 2:\n");
-    print_commits(dlog2);
-
-    logd("\n\n");
     
     ASSERT(c1.hash == c2.hash);
     ASSERT(c1.length == c2.length);
@@ -539,14 +516,11 @@ void test_datalog(){
       FILE * buffer_file = fopen(buff_file, "w");
       ASSERT(buffer_file);
       while((hd = datalog_iterator_next(&it2)) != NULL){
-	logd("writing to file: %i\n", hd->type);
 	datalog_cpy_to_file(dlog2, hd, buffer_file);
       }
       fclose(buffer_file);
       datalog_iterator_init_from(&it2, dlog2, c1);
-      logd("before rewind: %i\n", dlog2_cnt());
       datalog_rewind_to(dlog2, &it2);
-      logd("after rewind: %i\n", dlog2_cnt());
     }
 
     datalog_iterator it;
@@ -555,13 +529,11 @@ void test_datalog(){
     const data_log_item_header * hd = NULL;//datalog_iterator_next(&it);
     
     while((hd = datalog_iterator_next(&it)) != NULL){
-      logd("applying a commit..\n");
       datalog_apply_item(dlog2, hd, false, true);
     }
 
     u64 mc1 = datalog_get_commit_count(dlog);
     u64 mc2 = datalog_get_commit_count(dlog2);
-    logd("mc1 : %i\n mc2: %i\n", mc1, mc2);
     ASSERT(mc1 == mc2);
     void apply_item_from_backup(const data_log_item_header * item, void * userdata){
       UNUSED(userdata);
@@ -580,11 +552,13 @@ void test_datalog(){
   ASSERT(c6 == c5);
   u64 c6_p = c6;
   u64 c5_p = c5;
-  do_merge(&dlog, &dlog2);
-  do_merge(&dlog2, &dlog);
-  //since they are already merged no change should be needed.
-  ASSERT(c6_p == c6);
-  ASSERT(c5_p == c5);
+  for(int i = 0; i < 10; i++){
+    do_merge(&dlog, &dlog2);
+    do_merge(&dlog2, &dlog);
+    //since they are already merged no change should be needed.
+    ASSERT(c6_p == c6);
+    ASSERT(c5_p == c5);
+  }
 
   
   datalog_destroy(&dlog);

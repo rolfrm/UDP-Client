@@ -223,3 +223,4 @@ commit_item datalog_get_prev_commit(datalog * dlog);
 
 // debug
 void datalog_assert_is_at_end(datalog * dlog);
+void datalog_print_commits(datalog * dlog, bool reverse);
