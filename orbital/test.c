@@ -449,7 +449,6 @@ void test_datalog(){
   }
 
 
-  
   datalog_update(&dlog);
   write_string_to_file("11223344555", "sync_1/genfile");
   logd("----\n");
@@ -516,7 +515,7 @@ void test_datalog(){
     }
     var c1 = datalog_get_commit(dlog, search_max);
     var c2 = datalog_get_commit(dlog2, search_max);
-    if(dlog2_cnt() >= search_max && dlog_cnt() >= search_max){
+    if(dlog2_cnt() > (search_max + 1) && dlog_cnt() > (search_max + 1)){
       logd("SI! %i %i %i\n", search_max, dlog2_cnt(), dlog_cnt());
       var c1 = datalog_get_commit(dlog, search_max +1);
       var c2 = datalog_get_commit(dlog2, search_max +1);
