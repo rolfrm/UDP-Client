@@ -376,7 +376,6 @@ const data_log_item_header * datalog_iterator_next0(FILE * f, void ** buffer, si
   }else{
     s = item_size(hd);
   }
-
   size_t rest = s - sizeof(data_log_item_header);
   if(*buffer_size < s)
     *buffer = ralloc(*buffer, (*buffer_size = s * 4));

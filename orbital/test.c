@@ -502,7 +502,7 @@ void test_datalog(){
 
 
     
-    const data_log_item_header * hd = datalog_iterator_next(&it);
+    const data_log_item_header * hd = NULL;//datalog_iterator_next(&it);
     
     logd("???? %p\n", hd);
     while((hd = datalog_iterator_next(&it)) != NULL){
@@ -510,12 +510,17 @@ void test_datalog(){
       datalog_apply_item(&dlog2, hd, false, true);
     }
 
+    u64 mc1 = datalog_get_commit_count(&dlog);
+    u64 mc2 = datalog_get_commit_count(&dlog2);
+    ASSERT(mc1 == mc2);
     void apply_item_from_backup(const data_log_item_header * item, void * userdata){
       UNUSED(userdata);
       datalog_apply_item(&dlog2, item, false, true);
     }
     
     datalog_generate_from_file(buff_file, apply_item_from_backup, NULL);
+    c5 = datalog_get_commit_count(&dlog);
+    c6 = datalog_get_commit_count(&dlog2);
   }
   
   ASSERT(c6 > c5);
