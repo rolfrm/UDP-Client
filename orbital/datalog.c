@@ -17,7 +17,6 @@
 #include <udpc.h>
 #include "orbital.h"
 #include "bloom.h"
-#include "murmurhash2.h"
 #include <dirent.h>
 #include <ftw.h>
 #include <icydb.h>
@@ -25,13 +24,13 @@
 
 data_log_null null_item = {.header = {.file_id = 0, .type = DATA_LOG_NULL}};
 u64 get_file_time(const struct stat64 * stati);
-void set_file_time(const char * file, u64 stamp);
 
 typedef struct{
   const char * name;
   u64 size;
   data_log_timestamp last_edit;
   bool is_dir;
+  u64 hash;
 }datalog_item_data;
 
 #include "u64_dlog.h"
@@ -40,6 +39,7 @@ typedef struct{
 typedef struct {
   struct bloom * bloom;
   u64_dlog * id_name_lookup;
+  XXH64_state_t * hasher;
 }datalog_item_generator;
 
 void datalog_generate_items2(datalog_item_generator * gen, const char * directory, void (* f)(const data_log_item_header * item, void * userdata), void * userdata){
@@ -55,11 +55,9 @@ void datalog_generate_items2(datalog_item_generator * gen, const char * director
   const char * fst = NULL;
   int fstlen = 0;
   u64 gethash(const char * name, u64 prev){
-    u64 out;
-    u32 * hsh = (u32 *) &out;
-    hsh[0] = murmurhash2(name, strlen(name), (u32)prev);
-    hsh[1] = murmurhash2(name, strlen(name), (u32)(prev + 0xFFFF));
-    return out;
+    XXH64_reset(gen->hasher, prev);
+    XXH64_update(gen->hasher, name, strlen(name));
+    return XXH64_digest(gen->hasher);
   }
 
   u64 getid(const char * name, datalog_item_data * d){
@@ -94,24 +92,38 @@ void datalog_generate_items2(datalog_item_generator * gen, const char * director
     bool is_file = flags == 0;
     bool is_dir = flags == 1;
     if(is_file){
-      data_log_new_file f1 = { .size = stati->st_size,.last_edit = get_file_time(stati)};
+      data_log_new_file f1 = { .size = stati->st_size, .hash = 0};
+      u64 filetime = get_file_time(stati);
       datalog_item_data d = {0};
       f1.header.file_id = getid(name + fstlen + 1, &d);
+      FILE * f;
       if(d.name != NULL){
 	// if its refound, only care if its newer than the old one.
-	if(d.last_edit >= f1.last_edit && d.size == f1.size)
-	  return 0;
-	logd("refound but edited: %s %i %i %i %i\n", d.name, d.last_edit, f1.last_edit, d.size, f1.size);
+	if(d.last_edit >= filetime && d.size == f1.size)
+	  return 0;	
       }
-      FILE * f = fopen(name, "r");
+      f = fopen(name, "r");
+
+      u64 hash = orbital_file_hash2(f);
+      if(hash == d.hash){
+	// if the hash is also the same as the current version we dont care.
+	d.last_edit = filetime;
+	fclose(f);
+	return 0;
+      }else{
+	fseek(f, 0, SEEK_SET);
+      }
+
       if(f == NULL){
 	return 0;
       }
       f1.header.type = DATA_LOG_NEW_FILE;
+      f1.hash = hash;
+      d.hash = hash;
       yield(&f1.header);
       emit_name(f1.header.file_id);
 
-      u8 buffer[1024 * 1];
+      u8 buffer[1024 * 4];
       u32 read = 0;
       while((read = fread(buffer, 1, sizeof(buffer), f))){
 	data_log_data data = {
@@ -145,8 +157,10 @@ void data_log_generate_items(const char * directory, void (* f)(const data_log_i
   bloom_init(&bloom, 1000000, 0.01);
   datalog_item_generator gen = {0};
   gen.bloom = &bloom;
+  gen.hasher = XXH64_createState();
   datalog_generate_items2(&gen, directory, f, userdata);
   bloom_free(&bloom);
+  XXH64_freeState(gen.hasher);
 }
 
 typedef struct{
@@ -297,6 +311,7 @@ void datalog_update(datalog * dlog){
 
   datalog_item_generator gen = {0};
   gen.bloom = &dlog_i->bloom;
+  gen.hasher = dlog_i->state;
   gen.id_name_lookup = dlog_i->id_name_lookup;
   
   void add_item(const data_log_item_header * item, void * userdata){
@@ -314,6 +329,8 @@ void datalog_destroy(datalog * dlog){
     fclose(dlog_i->commits_file);
     fclose(dlog_i->datalog_file);
   }
+  dealloc((void *)dlog->commits_file);
+  dealloc((void *)dlog->datalog_file);
   dealloc(dlog_i);
   dlog->internal = NULL;
 }
@@ -469,7 +486,8 @@ void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool 
 	
 	data_log_new_file * f = (data_log_new_file *) item;
 	datalog_item_data d = {0};
-	d.last_edit = f->last_edit;
+	d.hash = f->hash;
+	logd("Updating hash %p\n", f->hash);
 	d.size = f->size;
 	u64_dlog_set(dlog_i->id_name_lookup, item->file_id, d);
 	bloom_add(&dlog_i->bloom, &item->file_id, sizeof(item->file_id));
@@ -561,7 +579,7 @@ void datalog_assert_is_at_end(datalog * dlog){
   runcheck(dlog_i->datalog_file);
   
 }
-
+u64 get_file_time2(const char * path);
 
 void datalog_update_files(datalog * dlog){
   datalog_internal * dlog_i = dlog->internal;
@@ -570,7 +588,7 @@ void datalog_update_files(datalog * dlog){
     if(item->is_dir || item->name == NULL) continue;
     char * fpath = translate_dir(dlog, item->name);
     ASSERT(truncate64(fpath, item->size) == 0);
-    set_file_time(fpath, item->last_edit); 
+    item->last_edit = get_file_time2(fpath);
   }
 }
 
@@ -604,11 +622,12 @@ void datalog_iterator_init_from(datalog_iterator * it, datalog * dlog, commit_it
     commit_item _item;
     var ok = datalog_commit_iterator_next(&it2, &_item);
     if(!ok) return;
+    
+    size += _item.length;
+    index += 1;
     if(_item.hash == item.hash && _item.length == item.length){
       break;
     }
-    size += _item.length;
-    index += 1;
   }
 
   datalog_iterator_init2(dlog, it, size, index);
@@ -695,9 +714,24 @@ void datalog_generate_from_file(const char * file, void (* fcn)(const data_log_i
 void datalog_print_commits(datalog * dlog, bool reverse){
     datalog_commit_iterator it;
     datalog_commit_iterator_init(&it,dlog, reverse);
+    u64 cnt = datalog_get_commit_count(dlog);
     commit_item item;
-    int idx = 0;
+    datalog_iterator it2;
+    int idx = cnt - 1;
+    if(!reverse)
+      idx = 0;
     while(datalog_commit_iterator_next(&it, &item)){
-      logd("%i #%p (%i)\n", idx++, item.hash, item.length);
+      datalog_iterator_init_from(&it2,dlog, item);
+      const data_log_item_header * hd = datalog_iterator_next(&it2);
+      ASSERT(hd != NULL);
+      
+      logd("%i #%p (%i) Type: %i\n", idx, item.hash, item.length, hd->type);
+      if(hd->type == DATA_LOG_NEW_FILE){
+	data_log_new_file * nf = (data_log_new_file *) hd;
+	logd("Hash: %p Size:\n", nf->hash, nf->size);
+	
+      }
+      datalog_iterator_destroy(&it2);
+      idx = idx + (reverse ? -1 : 1);
     }
   }

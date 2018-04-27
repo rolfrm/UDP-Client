@@ -5,7 +5,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
-#include <asm-generic/stat.h>
+#include <sys/stat.h>
+#include <linux/stat.h>
 #include <sys/time.h>
 #include <iron/types.h>
 #include <iron/process.h>
@@ -16,7 +17,7 @@
 
 #include <udpc.h>
 #include "orbital.h"
-
+#include <xxhash.h>
 static void ensure_buffer_size(void ** ptr_to_buffer, size_t * current_size, size_t wanted_size){
   if(*current_size < wanted_size){
     *current_size = wanted_size;
@@ -26,21 +27,34 @@ static void ensure_buffer_size(void ** ptr_to_buffer, size_t * current_size, siz
 
 // get the time in microseconds, because nanoseconds is probably too accurate.
 u64 get_file_time(const struct stat * stati){
-  return stati->st_mtime * 1000000 + (stati->st_mtime_nsec / 1000);
+  return stati->st_mtime;
 }
 
-int stat(const char *path, struct stat *buf);
-
-void set_file_time(const char * file, u64 stamp){
-  struct timeval times[2];
-  times[0].tv_sec = stamp / 1000000;
-  times[0].tv_usec = stamp % 1000000;
-  times[1] = times[0];
-  ASSERT(0 == utimes(file, times));
-
+u64 get_file_time2(const char * path){
   struct stat st;
-  stat(file, &st);
-  ASSERT(get_file_time(&st) == stamp);
+  stat(path, &st);
+  return st.st_mtime * 1000000;
+}
+
+u64 orbital_file_hash2(FILE * f){
+  char buffer[1024 * 4];
+  int read = 0;
+  var state = XXH64_createState();
+  while((read = fread(buffer, 1, sizeof(buffer), f))){
+    XXH64_update(state, buffer, read);
+  }
+
+  u64 hash = XXH64_digest(state);
+  XXH64_freeState(state);
+  return hash;
+}
+
+u64 orbital_file_hash(const char * file){
+  FILE * f = fopen(file, "r");
+  u64 hash = orbital_file_hash2(f);
+  fclose(f);
+  
+  return hash;
   
 }
 

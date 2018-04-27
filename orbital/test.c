@@ -415,7 +415,8 @@ void test_datalog(){
   UNUSED(do_end_check);
   //do_end_check();
   ASSERT(c1 == c2);
-
+  datalog_print_commits(&dlog, false);
+  datalog_print_commits(&dlog2, false);
     
   {
     datalog_commit_iterator it[2];
@@ -544,6 +545,9 @@ void test_datalog(){
     c5 = datalog_get_commit_count(dlog);
     c6 = datalog_get_commit_count(dlog2);
   }
+  system("sync");
+  datalog_update(&dlog);
+  datalog_update(&dlog2);
   
   do_merge(&dlog, &dlog2);
   

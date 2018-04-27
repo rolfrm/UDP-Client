@@ -118,6 +118,7 @@ typedef enum{
   DATA_LOG_DATA = 4,
   DATA_LOG_NULL = 5,
   DATA_LOG_DELETED = 6
+  // DATALOG_DEDUPLICATE = 7 // implement de-duplication by pointing back to a previous datalog entry.
 }data_log_item_type;
  
 typedef  struct  __attribute__((__packed__)) {
@@ -129,8 +130,8 @@ typedef u64 data_log_timestamp;
 
 typedef struct __attribute__((__packed__)){
   data_log_item_header header;
-  data_log_timestamp last_edit;
   u64 size;
+  u64 hash;
 }data_log_new_file;
 
 typedef struct __attribute__((__packed__)){
@@ -219,8 +220,12 @@ void datalog_cpy_to_file(datalog * dlog, const data_log_item_header * item, FILE
 void datalog_rewind_to(datalog * dlog, datalog_iterator * it2);
 commit_item datalog_get_prev_commit(datalog * dlog);
 
+// utils.
+u64 orbital_file_hash(const char * file);
+u64 orbital_file_hash2(FILE * f);
 
 
 // debug
 void datalog_assert_is_at_end(datalog * dlog);
 void datalog_print_commits(datalog * dlog, bool reverse);
+
