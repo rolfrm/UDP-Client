@@ -40,6 +40,7 @@ u64 orbital_file_hash2(FILE * f){
   char buffer[1024 * 4];
   int read = 0;
   var state = XXH64_createState();
+  XXH64_reset(state, 0);
   while((read = fread(buffer, 1, sizeof(buffer), f))){
     XXH64_update(state, buffer, read);
   }
@@ -53,9 +54,7 @@ u64 orbital_file_hash(const char * file){
   FILE * f = fopen(file, "r");
   u64 hash = orbital_file_hash2(f);
   fclose(f);
-  
   return hash;
-  
 }
 
 talk_dispatch * talk_dispatch_create(udpc_connection * con, bool is_server){

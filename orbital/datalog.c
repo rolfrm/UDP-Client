@@ -89,6 +89,7 @@ void datalog_generate_items2(datalog_item_generator * gen, const char * director
       return 0;
     }
 
+
     bool is_file = flags == 0;
     bool is_dir = flags == 1;
     if(is_file){
@@ -315,7 +316,6 @@ void datalog_update(datalog * dlog){
   gen.id_name_lookup = dlog_i->id_name_lookup;
   
   void add_item(const data_log_item_header * item, void * userdata){
-
     datalog_apply_item((datalog *) userdata, item, true, true);
   }
   
@@ -487,7 +487,6 @@ void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool 
 	data_log_new_file * f = (data_log_new_file *) item;
 	datalog_item_data d = {0};
 	d.hash = f->hash;
-	logd("Updating hash %p\n", f->hash);
 	d.size = f->size;
 	u64_dlog_set(dlog_i->id_name_lookup, item->file_id, d);
 	bloom_add(&dlog_i->bloom, &item->file_id, sizeof(item->file_id));
