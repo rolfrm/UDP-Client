@@ -24,6 +24,7 @@
 
 data_log_null null_item = {.header = {.file_id = 0, .type = DATA_LOG_NULL}};
 u64 get_file_time(const struct stat64 * stati);
+u64 get_file_time2(const char * fpath);
 
 typedef struct{
   const char * name;
@@ -31,10 +32,13 @@ typedef struct{
   data_log_timestamp last_edit;
   bool is_dir;
   u64 hash;
+  bool deleted;
 }datalog_item_data;
 
 #include "u64_dlog.h"
 #include "u64_dlog.c"
+#include "u64_lookup.h"
+#include "u64_lookup.c"
 
 typedef struct {
   struct bloom * bloom;
@@ -43,6 +47,9 @@ typedef struct {
 }datalog_item_generator;
 
 void datalog_generate_items2(datalog_item_generator * gen, const char * directory, void (* f)(const data_log_item_header * item, void * userdata), void * userdata){
+  static __thread u64_lookup * lut = NULL;
+  if(lut == NULL)
+    lut = u64_lookup_create(NULL);
 
   void yield(data_log_item_header * header){
     f(header, userdata);
@@ -97,6 +104,7 @@ void datalog_generate_items2(datalog_item_generator * gen, const char * director
       u64 filetime = get_file_time(stati);
       datalog_item_data d = {0};
       f1.header.file_id = getid(name + fstlen + 1, &d);
+      u64_lookup_set(lut, f1.header.file_id);
       FILE * f;
       if(d.name != NULL){
 	// if its refound, only care if its newer than the old one.
@@ -124,7 +132,10 @@ void datalog_generate_items2(datalog_item_generator * gen, const char * director
       yield(&f1.header);
       emit_name(f1.header.file_id);
 
-      u8 buffer[1024 * 4];
+      data_log_deleted start = {.header = {.file_id = f1.header.file_id, .type = DATA_LOG_FILE_START}};
+      yield(&start.header);
+      
+      static __thread u8 buffer[1024 * 32];
       u32 read = 0;
       while((read = fread(buffer, 1, sizeof(buffer), f))){
 	data_log_data data = {
@@ -134,12 +145,16 @@ void datalog_generate_items2(datalog_item_generator * gen, const char * director
 	  .data = buffer};
 	yield(&data.header);
       }
+      start.header.type = DATA_LOG_FILE_END;
+      yield(&start.header);
+      
       fclose(f);
     }
     else if(is_dir){
       data_log_new_dir d;
       datalog_item_data d2 = {0};
       d.header.file_id = getid(name + fstlen + 1, &d2);
+      u64_lookup_set(lut, d.header.file_id);
       if(d2.name != NULL) return 0;
       d.header.type = DATA_LOG_NEW_DIR;
       yield((data_log_item_header *) &d);
@@ -149,6 +164,21 @@ void datalog_generate_items2(datalog_item_generator * gen, const char * director
     return 0;
   }
   ftw64(directory, lookup, 10000);
+  if(gen->id_name_lookup != NULL){
+    for(u64 i = 0; i < gen->id_name_lookup->count; i++){
+      u64 key = gen->id_name_lookup->key[i + 1];
+      if(u64_lookup_try_get(lut, &key) == false){
+	var item = gen->id_name_lookup->value + i + 1;
+	if(!item->deleted){
+	  logd("Found %s deleted.\n", item->name);
+	  data_log_deleted del = {.header = {.file_id = key, .type = DATA_LOG_DELETED}};
+	  yield(&del.header);
+	}
+      }
+    }
+  }
+  u64_lookup_clear(lut);
+
 }
 
 
@@ -204,8 +234,14 @@ static size_t item_size(const data_log_item_header * item){
     return sizeof(data_log_new_dir);
   case DATA_LOG_NULL:
     return sizeof(data_log_null);
+    
+  case DATA_LOG_FILE_START:
+  case DATA_LOG_FILE_END:
+    // fall through
   case DATA_LOG_DELETED:
+    
     return sizeof(data_log_deleted);
+
   default:
     ERROR("Invalid operation: %i", item->type);
     return 0;
@@ -224,6 +260,8 @@ size_t datalog_cpy_to_buffer(const data_log_item_header * item, void ** buffer, 
   switch(item->type){
   case DATA_LOG_NEW_FILE:
   case DATA_LOG_NEW_DIR:
+  case DATA_LOG_FILE_START:
+  case DATA_LOG_FILE_END:
   case DATA_LOG_NULL:
 
     // fall through
@@ -500,6 +538,27 @@ void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool 
 	bloom_add(&dlog_i->bloom, &item->file_id, sizeof(item->file_id));
 	break;
       }
+    case DATA_LOG_FILE_END:
+      if(!register_only){
+	
+	datalog_item_data d;
+	ASSERT(u64_dlog_try_get(dlog_i->id_name_lookup, (void *) &item->file_id, &d));
+	char * fpath = translate_dir(dlog, d.name);
+	struct stat st;
+	stat(fpath, &st);
+	
+	if(access(fpath, F_OK ) == -1)  // ensure file exists.
+	  fclose(fopen(fpath, "a"));
+	if((u64)st.st_size != d.size)
+	  ASSERT(truncate64(fpath, d.size) == 0);
+	u64 last_edit = get_file_time2(fpath);
+	if(last_edit != d.last_edit){
+	  d.last_edit = last_edit;
+	  u64_dlog_set(dlog_i->id_name_lookup, item->file_id, d);
+	}
+
+      }
+      break;
     case DATA_LOG_NAME:
       {
 	datalog_item_data d;
@@ -509,8 +568,9 @@ void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool 
 	ASSERT(u64_dlog_try_get(dlog_i->id_name_lookup, (void *)&item->file_id, &d));
 	d.name = fmtstr("%s", f->name);
 	u64_dlog_set(dlog_i->id_name_lookup, item->file_id, d);
+	
 	if(d.is_dir){
-	  char * buf = translate_dir(dlog, d.name);
+	  char * buf = translate_dir(dlog, d.name); 
 	  if(!register_only)
 	    mkdir(buf, S_IRWXU);
 	}
@@ -529,6 +589,7 @@ void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool 
 	  FILE * file = fopen(buf, "r+");
 	  if(file == NULL)
 	    file = fopen(buf, "w+");
+	  
 	  ASSERT(file);
 	  fseek(file, da->offset, SEEK_SET);
 	  fwrite(da->data, da->size, 1, file);
@@ -543,6 +604,8 @@ void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool 
 	datalog_item_data d;
 	ASSERT(u64_dlog_try_get(dlog_i->id_name_lookup,  (void *)&item->file_id, &d));
 	if(!register_only){
+	  logd("Deleting...\n");
+	  //ASSERT(d.deleted == false);
 	  char * buf = translate_dir(dlog, d.name);
 	  if(d.is_dir){
 	    rmdir(buf);
@@ -550,12 +613,17 @@ void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool 
 	    remove(buf);
 	  }
 	}
+	d.deleted = true;
+	u64_dlog_set(dlog_i->id_name_lookup,  item->file_id, d);
 	break;
       }
     case DATA_LOG_NULL:
       bloom_add(&dlog_i->bloom, &item->file_id, sizeof(item->file_id));
       break;
+    case DATA_LOG_FILE_START:
+      break;
     }
+
 }
 
 
@@ -577,18 +645,6 @@ void datalog_assert_is_at_end(datalog * dlog){
   runcheck(dlog_i->commits_file);
   runcheck(dlog_i->datalog_file);
   
-}
-u64 get_file_time2(const char * path);
-
-void datalog_update_files(datalog * dlog){
-  datalog_internal * dlog_i = dlog->internal;
-  for(size_t i = 0; i < dlog_i->id_name_lookup->count; i++){
-    datalog_item_data * item = dlog_i->id_name_lookup->value + i + 1;
-    if(item->is_dir || item->name == NULL) continue;
-    char * fpath = translate_dir(dlog, item->name);
-    ASSERT(truncate64(fpath, item->size) == 0);
-    item->last_edit = get_file_time2(fpath);
-  }
 }
 
 typedef struct{
@@ -628,12 +684,13 @@ void datalog_iterator_init_from(datalog_iterator * it, datalog * dlog, commit_it
       break;
     }
   }
-
+  datalog_commit_iterator_destroy(&it2);
   datalog_iterator_init2(dlog, it, size, index);
 } 
 
 void datalog_commit_iterator_destroy(datalog_commit_iterator * it){
-  ASSERT(it->internal != NULL);
+  if(it->internal == NULL)
+    return;
   datalog_commit_iterator_internal * itn = it->internal;
   fclose(itn->file);
   dealloc(itn);

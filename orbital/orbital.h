@@ -117,8 +117,12 @@ typedef enum{
   DATA_LOG_NAME = 3,
   DATA_LOG_DATA = 4,
   DATA_LOG_NULL = 5,
-  DATA_LOG_DELETED = 6
+  DATA_LOG_DELETED = 6,
   // DATALOG_DEDUPLICATE = 7 // implement de-duplication by pointing back to a previous datalog entry.
+  DATA_LOG_FILE_START = 8,
+  DATA_LOG_FILE_END = 9
+  
+  
 }data_log_item_type;
  
 typedef  struct  __attribute__((__packed__)) {
@@ -197,9 +201,6 @@ const data_log_item_header * datalog_iterator_next0(FILE * f, void ** buffer, si
 const data_log_item_header * datalog_iterator_next2(datalog_iterator * it, commit_item * out_commit);
 void datalog_iterator_destroy(datalog_iterator * it);
 void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool register_only, bool write_commit);
-
-// fix file access times and sizes.
-void datalog_update_files(datalog * dlog);
 
 typedef struct{
   datalog * dlog;
