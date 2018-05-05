@@ -558,11 +558,12 @@ void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool 
 	datalog_item_data d;
 	ASSERT(u64_dlog_try_get(dlog_i->id_name_lookup, (void *) &item->file_id, &d));
 	char * fpath = translate_dir(dlog, d.name);
-	struct stat st;
-	stat(fpath, &st);
 	
-	if(access(fpath, F_OK ) == -1)  // ensure file exists.
-	  fclose(fopen(fpath, "a"));
+	if(access(fpath, F_OK ) == -1)  
+	  fclose(fopen(fpath, "a")); // create an empty file if missing.
+	
+	struct stat st;
+	ASSERT(stat(fpath, &st) == 0);
 	if((u64)st.st_size != d.size)
 	  ASSERT(truncate64(fpath, d.size) == 0);
 	u64 last_edit = get_file_time2(fpath);
