@@ -3,18 +3,21 @@ LIB_SOURCES1 = orbital.c safesend.c reader_writer.c datalog.c
 LIB_SOURCES = $(addprefix orbital/, $(LIB_SOURCES1))
 CC = gcc
 TARGET = liborbital.so
-LIB_OBJECTS =$(LIB_SOURCES:.c=.o)
+LIB_OBJECTS =$(LIB_SOURCES:orbital/%.c=orbital/obj/%.o)
 LDFLAGS= -L. -L/usr/local/lib $(OPT) -Wextra #-lmcheck #-ftlo #setrlimit on linux 
 LIBS= -ldl -lm -ludpc -liron -licydb -lxxhash
 ALL= $(TARGET)
 CFLAGS = -Iinclude -I/usr/local/include -Isrc -std=c11 -c $(OPT) -D_GNU_SOURCE -Wall -Wextra -Werror=implicit-function-declaration -Wformat=0  -fdiagnostics-color -Wextra -Werror -Wwrite-strings -fbounds-check -Wparentheses  #-DDEBUG
 
-$(TARGET): $(LIB_OBJECTS)
+$(TARGET): directories $(LIB_OBJECTS)
 	$(CC) $(LDFLAGS) $(LIB_OBJECTS) $(LIBS) --shared -o $@ libbloom.a libxxhash.a
 
 all: $(ALL)
 
-.c.o: $(HEADERS)
+directories:
+	mkdir -p orbital/obj
+
+orbital/obj/%.o : orbital/%.c
 	$(CC) $(CFLAGS) -fPIC $< -o $@ -MMD -MF $@.depends 
 depend: h-depend
 clean:
@@ -23,5 +26,5 @@ clean:
 
 -include $(LIB_OBJECTS:.o=.o.depends)
 
-test: $(TARGET) orbital/test.o
-	$(CC) $(LDFLAGS) orbital/test.o $(LIBS) -lorbital -ludpc -Wl,-rpath,. -o orbital_test
+test: $(TARGET) orbital/obj/test.o
+	$(CC) $(LDFLAGS) orbital/obj/test.o $(LIBS) -lorbital -ludpc -Wl,-rpath,. -o orbital_test

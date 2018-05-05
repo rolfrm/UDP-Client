@@ -550,17 +550,30 @@ void test_datalog(){
   ASSERT(c6 > c5);
   do_merge(&dlog2, &dlog);
   ASSERT(c6 == c5);
-  u64 c6_p = c6;
-  u64 c5_p = c5;
-  for(int i = 0; i < 10; i++){
+
+  void update_cycle(){
     datalog_update(&dlog);
     datalog_update(&dlog2);
     do_merge(&dlog, &dlog2);
     do_merge(&dlog2, &dlog);
+  }
+  
+  u64 c6_p = c6;
+  u64 c5_p = c5;
+  for(int i = 0; i < 10; i++){
+    update_cycle();
     //since they are already merged no change should be needed.
     ASSERT(c6_p == c6);
     ASSERT(c5_p == c5);
   }
+
+  remove("sync_2/genfile54");
+  iron_usleep(10000);
+  update_cycle();
+  ASSERT(orbital_file_exists("sync_1/genfile54") == false);
+  write_string_to_file("3322111223344555666", "sync_2/genfile54");
+  update_cycle();
+  ASSERT(orbital_file_exists("sync_1/genfile54"));
 
   
   datalog_destroy(&dlog);
@@ -588,8 +601,7 @@ void run_persisted_dirs(){
   
   // commits from dlog are merged into dlog2.
   void do_merge(datalog * dlog, datalog * dlog2){
-    //    datalog_print_commits(dlog, false);
-    //datalog_print_commits(dlog2, false);
+
     u64 dlog_cnt(){
       return datalog_get_commit_count(dlog);
     }

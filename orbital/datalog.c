@@ -26,6 +26,10 @@ data_log_null null_item = {.header = {.file_id = 0, .type = DATA_LOG_NULL}};
 u64 get_file_time(const struct stat64 * stati);
 u64 get_file_time2(const char * fpath);
 
+bool orbital_file_exists(const char * path){
+  return access(path, F_OK ) == -1;
+}
+
 typedef struct{
   const char * name;
   u64 size;
@@ -104,17 +108,23 @@ void datalog_generate_items2(datalog_item_generator * gen, const char * director
       u64 filetime = get_file_time(stati);
       datalog_item_data d = {0};
       f1.header.file_id = getid(name + fstlen + 1, &d);
+      f1.header.type = DATA_LOG_NEW_FILE;
+      if(name != NULL){
+	logd(">>> %s %p\n", name, f1.header.file_id);
+      }
       u64_lookup_set(lut, f1.header.file_id);
       FILE * f;
-      if(d.name != NULL){
-	// if its refound, only care if its newer than the old one.
-	if(d.last_edit >= filetime && d.size == f1.size)
-	  return 0;	
+      if(d.deleted == false){
+	if(d.name != NULL){
+	  // if its refound, only care if its newer than the old one.
+	  if(d.last_edit >= filetime && d.size == f1.size)
+	    return 0;	
+	}
       }
       f = fopen(name, "r");
 
       u64 hash = orbital_file_hash2(f);
-      if(hash == d.hash){
+      if(hash == d.hash && d.deleted == false){
 	// if the hash is also the same as the current version we dont care.
 	d.last_edit = filetime;
 	fclose(f);
@@ -126,7 +136,7 @@ void datalog_generate_items2(datalog_item_generator * gen, const char * director
       if(f == NULL){
 	return 0;
       }
-      f1.header.type = DATA_LOG_NEW_FILE;
+
       f1.hash = hash;
       d.hash = hash;
       yield(&f1.header);
@@ -170,7 +180,6 @@ void datalog_generate_items2(datalog_item_generator * gen, const char * director
       if(u64_lookup_try_get(lut, &key) == false){
 	var item = gen->id_name_lookup->value + i + 1;
 	if(!item->deleted){
-	  logd("Found %s deleted.\n", item->name);
 	  data_log_deleted del = {.header = {.file_id = key, .type = DATA_LOG_DELETED}};
 	  yield(&del.header);
 	}
@@ -526,6 +535,11 @@ void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool 
 	datalog_item_data d = {0};
 	d.hash = f->hash;
 	d.size = f->size;
+	if(d.deleted){
+	  d.deleted = false;
+	  logd("Restoring..\n");
+	}
+	
 	u64_dlog_set(dlog_i->id_name_lookup, item->file_id, d);
 	bloom_add(&dlog_i->bloom, &item->file_id, sizeof(item->file_id));
 	break;
@@ -604,8 +618,7 @@ void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool 
 	datalog_item_data d;
 	ASSERT(u64_dlog_try_get(dlog_i->id_name_lookup,  (void *)&item->file_id, &d));
 	if(!register_only){
-	  logd("Deleting...\n");
-	  //ASSERT(d.deleted == false);
+	  ASSERT(d.deleted == false);
 	  char * buf = translate_dir(dlog, d.name);
 	  if(d.is_dir){
 	    rmdir(buf);

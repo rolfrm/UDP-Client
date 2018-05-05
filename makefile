@@ -3,31 +3,34 @@ LIB_SOURCES1 = udpc.c udp.c ssl.c service_descriptor.c udpc_utils.c udpc_stream_
 LIB_SOURCES = $(addprefix src/, $(LIB_SOURCES1))
 CC = gcc
 TARGET = libudpc.so
-LIB_OBJECTS =$(LIB_SOURCES:.c=.o)
+LIB_OBJECTS =$(LIB_SOURCES:src/%.c=obj/%.o)
 LDFLAGS= -L. $(OPT) -Wextra #-lmcheck #-ftlo #setrlimit on linux 
 LIBS= -ldl -lm -lssl -lcrypto -lpthread -liron
 ALL= $(TARGET) server rpc speed file share test  share_log_reader share_manager libudpc_net #web dir_scanner
 CFLAGS = -Iinclude -Isrc -std=c11 -c $(OPT) -D_GNU_SOURCE -Wall -Wextra -Werror=implicit-function-declaration -Wformat=0  -fdiagnostics-color -Wextra -Werror -Wwrite-strings -fbounds-check  #-DDEBUG
 
-$(TARGET): $(LIB_OBJECTS)
+$(TARGET): directories $(LIB_OBJECTS)
 	$(CC) $(LDFLAGS) $(LIB_OBJECTS) $(LIBS) --shared -o $@
 
 all: $(ALL)
 
-.c.o: $(HEADERS)
-	$(CC) $(CFLAGS) -fPIC $< -o $@ -MMD -MF $@.depends 
+obj/%.o : src/%.c
+	$(CC) $(CFLAGS) -fPIC $< -o $@ -MMD -MF $@.depends
+
+directories:
+	mkdir -p obj
+
 depend: h-depend
 clean:
-	rm -f $(LIB_OBJECTS) $(ALL) *.o.depends
-	rm -f main.o udpc_get.o udpc_speed_test.o udpc_file.o udpc_share.o
+	rm -f $(LIB_OBJECTS) $(ALL) obj/*.o.depends obj/*.o.depends
 
 -include $(LIB_OBJECTS:.o=.o.depends)
 
 libudpc_net: $(LIB_OBJECTS) udpc_net.o
 	$(CC) $(LDFLAGS) $(LIB_OBJECTS) udpc_net.o $(LIBS) -liron --shared -o libudpc_net.so 
 
-server: $(TARGET) src/main.o
-	$(CC) $(LDFLAGS) $(LIBS) src/main.o -ludpc -Wl,-rpath,. -o server
+server: $(TARGET) obj/main.o
+	$(CC) $(LDFLAGS) $(LIBS) obj/main.o -ludpc -Wl,-rpath,. -o server
 
 rpc: $(TARGET) udpc_get.o
 	$(CC) $(LDFLAGS) $(LIBS) udpc_get.o -ludpc -Wl,-rpath,. -o rpc

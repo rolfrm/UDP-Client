@@ -224,7 +224,7 @@ commit_item datalog_get_prev_commit(datalog * dlog);
 // utils.
 u64 orbital_file_hash(const char * file);
 u64 orbital_file_hash2(FILE * f);
-
+bool orbital_file_exists(const char * path);
 
 // debug
 void datalog_assert_is_at_end(datalog * dlog);
