@@ -13,9 +13,12 @@
 #include <iron/process.h>
 #include <iron/mem.h>
 #include <iron/fileio.h>
+#include <iron/datastream.h>
+#include <iron/datastream_server.h>
 #include <udpc.h>
 #include "orbital.h"
 
+datastream_server * dserv = NULL;
 
 void _error(const char * file, int line, const char * msg, ...){
   char buffer[1000];  
@@ -23,8 +26,11 @@ void _error(const char * file, int line, const char * msg, ...){
   va_start (arglist, msg);
   vsprintf(buffer,msg,arglist);
   va_end(arglist);
+  if(dserv != NULL)
+    datastream_server_flush(dserv);  
   loge("%s\n", buffer);
   loge("Got error at %s line %i\n", file,line);
+
   raise(SIGINT);
 }
 
@@ -690,15 +696,19 @@ void run_persisted_dirs(){
   datalog_destroy(&dlog2);  
 }
 
+static data_stream weblog = {.name = "orbital_test"};
 
 // UDPC sample program.
 int main(int argc, char ** argv){
   UNUSED(argc);
   UNUSED(argv);
-  
+  dserv = datastream_server_run();
+  datastream_server_wait_for_connect(dserv);
+  //iron_sleep(200000);
   for(size_t i = 0; i < 10; i++){
     test_reader();
-    logd("OK %i\n", i);
+    dmsg(weblog, "OK %i\n", i);
+    iron_usleep(100000);
   }
   
   
@@ -714,10 +724,12 @@ int main(int argc, char ** argv){
   //for(int i = 0; i < 1; i++)
     //test_conversation();
   logd("test_safesend\n");
+  dmsg(weblog, "test safesend");
   for(int i = 0; i < 1; i++)
     test_safesend();
 
   logd("Test DATALOG\n");
+  dmsg(weblog, "LAST??");
   for(int i = 0; i < 1; i++)
     test_datalog();
   run_persisted_dirs();

@@ -5,7 +5,7 @@ CC = gcc
 TARGET = liborbital.so
 LIB_OBJECTS =$(LIB_SOURCES:orbital/%.c=orbital/obj/%.o)
 LDFLAGS= -L. -L/usr/local/lib $(OPT) -Wextra #-lmcheck #-ftlo #setrlimit on linux 
-LIBS= -ldl -lm -ludpc -liron -licydb -lxxhash
+LIBS= -ldl -lm -ludpc -liron -licydb -lxxhash -ldatastream_server
 ALL= $(TARGET)
 CFLAGS = -Iinclude -I/usr/local/include -Isrc -std=c11 -c $(OPT) -D_GNU_SOURCE -Wall -Wextra -Werror=implicit-function-declaration -Wformat=0  -fdiagnostics-color -Wextra -Werror -Wwrite-strings -fbounds-check -Wparentheses  #-DDEBUG
 

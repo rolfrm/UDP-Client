@@ -27,7 +27,7 @@ u64 get_file_time(const struct stat64 * stati);
 u64 get_file_time2(const char * fpath);
 
 bool orbital_file_exists(const char * path){
-  return access(path, F_OK ) == -1;
+  return access(path, F_OK ) != -1;
 }
 
 typedef struct{
