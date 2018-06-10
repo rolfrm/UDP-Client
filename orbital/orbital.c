@@ -14,7 +14,7 @@
 #include <iron/mem.h>
 #include <iron/log.h>
 #include <iron/utils.h>
-
+#include <iron/datastream.h>
 #include <udpc.h>
 #include "orbital.h"
 #include <xxhash.h>

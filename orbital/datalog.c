@@ -14,6 +14,7 @@
 #include <iron/utils.h>
 #include <iron/process.h>
 #include <iron/mem.h>
+#include <iron/datastream.h>
 #include <udpc.h>
 #include "orbital.h"
 #include "bloom.h"
@@ -29,6 +30,8 @@ u64 get_file_time2(const char * fpath);
 bool orbital_file_exists(const char * path){
   return access(path, F_OK ) != -1;
 }
+
+data_stream dlog_verbose = {.name = "DLog Verbose"};
 
 typedef struct{
   const char * name;
@@ -330,7 +333,6 @@ void handle_item_init(const data_log_item_header * item, void * userdata){
   fwrite(&ci, sizeof(ci), 1, dlog_i->commits_file);
   
 }
-void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool register_only, bool write_commit);
 
 void datalog_update(datalog * dlog){
   datalog_internal * dlog_i = dlog->internal;
@@ -348,7 +350,7 @@ void datalog_update(datalog * dlog){
       datalog_iterator_init(dlog, &it);
       const data_log_item_header * nxt = NULL;
       while((nxt = datalog_iterator_next(&it)) != NULL)
-	datalog_apply_item(dlog, nxt, true, false);
+	datalog_apply_item(dlog, nxt, true, false, true);
       
       datalog_iterator_destroy(&it);
       fseek(dlog_i->commits_file, 0, SEEK_END);
@@ -363,7 +365,8 @@ void datalog_update(datalog * dlog){
   gen.id_name_lookup = dlog_i->id_name_lookup;
   
   void add_item(const data_log_item_header * item, void * userdata){
-    datalog_apply_item((datalog *) userdata, item, true, true);
+    dmsg(dlog_verbose, "DLOG change: %i", item->type);
+    datalog_apply_item((datalog *) userdata, item, true, true, true);
   }
   
   datalog_generate_items2(&gen, dlog->root, add_item, dlog);
@@ -522,7 +525,7 @@ static char * translate_dir(datalog * dlog, const char * path){
   return buffer;
 }
 
-void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool register_only, bool write_commit){
+void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool register_only, bool write_commit, bool check_delete){
   datalog_internal * dlog_i = dlog->internal;
   if(write_commit)
     handle_item_init(item, dlog);
@@ -537,7 +540,7 @@ void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool 
 	d.size = f->size;
 	if(d.deleted){
 	  d.deleted = false;
-	  logd("Restoring..\n");
+	  dmsg(dlog_verbose, "Restoring %i\n", item->file_id);
 	}
 	
 	u64_dlog_set(dlog_i->id_name_lookup, item->file_id, d);
@@ -619,7 +622,14 @@ void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool 
 	datalog_item_data d;
 	ASSERT(u64_dlog_try_get(dlog_i->id_name_lookup,  (void *)&item->file_id, &d));
 	if(!register_only){
-	  ASSERT(d.deleted == false);
+	  // if its already been deleted, then theres been an error.
+	  // unless its because we are rewinding a merge buffer
+	  //
+	  
+	  dmsg(dlog_verbose, "deleting (1) %i\n", item->file_id);
+	  //UNUSED(check_delete);
+	  if(check_delete)
+	    ASSERT(d.deleted == false); 
 	  char * buf = translate_dir(dlog, d.name);
 	  if(d.is_dir){
 	    rmdir(buf);
@@ -627,6 +637,7 @@ void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool 
 	    remove(buf);
 	  }
 	}
+	dmsg(dlog_verbose, "deleting (2)%i\n", item->file_id);
 	d.deleted = true;
 	u64_dlog_set(dlog_i->id_name_lookup,  item->file_id, d);
 	break;

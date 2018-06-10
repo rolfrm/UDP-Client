@@ -16,6 +16,7 @@
 #include <iron/datastream.h>
 #include <iron/datastream_server.h>
 #include <udpc.h>
+
 #include "orbital.h"
 
 datastream_server * dserv = NULL;
@@ -26,8 +27,10 @@ void _error(const char * file, int line, const char * msg, ...){
   va_start (arglist, msg);
   vsprintf(buffer,msg,arglist);
   va_end(arglist);
+  iron_sleep(0.2);
   if(dserv != NULL)
-    datastream_server_flush(dserv);  
+    datastream_server_flush(dserv);
+  iron_sleep(0.2);
   loge("%s\n", buffer);
   loge("Got error at %s line %i\n", file,line);
 
@@ -375,7 +378,7 @@ void test_datalog(){
   cnt = 0;
   while((header = datalog_iterator_next(&di)) != NULL){
     if(!first){
-      datalog_apply_item(&dlog2, header, false, true);
+      datalog_apply_item(&dlog2, header, false, true, true);
       u64 commit_count2 = datalog_get_commit_count(&dlog2);
       ASSERT(commit_count2 == (cnt + 1));
 
@@ -513,7 +516,7 @@ void test_datalog(){
     ASSERT(c1.hash == c2.hash);
     ASSERT(c1.length == c2.length);
     
-    {
+    { // make rewind buffer.
       datalog_iterator it2;
       datalog_iterator_init_from(&it2, dlog2, c1);
       const data_log_item_header * hd = datalog_iterator_next(&it2);
@@ -523,17 +526,26 @@ void test_datalog(){
 	datalog_cpy_to_file(dlog2, hd, buffer_file);
       }
       fclose(buffer_file);
+      datalog_iterator_destroy(&it2);
       datalog_iterator_init_from(&it2, dlog2, c1);
+      datalog_iterator_next(&it2);
       datalog_rewind_to(dlog2, &it2);
+      datalog_iterator_destroy(&it2);
     }
 
     datalog_iterator it;
     datalog_iterator_init_from(&it, dlog, c1);
     
-    const data_log_item_header * hd = NULL;//datalog_iterator_next(&it);
-    
+    const data_log_item_header * hd = datalog_iterator_next(&it);
+
+
+    // when merging we should not check delete actions.
+    // first of all a delete action might be replayed
+    // second of all the deleted file might be deleted in two places
+    // and hence would again cause double deletes.
     while((hd = datalog_iterator_next(&it)) != NULL){
-      datalog_apply_item(dlog2, hd, false, true);
+      dmsg(dlog_verbose,  "applying a commit.. %i\n", hd->type);
+      datalog_apply_item(dlog2, hd, false, true, true);
     }
 
     u64 mc1 = datalog_get_commit_count(dlog);
@@ -541,7 +553,8 @@ void test_datalog(){
     ASSERT(mc1 == mc2);
     void apply_item_from_backup(const data_log_item_header * item, void * userdata){
       UNUSED(userdata);
-      datalog_apply_item(dlog2, item, false, true);
+      dmsg(dlog_verbose,  "re-applying a commit.. %i\n", item->type);
+      datalog_apply_item(dlog2, item, false, true, false);
     }
     
     datalog_generate_from_file(buff_file, apply_item_from_backup, NULL);
@@ -558,9 +571,13 @@ void test_datalog(){
   ASSERT(c6 == c5);
 
   void update_cycle(){
+    dmsg(dlog_verbose, "DLOG UPDATE 1");
     datalog_update(&dlog);
+    dmsg(dlog_verbose, "DLOG UPDATE 2");
     datalog_update(&dlog2);
+    dmsg(dlog_verbose, "DLOG MERGE 1");
     do_merge(&dlog, &dlog2);
+    dmsg(dlog_verbose, "DLOG MERGE 2");
     do_merge(&dlog2, &dlog);
   }
   
@@ -573,11 +590,13 @@ void test_datalog(){
     ASSERT(c5_p == c5);
   }
 
+  // test delete and restore.
   remove("sync_2/genfile54");
   iron_usleep(10000);
   update_cycle();
   ASSERT(orbital_file_exists("sync_1/genfile54") == false);
   write_string_to_file("3322111223344555666", "sync_2/genfile54");
+  dmsg(dlog_verbose, "Created FILE AGAIN\n");
   update_cycle();
   ASSERT(orbital_file_exists("sync_1/genfile54"));
 
@@ -667,8 +686,8 @@ void run_persisted_dirs(){
     const data_log_item_header * hd = datalog_iterator_next(&it);//NULL;
     
     while((hd = datalog_iterator_next(&it)) != NULL){
-      logd("applying a commit.. %i\n", hd->type);
-      datalog_apply_item(dlog2, hd, false, true);
+      dmsg(dlog_verbose,  "applying a commit.. %i\n", hd->type);
+      datalog_apply_item(dlog2, hd, false, true, true);
     }
     datalog_iterator_destroy(&it);
     u64 mc1 = datalog_get_commit_count(dlog);
@@ -676,7 +695,8 @@ void run_persisted_dirs(){
     ASSERT(mc1 == mc2);
     void apply_item_from_backup(const data_log_item_header * item, void * userdata){
       UNUSED(userdata);
-      datalog_apply_item(dlog2, item, false, true);
+      dmsg(dlog_verbose,  "re-applying a commit.. %i\n", item->type);
+      datalog_apply_item(dlog2, item, false, true, false);
     }
     
     datalog_generate_from_file(buff_file, apply_item_from_backup, NULL);

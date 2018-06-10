@@ -200,7 +200,7 @@ const data_log_item_header * datalog_iterator_next(datalog_iterator * it);
 const data_log_item_header * datalog_iterator_next0(FILE * f, void ** buffer, size_t * buffer_size);
 const data_log_item_header * datalog_iterator_next2(datalog_iterator * it, commit_item * out_commit);
 void datalog_iterator_destroy(datalog_iterator * it);
-void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool register_only, bool write_commit);
+void datalog_apply_item(datalog * dlog, const data_log_item_header * item, bool register_only, bool write_commit, bool check_delete);
 
 typedef struct{
   datalog * dlog;
@@ -230,3 +230,4 @@ bool orbital_file_exists(const char * path);
 void datalog_assert_is_at_end(datalog * dlog);
 void datalog_print_commits(datalog * dlog, bool reverse);
 
+extern data_stream dlog_verbose;
