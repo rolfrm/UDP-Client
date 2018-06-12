@@ -203,6 +203,8 @@ void talk_dispatch_update(talk_dispatch * talk){
     if(talk->conversations[i] != NULL){
       if(talk->conversations[i]->finished){
       finished:
+	if(talk->conversations[i]->on_finished != NULL)
+	  talk->conversations[i]->on_finished(talk->conversations[i]);
 	dealloc(talk->conversations[i]);
 	talk->conversations[i] = NULL;
 	return;
@@ -231,10 +233,11 @@ void talk_dispatch_update(talk_dispatch * talk){
 
 conversation * talk_create_conversation(talk_dispatch * talk){
   iron_mutex_lock(talk->process_mutex);
-  conversation * c = alloc(sizeof(conversation));
+  conversation * c = alloc0(sizeof(conversation));
   c->talk = talk;
   c->user_data = NULL;
   c->finished = false;
+  
   for(size_t i = (talk->is_server ? 0 : 1) + 2; i < talk->conversation_count; i += 2){
     if(talk->conversations[i] == NULL){
       c->id = i * 2;

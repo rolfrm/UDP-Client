@@ -15,6 +15,7 @@ struct _conversation{
   
   void (* update)(conversation * self);
   void (* process)(conversation * self, void * data, int length);
+  void (* on_finished)(conversation * self);
 };
 
 // struct for managing multiple ongoing conversations.

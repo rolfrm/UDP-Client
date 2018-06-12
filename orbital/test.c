@@ -18,6 +18,7 @@
 #include <udpc.h>
 
 #include "orbital.h"
+static data_stream weblog = {.name = "orbital_test"};
 
 datastream_server * dserv = NULL;
 
@@ -137,6 +138,7 @@ void test_conversation(){
       c->process = count_up;
       iron_mutex_unlock(talk->process_mutex);
     }
+
     bool keep_processing = true;
     void process_talk(){
       while(keep_processing){
@@ -214,14 +216,20 @@ void test_safesend(){
       ASSERT(((i8 *)buffer)[0] != 3);
       safereceive_create(conv, wt);
     }
+    void on_finished(conversation * conv){
+      dmsg(dlog_verbose,  "Conversation finished: %i\n", conv->id);
+    }
     
     talk->new_conversation = new_conversation;
     void newconv(){
       conversation * c = talk_create_conversation(talk);
+      c->on_finished = on_finished;
       ASSERT(c->id != 0);
       dmsg(dlog_verbose,  "Creating new conversation: %i\n", c->id);
       safesend_create(c, rd);
     }
+
+
     bool keep_processing = true;
     void process_talk(){
       while(keep_processing)
@@ -715,8 +723,8 @@ void run_persisted_dirs(){
 
 
 void test_distributed(){
-  udpc_service * s1 = udpc_login2("test@0.0.0.0:s");
-  udpc_service * s2 = udpc_login2("test@0.0.0.0:s2");
+  udpc_service * s1 = udpc_login2("test3@0.0.0.0:s");
+  udpc_service * s2 = udpc_login2("test3@0.0.0.0:s2");
 
   typedef struct {
     udpc_service * serv;
@@ -724,8 +732,15 @@ void test_distributed(){
     const char * name;
     datalog dlog;
   }share_ctx;
+
+
+  typedef struct{
+    bool keep_processing;
+    talk_dispatch * talk;
+  }processing_context;
+
   
-  logd("both login: %p %p\n", s1, s2);
+  dmsg(weblog, "both login: %p %p\n", s1, s2);
   // initializing sync
   //   --> Ask for changes
   //     --> Binary search for changes.
@@ -737,47 +752,66 @@ void test_distributed(){
   // another thread handles the writes related stuff.
   
   void * process_service(share_ctx * ctx){
+
+    dmsg(weblog, "Starting ctx :%p", ctx);
     udpc_service * s = ctx->serv;
     datalog_initialize(&ctx->dlog, ctx->dir, quickfmt("%s.datalog", ctx->name), quickfmt("%s.commits", ctx->name));
-    datalog_update(&ctx->dlog);
-    
-    void * recieve = NULL;
-    size_t recieve_length = 0;
-    size_t send_length = 10000;
-    i8 * send = alloc(send_length * sizeof(send[0]));
-    for(size_t i = 0; i <send_length; i++){
-      i8 x = -(i % 123);
-      send[i] = x;
-    }
+    //datalog_update(&ctx->dlog);
 
     udpc_connection * con = NULL;
     if(s == s1)
       con = udpc_listen2(s);
     else
-      con = udpc_connect2(s, "test@0.0.0.0:s");
+      con = udpc_connect2(s, "test3@0.0.0.0:s");
     talk_dispatch * talk = talk_dispatch_create(con, s == s1);
-    writer * wt = mem_writer_create(&recieve, &recieve_length);
-    reader * rd = mem_reader_create(send, send_length, false);
+    typedef struct{
+      void * recieve;
+      size_t recieve_length;
+      writer * wt;
+    }writer_data;
+    void on_finished_rd(conversation * conv){
+      writer_data * wd = conv->user_data;
+      writer_close(&wd->wt);
+    }
+    
     void new_conversation(conversation * conv, void * buffer, int length)
     {
-      UNUSED(buffer);
       UNUSED(length);
-      if(((i8 *)buffer)[0] == 3)
-	return;
+      ASSERT(((i8 *)buffer)[0] != 3);
+      writer_data * wd = alloc0(sizeof(writer_data));
+      writer * wt = mem_writer_create(&wd->recieve, &wd->recieve_length);
+      wd->wt = wt;
+      conv->user_data = wd;
+      conv->on_finished = on_finished_rd;
       safereceive_create(conv, wt);
     }
     
     talk->new_conversation = new_conversation;
-    void newconv(){
-      conversation * c = talk_create_conversation(talk);
-      ASSERT(c->id != 0);
-      safesend_create(c, rd);
-    }
 
+    typedef enum {
+      PLZ_SEND_COMMITS = 2,
+      
+      
+    }convtype;
+    
     typedef struct{
-      bool keep_processing;
-      talk_dispatch * talk;
-    }processing_context;
+      convtype type;
+      size_t length;
+
+    }convthing;
+    
+    void on_finished_wd(conversation * conv){
+      UNUSED(conv);
+    }
+    
+    void newconv(convthing * to_send){
+      conversation * c = talk_create_conversation(talk);
+      c->on_finished = on_finished_wd;
+      ASSERT(c->id != 0);
+      reader * rd = mem_reader_create(&to_send, sizeof(*to_send), false);
+      safesend_create(c, rd);
+      c->user_data = rd;
+    }
 
     processing_context * cx = alloc0(sizeof(cx));
     cx->keep_processing = true;
@@ -788,8 +822,12 @@ void test_distributed(){
       return NULL;
     }
 
+
+    convthing to_send = {.type = PLZ_SEND_COMMITS, .length = 10};
     iron_thread * proc_trd = iron_start_thread((void *)process_talk, (void *)cx);
-    newconv();
+
+    newconv(&to_send);
+    dmsg(weblog, "Sending packet :%p", &to_send);
 
     int _j = 0;
     while(_j < 10){
@@ -806,9 +844,6 @@ void test_distributed(){
     iron_thread_join(proc_trd);
     talk_dispatch_delete(&talk);
     udpc_close(con);
-    for(size_t i = 0; i <send_length; i++){
-      ASSERT(send[i] == ((i8 *)recieve)[i]);
-    }
     
     return NULL;
   }
@@ -824,7 +859,7 @@ void test_distributed(){
   udpc_logout(s2);
 }
 
-static data_stream weblog = {.name = "orbital_test"};
+
 
 // UDPC sample program.
 int main(int argc, char ** argv){
@@ -842,6 +877,7 @@ int main(int argc, char ** argv){
   
   void run_server(){
     
+
     udpc_start_server("0.0.0.0");
   }
 
@@ -860,5 +896,10 @@ int main(int argc, char ** argv){
   for(int i = 0; i < 1; i++)
     test_datalog();
   //run_persisted_dirs();
+  test_distributed();
+  if(dserv != NULL)
+    datastream_server_flush(dserv);
+
+  
   return 0;
 }
