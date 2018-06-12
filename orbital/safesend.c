@@ -246,7 +246,7 @@ void safereceive_update(conversation * self){
 void safereceive_process(conversation * self, void * buffer, int size){
   UNUSED(size);
   safereceive_data * send = self->user_data;
-
+  dmsg(dlog_verbose,  "safereceive process: %i\n", self->id);
   size_t pack_index = 0;
   SAFESEND_HEADER header = unpack_i8(buffer, &pack_index);
   if(header == SEND_HANDSHAKE){

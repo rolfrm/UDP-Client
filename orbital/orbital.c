@@ -122,11 +122,15 @@ static void _process_read(talk_dispatch * obj){
   }
 
   l = udpc_read(obj->connection, obj->read_buffer, obj->read_buffer_size);
-
+  bool is_started = (convId % 2) == 1;
+  
   conversation * conv = NULL;
-  if(obj->conversations[convId] == NULL){
+  if(obj->conversations[convId / 2] == NULL){
     // new connection from peer.
-    int mod = convId % 2;
+    if(is_started)
+      return;
+    int mod = (convId / 2) % 2;
+
     if((obj->is_server && mod == 1) || (!obj->is_server && mod == 0)){
       
       ASSERT(obj->new_conversation != NULL);
@@ -144,17 +148,18 @@ static void _process_read(talk_dispatch * obj){
 	dealloc(conv);
 	return;
       }
-      ASSERT(obj->conversations[convId] == NULL);
-      obj->conversations[convId] = conv;
+      ASSERT(obj->conversations[convId/2] == NULL);
+      obj->conversations[convId/2] = conv;
       conv->id = convId;
     }else
       return;
     //ERROR("Conversation deleted %i", l);
     
   }else{
-    conv = obj->conversations[convId];
+    conv = obj->conversations[convId/2];
   }
   ASSERT(conv != NULL);
+  conv->id = convId | 1;
   if(conv->finished == false)
     conv->process(conv, obj->read_buffer + 4, l - 4);
 
@@ -232,7 +237,7 @@ conversation * talk_create_conversation(talk_dispatch * talk){
   c->finished = false;
   for(size_t i = (talk->is_server ? 0 : 1) + 2; i < talk->conversation_count; i += 2){
     if(talk->conversations[i] == NULL){
-      c->id = i;
+      c->id = i * 2;
       talk->conversations[i] = c;
       talk->active_conversation_count += 1;
       iron_mutex_unlock(talk->process_mutex);
@@ -246,9 +251,9 @@ conversation * talk_create_conversation(talk_dispatch * talk){
   }
 
   
-  c->id = MAX(talk->conversation_count,2) + (talk->is_server ? 0 : 1);
+  c->id = (MAX(talk->conversation_count,2) + (talk->is_server ? 0 : 1)) * 2;
   
-  talk->conversations[c->id] = c;
+  talk->conversations[c->id / 2] = c;
   talk->conversation_count += 4;
   talk->active_conversation_count += 1;
   iron_mutex_unlock(talk->process_mutex);

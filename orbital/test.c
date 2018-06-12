@@ -208,10 +208,9 @@ void test_safesend(){
     reader * rd = mem_reader_create(send, send_length, false);
     void new_conversation(conversation * conv, void * buffer, int length)
     {
+      dmsg(dlog_verbose,  "Starting new conversation: %i\n", conv->id);
       UNUSED(buffer);
       UNUSED(length);
-      if(((i8 *)buffer)[0] == 3)
-	return;
       ASSERT(((i8 *)buffer)[0] != 3);
       safereceive_create(conv, wt);
     }
@@ -220,6 +219,7 @@ void test_safesend(){
     void newconv(){
       conversation * c = talk_create_conversation(talk);
       ASSERT(c->id != 0);
+      dmsg(dlog_verbose,  "Creating new conversation: %i\n", c->id);
       safesend_create(c, rd);
     }
     bool keep_processing = true;
@@ -259,9 +259,6 @@ void test_safesend(){
   iron_thread_join(s2_trd);
   udpc_logout(s1);
   udpc_logout(s2);
-
-
-
 }
 
 void test_reader(){
@@ -709,11 +706,122 @@ void run_persisted_dirs(){
     datalog_update(&dlog);
     do_merge(&dlog, &dlog2);
     do_merge(&dlog2, &dlog);
-    iron_usleep(1000000);
+    iron_usleep(100000);
   }
   
   datalog_destroy(&dlog);
   datalog_destroy(&dlog2);  
+}
+
+
+void test_distributed(){
+  udpc_service * s1 = udpc_login2("test@0.0.0.0:s");
+  udpc_service * s2 = udpc_login2("test@0.0.0.0:s2");
+
+  typedef struct {
+    udpc_service * serv;
+    const char * dir;
+    const char * name;
+    datalog dlog;
+  }share_ctx;
+  
+  logd("both login: %p %p\n", s1, s2);
+  // initializing sync
+  //   --> Ask for changes
+  //     --> Binary search for changes.
+  //   --> Ask for most
+  //  Notify on changes
+  // only one thread should be writing to the log.
+  // so one thread listens for update notificiations and send
+  // log data.
+  // another thread handles the writes related stuff.
+  
+  void * process_service(share_ctx * ctx){
+    udpc_service * s = ctx->serv;
+    datalog_initialize(&ctx->dlog, ctx->dir, quickfmt("%s.datalog", ctx->name), quickfmt("%s.commits", ctx->name));
+    datalog_update(&ctx->dlog);
+    
+    void * recieve = NULL;
+    size_t recieve_length = 0;
+    size_t send_length = 10000;
+    i8 * send = alloc(send_length * sizeof(send[0]));
+    for(size_t i = 0; i <send_length; i++){
+      i8 x = -(i % 123);
+      send[i] = x;
+    }
+
+    udpc_connection * con = NULL;
+    if(s == s1)
+      con = udpc_listen2(s);
+    else
+      con = udpc_connect2(s, "test@0.0.0.0:s");
+    talk_dispatch * talk = talk_dispatch_create(con, s == s1);
+    writer * wt = mem_writer_create(&recieve, &recieve_length);
+    reader * rd = mem_reader_create(send, send_length, false);
+    void new_conversation(conversation * conv, void * buffer, int length)
+    {
+      UNUSED(buffer);
+      UNUSED(length);
+      if(((i8 *)buffer)[0] == 3)
+	return;
+      safereceive_create(conv, wt);
+    }
+    
+    talk->new_conversation = new_conversation;
+    void newconv(){
+      conversation * c = talk_create_conversation(talk);
+      ASSERT(c->id != 0);
+      safesend_create(c, rd);
+    }
+
+    typedef struct{
+      bool keep_processing;
+      talk_dispatch * talk;
+    }processing_context;
+
+    processing_context * cx = alloc0(sizeof(cx));
+    cx->keep_processing = true;
+    
+    void * process_talk(processing_context * ctx){
+      while(ctx->keep_processing)
+	talk_dispatch_process(ctx->talk, 0);
+      return NULL;
+    }
+
+    iron_thread * proc_trd = iron_start_thread((void *)process_talk, (void *)cx);
+    newconv();
+
+    int _j = 0;
+    while(_j < 10){
+      talk_dispatch_update(talk);
+      if(talk->active_conversation_count > 0)
+	 _j = 0;
+      else {
+	_j++;
+	iron_usleep(100);    
+      }
+      iron_usleep(1000);
+    }
+    cx->keep_processing = false;
+    iron_thread_join(proc_trd);
+    talk_dispatch_delete(&talk);
+    udpc_close(con);
+    for(size_t i = 0; i <send_length; i++){
+      ASSERT(send[i] == ((i8 *)recieve)[i]);
+    }
+    
+    return NULL;
+  }
+
+  share_ctx share1 = {.serv = s1, .dir = "sync_1", .name = "sync1"};
+  share_ctx share2 = {.serv = s2, .dir = "sync_2", .name = "sync1"};
+
+  iron_thread * s1_trd = iron_start_thread((void * (*)()) process_service, &share1);
+  iron_thread * s2_trd = iron_start_thread((void * (*)()) process_service, &share2);
+  iron_thread_join(s1_trd);
+  iron_thread_join(s2_trd);
+  udpc_logout(s1);
+  udpc_logout(s2);
 }
 
 static data_stream weblog = {.name = "orbital_test"};
@@ -747,11 +855,10 @@ int main(int argc, char ** argv){
   dmsg(weblog, "test safesend");
   for(int i = 0; i < 1; i++)
     test_safesend();
-
   logd("Test DATALOG\n");
   dmsg(weblog, "LAST??");
   for(int i = 0; i < 1; i++)
     test_datalog();
-  run_persisted_dirs();
+  //run_persisted_dirs();
   return 0;
 }
