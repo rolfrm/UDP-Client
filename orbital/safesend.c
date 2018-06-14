@@ -21,8 +21,9 @@
 // then each of the chunks are streamed in order with an id in the header
 // then the safereceive will ask for chunks.
 
+data_stream logs = {.name = "safesend"};
 
-typedef struct{
+struct _safesend_data{
   reader * rd;
   u8 * completed_chunks;
   size_t length;
@@ -36,9 +37,9 @@ typedef struct{
 
   u64 finish_time;
   
-}safesend_data;
+};
 
-typedef struct {
+struct _safereceive_data {
   writer * wt;
   u8 * completed_chunks;
   size_t length;
@@ -53,7 +54,7 @@ typedef struct {
   u32 * chunks_buffer;
   u32 chunk_buffer_count;
   
-}safereceive_data;
+};
 
 typedef enum{
   SEND_HANDSHAKE = 1,
@@ -106,8 +107,7 @@ u64 unpack_u64(void * buffer, size_t * index){
 }
 
 
-void safesend_send_chunk(conversation * self, u32 index){
-  safesend_data * send = self->user_data;
+void safesend_send_chunk(conversation * self, safesend_data * send, u32 index){
   
   i8 header = SEND_CHUNK;
   size_t pack_idx = 0;
@@ -120,11 +120,14 @@ void safesend_send_chunk(conversation * self, u32 index){
   reader_seek(send->rd, chunk_offset);
   pack_idx += reader_read(send->rd, send->buffer + pack_idx, chunk_size);
   conv_send(self, send->buffer, pack_idx);
+  if(pack_idx > 8){
+    u64 * ptr = send->buffer + pack_idx - sizeof(u64);
+    dmsg(logs, "sending %i %p\n", pack_idx , ptr[0]);
+  }
 }
 
 
-void safesend_update(conversation * self){
-  safesend_data * send = self->user_data;
+void safesend_update(conversation * self, safesend_data * send){
   if(self->talk->connection_closed)
     self->finished = true;
   if(send->finish_time > 0 && timestamp() - send->finish_time > self->talk->latency * 10){
@@ -135,7 +138,7 @@ void safesend_update(conversation * self){
     return;
   if(send->started){
     if(send->initial_send != send->chunk_count){
-      safesend_send_chunk(self, send->initial_send);
+      safesend_send_chunk(self, send, send->initial_send);
       send->initial_send += 1;
       return;
     }
@@ -153,8 +156,8 @@ void safesend_update(conversation * self){
   }
 }
 
-void safesend_process(conversation * self, void * buffer, int size){
-  safesend_data * send = self->user_data;
+void safesend_process(conversation * self,  safesend_data * send, void * buffer, int size){
+
   size_t index = 0;
   SAFESEND_HEADER header = unpack_i8(buffer, &index);
   if(header == RECV_REQ){
@@ -164,7 +167,7 @@ void safesend_process(conversation * self, void * buffer, int size){
     size -= index;
     size_t count = size / sizeof(chunks[0]);
     for(size_t i = 0; i < count; i++){
-      safesend_send_chunk(self, chunks[i]);
+      safesend_send_chunk(self, send, chunks[i]);
     }
   }
   if(header == RECV_HANDSHAKE_OK){
@@ -184,7 +187,7 @@ void safesend_close(conversation * self){
   self->user_data = NULL;
 }
 
-void safesend_create(conversation * conv, reader * reader){
+safesend_data * safesend_create(reader * reader){
   safesend_data * send = alloc(sizeof(send[0]));
   send->rd = reader;
   send->length = reader->size;
@@ -197,14 +200,10 @@ void safesend_create(conversation * conv, reader * reader){
   send->started = false;
   send->last_send = 0;
   send->finish_time = 0;
-  conv->user_data = send;
-
-  conv->process =safesend_process;
-  conv->update = safesend_update;
+  return send;
 }
 
-void safereceive_update(conversation * self){
-  safereceive_data * send = self->user_data;
+void safereceive_update(conversation * self, safereceive_data * send){
   
   //ASSERT(self->talk->connection_closed == false); // todo: Handle this.
   
@@ -236,6 +235,10 @@ void safereceive_update(conversation * self){
     if(idx > 1){
       send->chunks_buffer[0] = RECV_REQ;
       conv_send(self, send->chunks_buffer, idx * sizeof(send->chunks_buffer[0]));
+      if(idx > 2){
+	
+
+      }
       send->last_recv = timestamp() + self->talk->latency * 2; // don't do the same right again.
     }else{
       ASSERT(send->received_blocks == send->chunk_count);
@@ -243,9 +246,8 @@ void safereceive_update(conversation * self){
   }
 }
 
-void safereceive_process(conversation * self, void * buffer, int size){
-  UNUSED(size);
-  safereceive_data * send = self->user_data;
+void safereceive_process(conversation * self, safereceive_data * send, void * buffer, int size){
+
   dmsg(dlog_verbose,  "safereceive process: %i\n", self->id);
   size_t pack_index = 0;
   SAFESEND_HEADER header = unpack_i8(buffer, &pack_index);
@@ -295,7 +297,7 @@ void safereceive_close(conversation * self){
 }
 
 
-void safereceive_create(conversation * conv, writer * writer){
+safereceive_data * safereceive_create(writer * writer){
   safereceive_data * send = alloc(sizeof(safereceive_data));
   send->wt = writer;
   send->completed_chunks = NULL;
@@ -307,9 +309,6 @@ void safereceive_create(conversation * conv, writer * writer){
   send->chunk_buffer_count = 0;
   send->received_blocks = 0;
   send->chunk_count = 0;
-
-  conv->user_data = send;
-  conv->process = safereceive_process;
-  conv->update =safereceive_update;
+  return send;
 }
 

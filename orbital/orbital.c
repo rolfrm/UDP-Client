@@ -84,6 +84,7 @@ talk_dispatch * talk_dispatch_create(udpc_connection * con, bool is_server){
   obj->is_processing = false;
   obj->is_updating = false;
   obj->connection_closed = false;
+
   return obj;
 }
 
@@ -139,6 +140,7 @@ static void _process_read(talk_dispatch * obj){
       conv->talk = obj;
       conv->user_data = NULL;
       conv->finished = false;
+      conv->on_finished = NULL;
       conv->id = convId;
       conv->process = NULL;
       conv->update = NULL;

@@ -5,6 +5,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <sys/stat.h>
+#include <signal.h>
+#include <string.h>
 
 #include <iron/log.h>
 #include <iron/types.h>
@@ -208,13 +210,33 @@ void test_safesend(){
     talk_dispatch * talk = talk_dispatch_create(con, s == s1);
     writer * wt = mem_writer_create(&recieve, &recieve_length);
     reader * rd = mem_reader_create(send, send_length, false);
+
+    void process_receive(conversation * conv, void * buffer, int length){
+      safereceive_process(conv, conv->user_data, buffer, length);
+    }
+
+    void update_receive(conversation * conv){
+      safereceive_update(conv, conv->user_data);
+    }
+
+
+    void process_send(conversation * conv, void * buffer, int length){
+      safesend_process(conv, conv->user_data, buffer, length);
+    }
+
+    void update_send(conversation * conv){
+      safesend_update(conv, conv->user_data);
+    }
+    
     void new_conversation(conversation * conv, void * buffer, int length)
     {
       dmsg(dlog_verbose,  "Starting new conversation: %i\n", conv->id);
       UNUSED(buffer);
       UNUSED(length);
       ASSERT(((i8 *)buffer)[0] != 3);
-      safereceive_create(conv, wt);
+      conv->user_data = safereceive_create(wt);
+      conv->process = process_receive;
+      conv->update = update_receive;
     }
     void on_finished(conversation * conv){
       dmsg(dlog_verbose,  "Conversation finished: %i\n", conv->id);
@@ -226,7 +248,9 @@ void test_safesend(){
       c->on_finished = on_finished;
       ASSERT(c->id != 0);
       dmsg(dlog_verbose,  "Creating new conversation: %i\n", c->id);
-      safesend_create(c, rd);
+      c->user_data = safesend_create(rd);
+      c->process = process_send;
+      c->update = update_send;
     }
 
 
@@ -739,6 +763,19 @@ void test_distributed(){
     talk_dispatch * talk;
   }processing_context;
 
+
+  typedef enum {
+    PLZ_SEND_COMMITS = 2,
+    
+    
+  }convtype;
+  
+    typedef struct{
+      convtype type;
+      size_t length;
+      //u64 x,y,z,w,x2,y2,z2,w2;
+    }convthing;
+  
   
   dmsg(weblog, "both login: %p %p\n", s1, s2);
   // initializing sync
@@ -768,37 +805,66 @@ void test_distributed(){
       void * recieve;
       size_t recieve_length;
       writer * wt;
+      safereceive_data * rcv;
     }writer_data;
+    
     void on_finished_rd(conversation * conv){
       writer_data * wd = conv->user_data;
       writer_close(&wd->wt);
+
+      dmsg(weblog, "DONE RD len: %i", wd->recieve_length);
+      convthing * c = wd->recieve;
+      ASSERT(c != NULL);
+      dmsg(weblog, "on_finished_rd %p %p\n", c->type, c->length);
+      dealloc(wd);
     }
-    
+
+    typedef struct{
+      safesend_data * snd;
+      reader * rd;
+    }sender_reader;
+
+    void process_receive(conversation * conv, void * buffer, int length){
+      if(length > 8){
+	u64 * x = buffer + length - 8;
+	dmsg(weblog, "RX DATA %i %p\n", length, x[0] );
+      }
+      dmsg(weblog, "RCV %i -> %i\n", length, ((writer_data *)conv->user_data)->recieve_length );
+      safereceive_process(conv, ((writer_data *)conv->user_data)->rcv, buffer, length);
+    }
+
+    void update_receive(conversation * conv){
+      safereceive_update(conv, ((writer_data *)conv->user_data)->rcv);
+    }
+
+
+    void process_send(conversation * conv, void * buffer, int length){
+
+      
+      safesend_process(conv, ((sender_reader *) conv->user_data)->snd, buffer, length);
+    }
+
+    void update_send(conversation * conv){
+      safesend_update(conv, ((sender_reader *) conv->user_data)->snd);
+    }
+
     void new_conversation(conversation * conv, void * buffer, int length)
     {
       UNUSED(length);
       ASSERT(((i8 *)buffer)[0] != 3);
-      writer_data * wd = alloc0(sizeof(writer_data));
+      writer_data * wd = alloc0(sizeof(wd[0]));
       writer * wt = mem_writer_create(&wd->recieve, &wd->recieve_length);
       wd->wt = wt;
+      wd->rcv = safereceive_create(wt);
       conv->user_data = wd;
       conv->on_finished = on_finished_rd;
-      safereceive_create(conv, wt);
+      conv->process = process_receive;
+      conv->update = update_receive;
     }
     
     talk->new_conversation = new_conversation;
 
-    typedef enum {
-      PLZ_SEND_COMMITS = 2,
-      
-      
-    }convtype;
-    
-    typedef struct{
-      convtype type;
-      size_t length;
 
-    }convthing;
     
     void on_finished_wd(conversation * conv){
       UNUSED(conv);
@@ -808,14 +874,21 @@ void test_distributed(){
       conversation * c = talk_create_conversation(talk);
       c->on_finished = on_finished_wd;
       ASSERT(c->id != 0);
-      reader * rd = mem_reader_create(&to_send, sizeof(*to_send), false);
-      safesend_create(c, rd);
-      c->user_data = rd;
+      sender_reader * snd_rd = alloc0(sizeof(snd_rd[0]));
+      convthing * loc = IRON_CLONE(to_send[0]);
+      dmsg(weblog, "Sending thing of size: %i %p %p", sizeof(*to_send), ((u64 *) loc)[0], loc);
+      reader * rd = mem_reader_create(loc, sizeof(convthing), true);
+      safesend_data * snd = safesend_create(rd);
+      snd_rd->rd = rd;
+      snd_rd->snd = snd;
+      c->user_data = snd_rd;
+      c->process = process_send;
+      c->update = update_send;
     }
 
-    processing_context * cx = alloc0(sizeof(cx));
+    processing_context * cx = alloc0(sizeof(cx[0]));
     cx->keep_processing = true;
-    
+    cx->talk = talk;
     void * process_talk(processing_context * ctx){
       while(ctx->keep_processing)
 	talk_dispatch_process(ctx->talk, 0);
@@ -823,7 +896,9 @@ void test_distributed(){
     }
 
 
-    convthing to_send = {.type = PLZ_SEND_COMMITS, .length = 10};
+    convthing to_send = {0};//.type = PLZ_SEND_COMMITS, .length = 10};
+    to_send.type = PLZ_SEND_COMMITS;
+    to_send.length = 10;
     iron_thread * proc_trd = iron_start_thread((void *)process_talk, (void *)cx);
 
     newconv(&to_send);
@@ -866,6 +941,9 @@ int main(int argc, char ** argv){
   UNUSED(argc);
   UNUSED(argv);
   dserv = datastream_server_run();
+  
+
+  
   datastream_server_wait_for_connect(dserv);
   //iron_sleep(200000);
   for(size_t i = 0; i < 10; i++){
@@ -875,9 +953,9 @@ int main(int argc, char ** argv){
   }
   
   
+  
   void run_server(){
     
-
     udpc_start_server("0.0.0.0");
   }
 
@@ -895,10 +973,14 @@ int main(int argc, char ** argv){
   dmsg(weblog, "LAST??");
   for(int i = 0; i < 1; i++)
     test_datalog();
+
   //run_persisted_dirs();
   test_distributed();
-  if(dserv != NULL)
+  if(dserv != NULL){
+    iron_sleep(0.3); 
     datastream_server_flush(dserv);
+    iron_sleep(0.3); 
+  }
 
   
   return 0;

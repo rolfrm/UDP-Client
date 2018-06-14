@@ -15,6 +15,8 @@
 #include <udpc.h>
 #include "orbital.h"
 
+static data_stream logs = {.name = "reader_writer"};
+
 typedef struct{
   FILE * f;
 }file_reader_data;
@@ -71,6 +73,12 @@ size_t mem_reader_read(reader * rd, void * dst, size_t size){
   if(to_read <= 0) return 0;
   
   memmove(dst, m.ptr + rd->position, MAX(0, to_read));
+
+  if(to_read > 8){
+    u64 * read = m.ptr;
+    dmsg(logs, "read %p  %p %p, from: %p:%i\n", read[0] , m.size, to_read, m.ptr, rd->position);
+  }
+  
   rd->position += to_read;
   return (size_t) MAX(0, to_read);
 }

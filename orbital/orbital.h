@@ -109,8 +109,21 @@ void writer_write(writer * wt, void * src, size_t size);
 void writer_seek(writer * wt, size_t position);
 void writer_close(writer ** wt);
 
-void safesend_create(conversation * conv, reader * reader);
-void safereceive_create(conversation * conv, writer * writer);
+struct _safereceive_data;
+typedef struct _safereceive_data safereceive_data;
+struct _safesend_data;
+typedef struct _safesend_data safesend_data;
+
+
+safesend_data * safesend_create(reader * reader);
+void safesend_process(conversation * self, safesend_data * safetx, void * buffer, int size);
+void safesend_update(conversation * self, safesend_data * safetx);
+
+safereceive_data * safereceive_create(writer * writer);
+
+void safereceive_process(conversation * self, safereceive_data * saferx, void * buffer, int size);
+void safereceive_update(conversation * self, safereceive_data * saferx);
+
 
 typedef enum{
   DATA_LOG_NEW_FILE = 1,
