@@ -792,9 +792,11 @@ void test_distributed(){
 
     dmsg(weblog, "Starting ctx :%p", ctx);
     udpc_service * s = ctx->serv;
+    remove(quickfmt("%s.datalog", ctx->name));
+    remove(quickfmt("%s.commits", ctx->name));
     datalog_initialize(&ctx->dlog, ctx->dir, quickfmt("%s.datalog", ctx->name), quickfmt("%s.commits", ctx->name));
-    //datalog_update(&ctx->dlog);
-
+    datalog_update(&ctx->dlog);
+    var dlog = &ctx->dlog;
     udpc_connection * con = NULL;
     if(s == s1)
       con = udpc_listen2(s);
@@ -913,7 +915,12 @@ void test_distributed(){
 	_j++;
 	iron_usleep(100);    
       }
-      iron_usleep(1000);
+      iron_sleep(0.01);
+      var search_max = datalog_get_commit_count(dlog);
+      if(search_max > 0){
+	var c1 = datalog_get_commit(dlog, search_max - 1);
+	dmsg(weblog, "Update: %i", c1);
+      }
     }
     cx->keep_processing = false;
     iron_thread_join(proc_trd);
@@ -923,9 +930,9 @@ void test_distributed(){
     return NULL;
   }
 
-  share_ctx share1 = {.serv = s1, .dir = "sync_1", .name = "sync1"};
-  share_ctx share2 = {.serv = s2, .dir = "sync_2", .name = "sync1"};
-
+  share_ctx share1 = {.serv = s1, .dir = "sync_5", .name = "sync5"};
+  share_ctx share2 = {.serv = s2, .dir = "sync_6", .name = "sync6"};
+  
   iron_thread * s1_trd = iron_start_thread((void * (*)()) process_service, &share1);
   iron_thread * s2_trd = iron_start_thread((void * (*)()) process_service, &share2);
   iron_thread_join(s1_trd);
@@ -962,18 +969,17 @@ int main(int argc, char ** argv){
   iron_thread * srvtrd = iron_start_thread0(run_server);
   UNUSED(srvtrd);
   iron_usleep(10000);
-  logd("test_conversation\n");
+  dmsg(weblog, "test_conversation");
   //for(int i = 0; i < 1; i++)
     //test_conversation();
   logd("test_safesend\n");
   dmsg(weblog, "test safesend");
   for(int i = 0; i < 1; i++)
     test_safesend();
-  logd("Test DATALOG\n");
-  dmsg(weblog, "LAST??");
+  dmsg(weblog, "Test DATALOG");
   for(int i = 0; i < 1; i++)
     test_datalog();
-
+  dmsg(weblog, "TEST distributed");
   //run_persisted_dirs();
   test_distributed();
   if(dserv != NULL){

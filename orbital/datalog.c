@@ -753,7 +753,8 @@ commit_item datalog_get_commit(datalog * dlog, u64 index){
   u64 cnt = datalog_get_commit_count(dlog);
   ASSERT(index < cnt);
   var opos = ftell(dlog_i->commits_file);
-  fseek(dlog_i->commits_file, index * sizeof(commit_item), SEEK_SET);
+  var seek_r = fseek(dlog_i->commits_file, index * sizeof(commit_item), SEEK_SET);
+  ASSERT(seek_r == 0);
   commit_item out;
   size_t rcnt = fread(&out, sizeof(commit_item), 1, dlog_i->commits_file);
   ASSERT(1 == rcnt);
