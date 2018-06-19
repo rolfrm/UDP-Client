@@ -1,0 +1,11 @@
+- datalog to update file modification times.
+
+# Implement datalog stream over UDP
+- send commit hashes as a long list.
+- request commits and stream the response to a file.
+-
+
+
+   Done
+   fix issue with conversation leaks.
+  
