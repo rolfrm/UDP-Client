@@ -3,6 +3,7 @@
 #include <openssl/err.h>
 #include <openssl/rand.h>
 #include <stdbool.h>
+#include <string.h>
 #include <iron/mem.h>
 #include <iron/log.h>
 #include <iron/utils.h>
@@ -34,72 +35,12 @@ struct _ssl_client{
   int fd;
 };
 
-// locking stuff needed top make OpenSSL thread safe
-#include <iron/utils.h>
-#include <openssl/crypto.h>
-#define MUTEX_TYPE       pthread_mutex_t
-#define MUTEX_SETUP(x)   pthread_mutex_init(&(x), NULL)
-#define MUTEX_CLEANUP(x) pthread_mutex_destroy(&(x))
-#define MUTEX_LOCK(x)    pthread_mutex_lock(&(x))
-#define MUTEX_UNLOCK(x)  pthread_mutex_unlock(&(x))
-#define THREAD_ID        pthread_self()
- 
- 
-/* This array will store all of the mutexes available to OpenSSL. */ 
-static MUTEX_TYPE *mutex_buf = NULL;
- 
-static void locking_function(int mode, int n, const char *file, int line)
-{
-  UNUSED(file);
-  UNUSED(line);
-  if(mode & CRYPTO_LOCK){
-    MUTEX_LOCK(mutex_buf[n]);
-  }else{
-    MUTEX_UNLOCK(mutex_buf[n]);
-  }
-}
- 
-static unsigned long id_function(void)
-{
-  return ((unsigned long)THREAD_ID);
-}
- 
-int thread_setup(void)
-{
-  int i;
- 
-  mutex_buf = malloc(CRYPTO_num_locks() * sizeof(MUTEX_TYPE));
-  if(!mutex_buf)
-    return 0;
-  for(i = 0;  i < CRYPTO_num_locks();  i++)
-    MUTEX_SETUP(mutex_buf[i]);
-  CRYPTO_set_id_callback(id_function);
-  CRYPTO_set_locking_callback(locking_function);
-  return 1;
-}
- 
-int thread_cleanup(void)
-{
-  int i;
- 
-  if(!mutex_buf)
-    return 0;
-  CRYPTO_set_id_callback(NULL);
-  CRYPTO_set_locking_callback(NULL);
-  for(i = 0;  i < CRYPTO_num_locks();  i++)
-    MUTEX_CLEANUP(mutex_buf[i]);
-  free(mutex_buf);
-  mutex_buf = NULL;
-  return 1;
-}
-
 static void ssl_ensure_initialized(){
   static bool initialized = false;
   if(initialized) return;
   SSL_library_init();
   OpenSSL_add_ssl_algorithms();
   SSL_load_error_strings();
-  thread_setup();
   if(initialized)
     ERROR("this shouldn not happen");
   initialized = true; 
@@ -189,7 +130,7 @@ static int generate_cookie(SSL *ssl, unsigned char *cookie, unsigned int *cookie
   return 1;
 }
 
-static int verify_cookie(SSL *ssl, unsigned char *cookie, unsigned int cookie_len)
+static int verify_cookie(SSL *ssl, const unsigned char *cookie, unsigned int cookie_len)
 {
   unsigned char *buffer, result[EVP_MAX_MD_SIZE];
   unsigned int length = 0, resultlength;
@@ -273,7 +214,7 @@ static int dtls_verify_callback (int ok, X509_STORE_CTX *ctx) {
 
 ssl_server * ssl_setup_server(int fd){
   ssl_ensure_initialized();
-  SSL_CTX * ctx = SSL_CTX_new(DTLSv1_2_server_method());
+  SSL_CTX * ctx = SSL_CTX_new(DTLS_server_method());
   { // setup server SSL CTX
     SSL_CTX_set_cipher_list(ctx, ssl_ciphers);
     SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_OFF);
@@ -375,10 +316,6 @@ void ssl_server_write(ssl_server_con * con, const void * buffer, size_t buffer_s
   SSL_write(con->ssl, buffer, buffer_size);
 }
 
-void ssl_server_heartbeat(ssl_server_client * cli){
-  SSL_heartbeat(cli->ssl);
-}
-
 void ssl_server_close(ssl_server_client * cli){
   SSL_shutdown(cli->ssl);
   SSL_free(cli->ssl);
@@ -400,7 +337,7 @@ ssl_server_client * ssl_server_listen(ssl_server * serv){
   struct sockaddr_storage client_addr = {0};
   int error = 0;
 
-  while ((error = DTLSv1_listen(ssl, &client_addr)) <= 0){
+  while ((error = DTLSv1_listen(ssl, (BIO_ADDR *) &client_addr)) <= 0){
     if(error == 0) continue;
     SSL_free(ssl);
     //logd("Connect error: %i\n", error);
@@ -416,7 +353,7 @@ ssl_server_client * ssl_server_listen(ssl_server * serv){
 
 ssl_client * ssl_start_client(int fd, struct sockaddr * remote_addr){
   ssl_ensure_initialized();
-  SSL_CTX * ctx = SSL_CTX_new(DTLSv1_2_client_method());
+  SSL_CTX * ctx = SSL_CTX_new(DTLS_client_method());
   //SSL_CTX_set_info_callback(ctx, SSL_CTX_state_cb);
   SSL_CTX_set_cipher_list(ctx, ssl_ciphers);
 
@@ -527,10 +464,6 @@ int ssl_client_peek(ssl_client * cli, void * buffer, size_t length){
   if(ecode < 0)
     return ecode;
   return len;
-}
-
-void ssl_client_heartbeat(ssl_client * cli){
-  SSL_heartbeat(cli->ssl);
 }
 
 void ssl_client_close(ssl_client * cli){
